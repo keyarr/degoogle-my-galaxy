@@ -4,6 +4,7 @@ Android (root) app that turns the shell procedure for temporarily replacing Goog
 
 **v0.1 (status):** complete and tested shell backend (46/46 scenarios in host harness) **and main lifecycle validated on real device** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restore Google → STOCK verified`. Hardening and backup reinstallation tests remain pending.
 
+> [!WARNING]
 > **Tested only with KernelSU:** no changes are made without verified root access and a compatible device profile. V1 supports a single profile: **Samsung Galaxy S24 Ultra (SM-S928x)**.
 >
 > **Focus on Root-My-Galaxy:** the main focus of this project is for devices rooted via [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy). Because this method relies on a volatile exploit to load KernelSU, a **full reboot (kernel) loses both root and microG**. Therefore, the app uses **soft reboot (userspace) only**, via `sys.powerctl reboot,userspace`, which preserves the kernel, mounts, and root. The app **never** offers full reboot.
