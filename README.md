@@ -2,7 +2,7 @@
 
 Android (root) app that turns the shell procedure for temporarily replacing Google Play Services / GSF / Play Store with **microG Services + microG Companion** into a safe, verifiable, and near one-click experience.
 
-**v0.1 (status):** complete and tested shell backend (46/46 scenarios in host harness) **and main lifecycle validated on real device** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restore Google → STOCK verified`. Hardening and backup reinstallation tests remain pending.
+**v0.2 (status):** complete and tested shell backend (46/46 scenarios in host harness) **and main lifecycle validated on real device** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restore Google → STOCK verified`. Full Material 3/You UI redesign with multi-language support (English and Brazilian Portuguese). Hardening and backup reinstallation tests remain pending.
 
 > [!WARNING]
 > **Tested only with KernelSU:** no changes are made without verified root access and a compatible device profile. V1 supports a single profile: **Samsung Galaxy S24 Ultra (SM-S928x)**.
@@ -126,7 +126,7 @@ This reduces crash frequency and subsequent Rescue Party probability. Trade-off:
 
 Aplicativo Android (root) que transforma o procedimento shell de substituição temporária de Google Play Services / GSF / Play Store por **microG Services + microG Companion** em uma experiência segura, verificável e quase one-click.
 
-**v0.1 (status):** backend shell completo e testado (46/46 cenários no harness de host) **e ciclo principal validado em aparelho real** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restaurar Google → STOCK verificado`. Faltam hardening e o teste de reinstalação com restauração automática do backup.
+**v0.2 (status):** backend shell completo e testado (46/46 cenários no harness de host) **e ciclo principal validado em aparelho real** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restaurar Google → STOCK verificado`. Interface reformulada em Material 3/You com suporte multi-idioma (Inglês e Português do Brasil). Faltam hardening e o teste de reinstalação com restauração automática do backup.
 
 > [!WARNING]
 > **Testado apenas com KernelSU:** nenhuma alteração é feita sem provar root e perfil compatível. V1 suporta um único perfil: **Samsung Galaxy S24 Ultra (SM-S928x)**.
