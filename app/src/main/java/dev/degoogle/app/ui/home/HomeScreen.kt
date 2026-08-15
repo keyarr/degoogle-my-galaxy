@@ -319,7 +319,7 @@ private fun UnsupportedCard(ui: UiState) {
         StatusRow("Modelo", f.model, Status.UNKNOWN, leadingIcon = Icons.Rounded.Fingerprint)
         StatusRow("Dispositivo", f.device, Status.UNKNOWN, leadingIcon = Icons.Rounded.Security)
         StatusRow("Android", "${f.androidRelease} (SDK ${f.androidSdk})", Status.UNKNOWN, leadingIcon = Icons.Rounded.Android)
-        StatusRow("Fingerprint", f.fingerprint.ifBlank { "—" }, Status.UNKNOWN)
+        StatusRow("Fingerprint", f.fingerprint.ifBlank { "Não informado" }, Status.UNKNOWN)
         StatusRow("GMS real", f.gmsPath ?: "ausente", Status.UNKNOWN)
         StatusRow("GSF real", f.gsfPath ?: "ausente", Status.UNKNOWN)
         StatusRow("Play Store real", f.storePath ?: "ausente", Status.UNKNOWN)
@@ -355,7 +355,7 @@ private fun StockContent(
             )
             StatusRow(
                 "Play Services",
-                f.gmsVersion ?: f.gmsPath ?: "—",
+                f.gmsVersion ?: f.gmsPath ?: "Não informado",
                 if (f.gmsPath != null) Status.OK else Status.FAIL,
                 leadingIcon = Icons.Rounded.Layers,
             )
@@ -623,9 +623,9 @@ private fun ErrorContent(ui: UiState, vm: AppViewModel, onNavigate: (Screen) -> 
         StatusRow("GMS", f.gmsPath ?: "ausente", Status.UNKNOWN)
         StatusRow("GSF", f.gsfPath ?: "ausente", Status.UNKNOWN)
         StatusRow("Play Store", f.storePath ?: "ausente", Status.UNKNOWN)
-        StatusRow("Mount GMS", if (f.mountGms) "ativo" else "—", Status.UNKNOWN)
-        StatusRow("Mount GSF", if (f.mountGsf) "ativo" else "—", Status.UNKNOWN)
-        StatusRow("Mount Store", if (f.mountStore) "ativo" else "—", Status.UNKNOWN)
+        StatusRow("Mount GMS", if (f.mountGms) "ativo" else "inativo", Status.UNKNOWN)
+        StatusRow("Mount GSF", if (f.mountGsf) "ativo" else "inativo", Status.UNKNOWN)
+        StatusRow("Mount Store", if (f.mountStore) "ativo" else "inativo", Status.UNKNOWN)
     }
 
     val gmsUpdatable = ui.facts.gmsPath?.startsWith("/data/app/") == true ||

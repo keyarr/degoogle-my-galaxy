@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +30,10 @@ import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Store
+import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,6 +55,7 @@ import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusRow
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiagnosticsScreen(ui: UiState) {
     val context = LocalContext.current
@@ -81,7 +87,7 @@ fun DiagnosticsScreen(ui: UiState) {
             title = "Sistema & Ambiente",
             action = {
                 StateBadge(
-                    text = ui.state.name,
+                    text = ui.state.displayName,
                     icon = Icons.Rounded.Verified,
                 )
             },
@@ -93,17 +99,53 @@ fun DiagnosticsScreen(ui: UiState) {
                 StatusRow("Android", "${f.androidRelease.ifBlank { "?" }} (SDK ${f.androidSdk})", Status.OK, leadingIcon = Icons.Rounded.Android)
                 StatusRow("SELinux", f.selinux, Status.UNKNOWN, leadingIcon = Icons.Rounded.Security)
                 StatusRow("Arquitetura ABI", f.abi, Status.UNKNOWN)
-                StatusRow("Build Fingerprint", f.fingerprint.ifBlank { "—" }, Status.UNKNOWN)
+                StatusRow("Build Fingerprint", f.fingerprint.ifBlank { "Não informado" }, Status.UNKNOWN, leadingIcon = Icons.Rounded.Tag)
             }
         }
 
         InfoCard("Google Play Services (GMS)") {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 StatusRow("Caminho (Path)", f.gmsPath ?: "ausente", Status.UNKNOWN, leadingIcon = Icons.Rounded.Folder)
-                StatusRow("Versão", f.gmsVersion ?: "—", Status.UNKNOWN)
-                StatusRow("UID", f.gmsUid ?: "—", Status.UNKNOWN)
+                StatusRow("Versão", f.gmsVersion ?: "Não informado", Status.UNKNOWN)
+                StatusRow("UID", f.gmsUid ?: "Não informado", Status.UNKNOWN)
                 StatusRow("Privileged (priv-app)", if (f.gmsPrivileged) "sim" else "não", if (f.gmsPrivileged) Status.OK else Status.FAIL)
-                StatusRow("Flags de Pacote", f.gmsFlags ?: "—", Status.UNKNOWN)
+
+                val flagsList = f.gmsFlags?.split(" ")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+                if (flagsList.isNotEmpty()) {
+                    Column(modifier = Modifier.padding(top = 8.dp)) {
+                        Text(
+                            text = "Flags de Pacote",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            flagsList.forEach { flag ->
+                                AssistChip(
+                                    onClick = {},
+                                    label = {
+                                        Text(
+                                            text = flag,
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ),
+                                    border = null,
+                                    shape = RoundedCornerShape(8.dp),
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    StatusRow("Flags de Pacote", "Não informado", Status.UNKNOWN)
+                }
             }
         }
 
@@ -121,7 +163,7 @@ fun DiagnosticsScreen(ui: UiState) {
                 StatusRow("GMS Mount", if (f.mountGms) "mascarado (microG)" else "visível (stock)", if (f.mountGms) Status.OK else Status.ABSENT, leadingIcon = if (f.mountGms) Icons.Rounded.Folder else Icons.Rounded.FolderOff)
                 StatusRow("GSF Mount", if (f.mountGsf) "mascarado (vazio)" else "visível (stock)", if (f.mountGsf) Status.OK else Status.ABSENT)
                 StatusRow("Store Mount", if (f.mountStore) "mascarado (companion)" else "visível (stock)", if (f.mountStore) Status.OK else Status.ABSENT)
-                StatusRow("Fonte GMS", f.mountGmsSource ?: "—", Status.UNKNOWN)
+                StatusRow("Fonte GMS", f.mountGmsSource ?: "Não informado", Status.UNKNOWN)
             }
         }
 
