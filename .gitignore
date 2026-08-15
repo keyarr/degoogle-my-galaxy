@@ -1,0 +1,22 @@
+# Build
+.gradle/
+build/
+app/build/
+captures/
+
+# Ambiente local (não versionar)
+local.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# Artefatos
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# Logs
+*.log
