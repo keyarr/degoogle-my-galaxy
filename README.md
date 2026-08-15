@@ -128,6 +128,7 @@ Aplicativo Android (root) que transforma o procedimento shell de substituição 
 
 **v0.1 (status):** backend shell completo e testado (46/46 cenários no harness de host) **e ciclo principal validado em aparelho real** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restaurar Google → STOCK verificado`. Faltam hardening e o teste de reinstalação com restauração automática do backup.
 
+> [!WARNING]
 > **Testado apenas com KernelSU:** nenhuma alteração é feita sem provar root e perfil compatível. V1 suporta um único perfil: **Samsung Galaxy S24 Ultra (SM-S928x)**.
 >
 > **Foco no Root-My-Galaxy:** o foco principal deste projeto é atender usuários que fizeram root por meio do [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy). Como o root obtido por esse método decorre de um exploit volátil para carregar o KernelSU, um **reboot completo (kernel) perde o root e o microG**. Dessa forma, o app usa **apenas soft reboot (userspace)**, por meio de `sys.powerctl reboot,userspace`, o que preserva o kernel, os mounts e o root. O app **nunca** oferece reboot completo.
