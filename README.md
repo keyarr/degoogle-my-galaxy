@@ -4,9 +4,18 @@ Android (root) app that turns the shell procedure for temporarily replacing Goog
 
 **v0.1 (status):** complete and tested shell backend (46/46 scenarios in host harness) **and main lifecycle validated on real device** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restore Google → STOCK verified`. Hardening and backup reinstallation tests remain pending.
 
-> ⚠️ Intended exclusively for rooted devices (KernelSU/Magisk/APatch). No changes are made without verified root access and a compatible device profile. V1 supports a single profile: **Samsung Galaxy S24 Ultra (SM-S928x)**.
+> **Tested only with KernelSU:** no changes are made without verified root access and a compatible device profile. V1 supports a single profile: **Samsung Galaxy S24 Ultra (SM-S928x)**.
 >
-> 🚨 **Exploit-based root:** the target audience includes devices where root originates from a volatile exploit. In this case, a **full reboot (kernel) loses both root and microG**. The app uses **soft reboot (userspace) only**, via `sys.powerctl reboot,userspace`, which preserves the kernel, mounts, and root. The app **never** offers full reboot.
+> **Focus on Root-My-Galaxy:** the main focus of this project is for devices rooted via [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy). Because this method relies on a volatile exploit to load KernelSU, a **full reboot (kernel) loses both root and microG**. Therefore, the app uses **soft reboot (userspace) only**, via `sys.powerctl reboot,userspace`, which preserves the kernel, mounts, and root. The app **never** offers full reboot.
+>
+> **Messaging apps and push notifications (FCM / GCM):** if messaging apps such as WhatsApp and Telegram were already installed before microG, push notifications will not work immediately.
+>
+> - **Why this happens:** when a messaging app is launched for the first time, it requests an exclusive push token from Google Play Services. If microG was not active during that initial launch, the token is not registered through microG. These apps do not automatically renegotiate a token when microG is introduced later, so a reinstallation is required to trigger a fresh registration.
+> - **Initial reinstallation:** after installing microG for the first time, reinstall WhatsApp and Telegram so they generate a new token.
+> - **Registration confirmation:** open microG Settings and verify under the Cloud Messaging (GCM) section that both apps appear as registered.
+> - **Backup creation:** as soon as both apps appear as registered, create a backup of microG data via the DeGoogle app.
+>
+> This ensures that if a full reboot clears the volatile environment, restoring the backup upon reinstalling microG will preserve the registered tokens, removing the need to reinstall messaging apps again.
 
 ## Structure
 
@@ -118,9 +127,18 @@ Aplicativo Android (root) que transforma o procedimento shell de substituição 
 
 **v0.1 (status):** backend shell completo e testado (46/46 cenários no harness de host) **e ciclo principal validado em aparelho real** (SM-S928B, One UI 16): `STOCK → PREPARED → soft reboot → MICROG_ACTIVE → backup → MICROG_ACTIVE_BACKED_UP → Restaurar Google → STOCK verificado`. Faltam hardening e o teste de reinstalação com restauração automática do backup.
 
-> ⚠️ Destinado exclusivamente a dispositivos com root (KernelSU/Magisk/APatch). Nenhuma alteração é feita sem provar root e perfil compatível. V1 suporta um único perfil: **Samsung Galaxy S24 Ultra (SM-S928x)**.
+> **Testado apenas com KernelSU:** nenhuma alteração é feita sem provar root e perfil compatível. V1 suporta um único perfil: **Samsung Galaxy S24 Ultra (SM-S928x)**.
 >
-> 🚨 **Root via exploit:** o público-alvo inclui aparelhos cujo root vem de um exploit volátil. Nesse caso, um **reboot completo (kernel) perde o root e o microG**. O app usa **apenas soft reboot (userspace)**, por meio de `sys.powerctl reboot,userspace`, o que preserva o kernel, os mounts e o root. O app **nunca** oferece reboot completo.
+> **Foco no Root-My-Galaxy:** o foco principal deste projeto é atender usuários que fizeram root por meio do [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy). Como o root obtido por esse método decorre de um exploit volátil para carregar o KernelSU, um **reboot completo (kernel) perde o root e o microG**. Dessa forma, o app usa **apenas soft reboot (userspace)**, por meio de `sys.powerctl reboot,userspace`, o que preserva o kernel, os mounts e o root. O app **nunca** oferece reboot completo.
+>
+> **Aplicativos de mensagens e notificações push (FCM / GCM):** se mensageiros como WhatsApp e Telegram já estiverem instalados antes do microG, as notificações push não funcionarão de imediato.
+>
+> - **Por que isso acontece:** na primeira inicialização de um mensageiro, ele solicita um token exclusivo de push ao Google Play Services. Caso o microG não estivesse ativo durante essa abertura inicial, o registro não ocorre nele. Como esses aplicativos não tentam registrar um novo token automaticamente quando o microG é adicionado posteriormente, a única forma de forçar uma nova solicitação é reinstalando os apps.
+> - **Reinstalação inicial:** após instalar o microG pela primeira vez, desinstale e instale novamente o WhatsApp e o Telegram para forçar o registro de novos tokens.
+> - **Confirmação de registro:** abra as configurações do microG e certifique-se de que ambos constam na seção Google Cloud Messaging (GCM).
+> - **Criação do backup:** assim que ambos aparecerem como registrados, crie um backup dos dados do microG pelo próprio aplicativo DeGoogle.
+>
+> Dessa forma, caso uma reinicialização completa desfaça o ambiente volátil, a restauração desse backup na reinstalação seguinte preservará os tokens registrados, dispensando novas reinstalações do WhatsApp e do Telegram.
 
 ## Estrutura
 
