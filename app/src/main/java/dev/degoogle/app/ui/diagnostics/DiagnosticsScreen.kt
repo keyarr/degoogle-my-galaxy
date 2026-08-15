@@ -3,110 +3,194 @@ package dev.degoogle.app.ui.diagnostics
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Android
+import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOff
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.Store
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.degoogle.app.domain.SystemFacts
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
+import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusRow
 
 @Composable
-fun DiagnosticsScreen(ui: UiState, onBack: () -> Unit) {
+fun DiagnosticsScreen(ui: UiState) {
     val context = LocalContext.current
     val f = ui.facts
+    var copied by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("Diagnóstico", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(8.dp))
-
-        InfoCard("Estado") {
-            StatusRow("Estado derivado", ui.state.name, Status.UNKNOWN)
-            StatusRow("Root", if (f.rootOk) f.rootManager.ifBlank { "ok" } else "não", if (f.rootOk) Status.OK else Status.FAIL)
-            StatusRow("Perfil", if (f.profileMatch) f.profileId else "não suportado", if (f.profileMatch) Status.OK else Status.FAIL)
-            StatusRow("Build", f.fingerprint.ifBlank { "—" }, Status.UNKNOWN)
-            StatusRow("Android", "${f.androidRelease.ifBlank { "?" }} · SDK ${f.androidSdk}", Status.UNKNOWN)
-            StatusRow("Dispositivo", "${f.manufacturer} ${f.model} (${f.device}/${f.product})", Status.UNKNOWN)
-            StatusRow("SELinux", f.selinux, Status.UNKNOWN)
-            StatusRow("ABI", f.abi, Status.UNKNOWN)
+        Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+            Text(
+                text = "Diagnóstico",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = "Telemetria e estado de baixo nível do sistema",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
-        InfoCard("GMS (com.google.android.gms)") {
-            StatusRow("Path", f.gmsPath ?: "ausente", Status.UNKNOWN)
-            StatusRow("Versão", f.gmsVersion ?: "—", Status.UNKNOWN)
-            StatusRow("UID", f.gmsUid ?: "—", Status.UNKNOWN)
-            StatusRow("Flags", f.gmsFlags ?: "—", Status.UNKNOWN)
-            StatusRow("Privileged", if (f.gmsPrivileged) "sim" else "não", if (f.gmsPrivileged) Status.OK else Status.FAIL)
+        InfoCard(
+            title = "Sistema & Ambiente",
+            action = {
+                StateBadge(
+                    text = ui.state.name,
+                    icon = Icons.Rounded.Verified,
+                )
+            },
+        ) {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                StatusRow("Acesso Root", if (f.rootOk) f.rootManager.ifBlank { "ok" } else "não", if (f.rootOk) Status.OK else Status.FAIL, leadingIcon = Icons.Rounded.Shield)
+                StatusRow("Perfil", if (f.profileMatch) f.profileId else "não suportado", if (f.profileMatch) Status.OK else Status.FAIL, leadingIcon = Icons.Rounded.Verified)
+                StatusRow("Dispositivo", "${f.manufacturer} ${f.model}", Status.OK, leadingIcon = Icons.Rounded.Fingerprint)
+                StatusRow("Android", "${f.androidRelease.ifBlank { "?" }} (SDK ${f.androidSdk})", Status.OK, leadingIcon = Icons.Rounded.Android)
+                StatusRow("SELinux", f.selinux, Status.UNKNOWN, leadingIcon = Icons.Rounded.Security)
+                StatusRow("Arquitetura ABI", f.abi, Status.UNKNOWN)
+                StatusRow("Build Fingerprint", f.fingerprint.ifBlank { "—" }, Status.UNKNOWN)
+            }
         }
 
-        InfoCard("GSF (com.google.android.gsf)") {
-            StatusRow("Presente", if (f.gsfPath != null) "sim" else "não", if (f.gsfPath == null) Status.OK else Status.FAIL)
-            if (f.gsfPath != null) StatusRow("Path", f.gsfPath, Status.UNKNOWN)
+        InfoCard("Google Play Services (GMS)") {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                StatusRow("Caminho (Path)", f.gmsPath ?: "ausente", Status.UNKNOWN, leadingIcon = Icons.Rounded.Folder)
+                StatusRow("Versão", f.gmsVersion ?: "—", Status.UNKNOWN)
+                StatusRow("UID", f.gmsUid ?: "—", Status.UNKNOWN)
+                StatusRow("Privileged (priv-app)", if (f.gmsPrivileged) "sim" else "não", if (f.gmsPrivileged) Status.OK else Status.FAIL)
+                StatusRow("Flags de Pacote", f.gmsFlags ?: "—", Status.UNKNOWN)
+            }
         }
 
-        InfoCard("Play Store (com.android.vending)") {
-            StatusRow("Path", f.storePath ?: "ausente", Status.UNKNOWN)
-            StatusRow("Versão", f.storeVersion ?: "—", Status.UNKNOWN)
+        InfoCard("Framework & Store") {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                StatusRow("GSF Presente", if (f.gsfPath != null) "sim" else "não", if (f.gsfPath == null) Status.OK else Status.FAIL, leadingIcon = Icons.Rounded.Layers)
+                if (f.gsfPath != null) StatusRow("GSF Path", f.gsfPath, Status.UNKNOWN)
+                StatusRow("Play Store Path", f.storePath ?: "ausente", Status.UNKNOWN, leadingIcon = Icons.Rounded.Store)
+                if (f.storeVersion != null) StatusRow("Play Store Versão", f.storeVersion, Status.UNKNOWN)
+            }
         }
 
-        InfoCard("Mounts") {
-            StatusRow("GMS", if (f.mountGms) "mascarado" else "visível", if (f.mountGms) Status.OK else Status.ABSENT)
-            StatusRow("GSF", if (f.mountGsf) "mascarado" else "visível", if (f.mountGsf) Status.OK else Status.ABSENT)
-            StatusRow("Store", if (f.mountStore) "mascarado" else "visível", if (f.mountStore) Status.OK else Status.ABSENT)
-            StatusRow("Fonte GMS", f.mountGmsSource ?: "—", Status.UNKNOWN)
+        InfoCard("Bind Mounts (/product)") {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                StatusRow("GMS Mount", if (f.mountGms) "mascarado (microG)" else "visível (stock)", if (f.mountGms) Status.OK else Status.ABSENT, leadingIcon = if (f.mountGms) Icons.Rounded.Folder else Icons.Rounded.FolderOff)
+                StatusRow("GSF Mount", if (f.mountGsf) "mascarado (vazio)" else "visível (stock)", if (f.mountGsf) Status.OK else Status.ABSENT)
+                StatusRow("Store Mount", if (f.mountStore) "mascarado (companion)" else "visível (stock)", if (f.mountStore) Status.OK else Status.ABSENT)
+                StatusRow("Fonte GMS", f.mountGmsSource ?: "—", Status.UNKNOWN)
+            }
         }
 
-        InfoCard("Backup") {
-            StatusRow("Presente", if (f.backupPresent) "sim" else "não", if (f.backupPresent) Status.OK else Status.ABSENT)
-            StatusRow("Formato", "MicroG Session", Status.UNKNOWN)
-            StatusRow("Local", "/data/local/tmp/microg-backup", Status.UNKNOWN)
+        InfoCard("Snapshot de Dados (Backup)") {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                StatusRow("Backup Presente", if (f.backupPresent) "sim" else "não", if (f.backupPresent) Status.OK else Status.ABSENT, leadingIcon = Icons.Rounded.Backup)
+                StatusRow("Formato de Exportação", "MicroG Session (user0 + user_de)", Status.UNKNOWN)
+                StatusRow("Diretório Local", "/data/local/tmp/microg-backup", Status.UNKNOWN)
+            }
         }
 
-        Spacer(Modifier.height(16.dp))
-        Button(
-            onClick = { copyDiagnostics(context, ui) },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Copiar diagnóstico") }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Não inclui secrets, tokens ou dados de conta.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
-        Text("Voltar", style = MaterialTheme.typography.titleSmall)
-        Text(
-            "← toque para voltar",
-            modifier = Modifier,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Spacer(Modifier.height(4.dp))
-        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Voltar") }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(bottom = 24.dp),
+        ) {
+            Button(
+                onClick = {
+                    copyDiagnostics(context, ui)
+                    copied = true
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(20.dp),
+            ) {
+                Icon(
+                    if (copied) Icons.Rounded.CheckCircle else Icons.Rounded.ContentCopy,
+                    contentDescription = null,
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    if (copied) "Diagnóstico Copiado!" else "Copiar Relatório Completo",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = "O relatório gerado é seguro e não contém tokens, senhas ou dados pessoais.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
 private fun copyDiagnostics(context: Context, ui: UiState) {
     val f = ui.facts
     val sb = StringBuilder()
-    sb.appendLine("DeGoogle diagnóstico — estado ${ui.state.name}")
+    sb.appendLine("DeGoogle Diagnóstico")
+    sb.appendLine("Estado derivado: ${ui.state.name}")
     sb.appendLine("Root: ${if (f.rootOk) f.rootManager else "não"}")
     sb.appendLine("Perfil: ${if (f.profileMatch) f.profileId else "não suportado"}")
     sb.appendLine("Dispositivo: ${f.manufacturer} ${f.model} (${f.device}/${f.product})")

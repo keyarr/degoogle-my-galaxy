@@ -6,13 +6,25 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Troubleshoot
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.degoogle.app.ui.AppViewModel
@@ -20,6 +32,7 @@ import dev.degoogle.app.ui.Screen
 import dev.degoogle.app.ui.backup.BackupScreen
 import dev.degoogle.app.ui.diagnostics.DiagnosticsScreen
 import dev.degoogle.app.ui.home.HomeScreen
+import dev.degoogle.app.ui.theme.DeGoogleTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -30,6 +43,7 @@ class MainActivity : ComponentActivity() {
     ) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         // Notificação de operação pendente pós-boot (Android 13+).
@@ -41,24 +55,61 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            MaterialTheme {
+            DeGoogleTheme {
                 var screen by remember { mutableStateOf(Screen.HOME) }
                 val ui by vm.ui.collectAsStateWithLifecycle()
-                when (screen) {
-                    Screen.HOME -> HomeScreen(
-                        ui = ui,
-                        vm = vm,
-                        onNavigate = { screen = it },
-                    )
-                    Screen.DIAGNOSTICS -> DiagnosticsScreen(
-                        ui = ui,
-                        onBack = { screen = Screen.HOME },
-                    )
-                    Screen.BACKUP -> BackupScreen(
-                        ui = ui,
-                        vm = vm,
-                        onBack = { screen = Screen.HOME },
-                    )
+
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = screen == Screen.HOME,
+                                onClick = { screen = Screen.HOME },
+                                icon = {
+                                    Icon(Icons.Rounded.Home, contentDescription = "Início")
+                                },
+                                label = { Text("Início") },
+                            )
+                            NavigationBarItem(
+                                selected = screen == Screen.DIAGNOSTICS,
+                                onClick = { screen = Screen.DIAGNOSTICS },
+                                icon = {
+                                    Icon(Icons.Rounded.Troubleshoot, contentDescription = "Diagnóstico")
+                                },
+                                label = { Text("Diagnóstico") },
+                            )
+                            NavigationBarItem(
+                                selected = screen == Screen.BACKUP,
+                                onClick = { screen = Screen.BACKUP },
+                                icon = {
+                                    Icon(Icons.Rounded.Backup, contentDescription = "Backup")
+                                },
+                                label = { Text("Backup") },
+                            )
+                        }
+                    },
+                ) { innerPadding ->
+                    androidx.compose.foundation.layout.Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                    ) {
+                        when (screen) {
+                            Screen.HOME -> HomeScreen(
+                                ui = ui,
+                                vm = vm,
+                                onNavigate = { screen = it },
+                            )
+                            Screen.DIAGNOSTICS -> DiagnosticsScreen(
+                                ui = ui,
+                            )
+                            Screen.BACKUP -> BackupScreen(
+                                ui = ui,
+                                vm = vm,
+                            )
+                        }
+                    }
                 }
             }
         }
