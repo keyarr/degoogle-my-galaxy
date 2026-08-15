@@ -20,6 +20,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,25 +68,25 @@ class MainActivity : ComponentActivity() {
                                 selected = screen == Screen.HOME,
                                 onClick = { screen = Screen.HOME },
                                 icon = {
-                                    Icon(Icons.Rounded.Home, contentDescription = "Início")
+                                    Icon(Icons.Rounded.Home, contentDescription = stringResource(R.string.nav_home))
                                 },
-                                label = { Text("Início") },
+                                label = { Text(stringResource(R.string.nav_home)) },
                             )
                             NavigationBarItem(
                                 selected = screen == Screen.DIAGNOSTICS,
                                 onClick = { screen = Screen.DIAGNOSTICS },
                                 icon = {
-                                    Icon(Icons.Rounded.Troubleshoot, contentDescription = "Diagnóstico")
+                                    Icon(Icons.Rounded.Troubleshoot, contentDescription = stringResource(R.string.nav_diagnostics))
                                 },
-                                label = { Text("Diagnóstico") },
+                                label = { Text(stringResource(R.string.nav_diagnostics)) },
                             )
                             NavigationBarItem(
                                 selected = screen == Screen.BACKUP,
                                 onClick = { screen = Screen.BACKUP },
                                 icon = {
-                                    Icon(Icons.Rounded.Backup, contentDescription = "Backup")
+                                    Icon(Icons.Rounded.Backup, contentDescription = stringResource(R.string.nav_backup))
                                 },
-                                label = { Text("Backup") },
+                                label = { Text(stringResource(R.string.nav_backup)) },
                             )
                         }
                     },

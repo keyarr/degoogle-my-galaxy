@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DeGoogle</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Início</string>
+    <string name="nav_diagnostics">Diagnóstico</string>
+    <string name="nav_backup">Backup</string>
+
+    <!-- Device States -->
+    <string name="state_no_root">Sem Root</string>
+    <string name="state_unsupported">Não Suportado</string>
+    <string name="state_stock">Google Stock</string>
+    <string name="state_preparing">Preparando</string>
+    <string name="state_prepared">Preparado</string>
+    <string name="state_microg_booted">microG Inicializado</string>
+    <string name="state_microg_needs_setup">Configuração Necessária</string>
+    <string name="state_microg_active">microG Ativo</string>
+    <string name="state_microg_active_backed_up">microG Ativo com Backup</string>
+    <string name="state_restore_prepared">Restauração Preparada</string>
+    <string name="state_error">Erro</string>
+
+    <!-- Common / General -->
+    <string name="yes">sim</string>
+    <string name="no">não</string>
+    <string name="ok">ok</string>
+    <string name="absent">ausente</string>
+    <string name="active">ativo</string>
+    <string name="inactive">inativo</string>
+    <string name="available">disponível</string>
+    <string name="pending">pendente</string>
+    <string name="not_created">não criado</string>
+    <string name="not_supported">não suportado</string>
+    <string name="not_reported">Não informado</string>
+    <string name="error_title">Erro</string>
+    <string name="cancel">Cancelar</string>
+    <string name="continue_btn">Continuar</string>
+    <string name="understand_btn">Entendi</string>
+    <string name="operation_in_progress">Operação em andamento</string>
+    <string name="last_operation_result">Resultado da última operação</string>
+    <string name="technical_details">Detalhes técnicos</string>
+
+    <!-- Home Screen -->
+    <string name="home_subtitle_realtime">Verificação em tempo real do ambiente</string>
+    <string name="home_subtitle_device">%1$s %2$s · One UI</string>
+    <string name="home_checking_state">Verificando o estado do aparelho…</string>
+    <string name="home_no_root_title">Root não disponível</string>
+    <string name="home_no_root_desc">Este aplicativo requer acesso root e não fará nenhuma alteração sem ele.\nInstale KernelSU, Magisk ou APatch e conceda root.</string>
+    <string name="home_unsupported_title">Dispositivo não suportado</string>
+    <string name="home_unsupported_desc">O aparelho possui root, mas sua configuração não corresponde a um perfil suportado. Nenhuma modificação foi feita.\n</string>
+    <string name="home_volatile_root_notice">Apenas o Soft Reboot (userspace) é utilizado pelo app. Um reboot completo zera mounts dinâmicos e perde o root temporário do exploit.</string>
+    <string name="home_system_environment">Ambiente do Sistema</string>
+    <string name="home_install_microg_btn">Instalar microG (DeGoogle)</string>
+    <string name="home_prepared_title">Preparação concluída</string>
+    <string name="home_badge_reboot_required">Requer Reboot</string>
+    <string name="home_prepared_desc">As máscaras foram aplicadas no mount namespace global.\n\nO aparelho precisa de um soft reboot para o PackageManager registrar os novos pacotes priv-app.</string>
+    <string name="home_soft_reboot_btn">Soft Reboot (Userspace)</string>
+    <string name="home_cancel_and_restore_btn">Cancelar e restaurar Google</string>
+    <string name="home_booted_title">Configuração pronta</string>
+    <string name="home_badge_post_reboot">Pós-Reboot</string>
+    <string name="home_booted_desc">O microG foi registrado como priv-app e o GSF stock foi removido.\n\nAs permissões, AppOps e Doze bypass serão finalizados agora.</string>
+    <string name="home_complete_setup_btn">Concluir configuração</string>
+    <string name="home_microg_active_title">microG Ativo</string>
+    <string name="home_badge_active_safe">Ativo &amp; Seguro</string>
+    <string name="home_badge_active_no_backup">Ativo (Sem Backup)</string>
+    <string name="home_btn_update_token_backup">Atualizar Backup dos Tokens</string>
+    <string name="home_btn_create_token_backup">Criar Backup dos Tokens</string>
+    <string name="home_btn_restore_google_stock">Restaurar Google Stock</string>
+    <string name="home_restore_prepared_title">Rollback preparado</string>
+    <string name="home_restore_prepared_desc">As máscaras foram removidas e o ambiente Google original será revelado após o soft reboot.</string>
+    <string name="home_error_state_title">Estado inconsistente</string>
+    <string name="home_badge_warning">Atenção</string>
+    <string name="home_error_state_desc">O aparelho está em um estado não esperado. Nenhuma operação foi executada automaticamente.\n\nConsulte a aba de Diagnóstico para ver os detalhes.</string>
+    <string name="home_btn_remove_update_stock">Remover update e voltar ao stock</string>
+    <string name="home_dialog_degoogle_title">DeGoogle?</string>
+    <string name="home_dialog_degoogle_text">O aplicativo fará alterações temporárias no ambiente de sistema usando root e bind mounts.\n\nNenhum arquivo da partição /product será alterado fisicamente.\n\nO processo requer um reboot (soft reboot).</string>
+    <string name="home_dialog_restore_title">Restaurar Google?</string>
+    <string name="home_dialog_restore_text">O microG será removido do ambiente ativo e os componentes Google originais serão revelados novamente.\n\nSeu backup do microG será mantido.</string>
+    <string name="home_dialog_setup_title">microG instalado com sucesso</string>
+    <string name="home_dialog_setup_text">Abra as configurações do microG e faça a configuração inicial, incluindo sua conta, Cloud Messaging e demais opções desejadas.\n\nQuando terminar, volte para este aplicativo e crie um backup.</string>
+    <string name="home_dialog_open_microg">Abrir microG</string>
+
+    <!-- Diagnostics Screen -->
+    <string name="diag_title">Diagnóstico</string>
+    <string name="diag_subtitle">Telemetria e estado de baixo nível do sistema</string>
+    <string name="diag_card_system">Sistema &amp; Ambiente</string>
+    <string name="diag_card_gms">Google Play Services (GMS)</string>
+    <string name="diag_card_framework">Framework &amp; Store</string>
+    <string name="diag_card_mounts">Bind Mounts (/product)</string>
+    <string name="diag_card_backup">Snapshot de Dados (Backup)</string>
+    <string name="diag_copy_full_report">Copiar Relatório Completo</string>
+    <string name="diag_report_copied">Diagnóstico Copiado!</string>
+    <string name="diag_security_notice">O relatório gerado é seguro e não contém tokens, senhas ou dados pessoais.</string>
+    <string name="diag_root_access">Acesso Root</string>
+    <string name="diag_profile">Perfil</string>
+    <string name="diag_device">Dispositivo</string>
+    <string name="diag_android">Android</string>
+    <string name="diag_selinux">SELinux</string>
+    <string name="diag_abi">Arquitetura ABI</string>
+    <string name="diag_fingerprint">Build Fingerprint</string>
+    <string name="diag_manufacturer">Fabricante</string>
+    <string name="diag_model">Modelo</string>
+    <string name="diag_path">Caminho (Path)</string>
+    <string name="diag_version">Versão</string>
+    <string name="diag_uid">UID</string>
+    <string name="diag_privileged">Privileged (priv-app)</string>
+    <string name="diag_package_flags">Flags de Pacote</string>
+    <string name="diag_gsf_present">GSF Presente</string>
+    <string name="diag_gsf_path">GSF Path</string>
+    <string name="diag_store_path">Play Store Path</string>
+    <string name="diag_store_version">Play Store Versão</string>
+    <string name="diag_mount_gms">GMS Mount</string>
+    <string name="diag_mount_gsf">GSF Mount</string>
+    <string name="diag_mount_store">Store Mount</string>
+    <string name="diag_mount_gms_source">Fonte GMS</string>
+    <string name="diag_backup_present">Backup Presente</string>
+    <string name="diag_export_format">Formato de Exportação</string>
+    <string name="diag_local_dir">Diretório Local</string>
+    <string name="diag_mount_masked_microg">mascarado (microG)</string>
+    <string name="diag_mount_masked_empty">mascarado (vazio)</string>
+    <string name="diag_mount_masked_companion">mascarado (companion)</string>
+    <string name="diag_mount_visible_stock">visível (stock)</string>
+    <string name="diag_stock_active">stock ativo</string>
+    <string name="diag_stock_removed_masked">removido/mascarado</string>
+    <string name="diag_registered_ok">registrado (ok)</string>
+    <string name="diag_play_services">Play Services</string>
+    <string name="diag_framework_gsf">Framework (GSF)</string>
+    <string name="diag_backup_microg">Backup microG</string>
+    <string name="diag_backup_fcm">Backup FCM</string>
+    <string name="diag_companion">microG Companion</string>
+    <string name="diag_version_microg">Versão microG</string>
+    <string name="diag_real_gms">GMS real</string>
+    <string name="diag_real_gsf">GSF real</string>
+    <string name="diag_real_store">Play Store real</string>
+
+    <!-- Backup Screen -->
+    <string name="backup_title">Backup &amp; Tokens</string>
+    <string name="backup_subtitle">Preservação de credenciais e notificações push (FCM)</string>
+    <string name="backup_card_snapshot_state">Estado do Snapshot</string>
+    <string name="backup_status_badge_saved">Disponível</string>
+    <string name="backup_status_badge_pending">Não Criado</string>
+    <string name="backup_status_label">Status do Backup</string>
+    <string name="backup_status_saved_disk">salvo em disco</string>
+    <string name="backup_status_pending">pendente</string>
+    <string name="backup_structure_label">Estrutura</string>
+    <string name="backup_structure_value">user0 + user_de (MicroG Session)</string>
+    <string name="backup_storage_path_label">Local no Armazenamento</string>
+    <string name="backup_storage_path_value">/data/local/tmp/microg-backup</string>
+    <string name="backup_why_title">Por que fazer o backup?</string>
+    <string name="backup_why_desc">Apps como WhatsApp e Telegram registram um token FCM único na primeira abertura. Ao salvar o backup, você restaura essas notificações instantaneamente após qualquer re-instalação.</string>
+    <string name="backup_btn_update_snapshot">Atualizar Snapshot do microG</string>
+    <string name="backup_btn_create_snapshot">Criar Snapshot do microG</string>
+    <string name="backup_btn_restore_data">Restaurar Dados do Backup</string>
+    <string name="backup_btn_delete_files">Excluir Arquivos do Backup</string>
+    <string name="backup_dialog_restore_title">Restaurar backup?</string>
+    <string name="backup_dialog_restore_desc">Os dados atuais do microG serão substituídos pelos dados salvos em /data/local/tmp/microg-backup. O processo do microG será finalizado durante a cópia.</string>
+    <string name="backup_dialog_restore_btn">Restaurar</string>
+    <string name="backup_dialog_delete_title">Excluir backup permanentemente?</string>
+    <string name="backup_dialog_delete_desc">Os arquivos em /data/local/tmp/microg-backup serão apagados. Esta ação não pode ser desfeita.</string>
+    <string name="backup_dialog_delete_btn">Excluir</string>
+</resources>

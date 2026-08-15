@@ -47,8 +47,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.degoogle.app.R
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
 import dev.degoogle.app.ui.components.StateBadge
@@ -71,50 +73,101 @@ fun DiagnosticsScreen(ui: UiState) {
     ) {
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "Diagnóstico",
+                text = stringResource(R.string.diag_title),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "Telemetria e estado de baixo nível do sistema",
+                text = stringResource(R.string.diag_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
         InfoCard(
-            title = "Sistema & Ambiente",
+            title = stringResource(R.string.diag_card_system),
             action = {
                 StateBadge(
-                    text = ui.state.displayName,
+                    text = stringResource(ui.state.labelRes),
                     icon = Icons.Rounded.Verified,
                 )
             },
         ) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                StatusRow("Acesso Root", if (f.rootOk) f.rootManager.ifBlank { "ok" } else "não", if (f.rootOk) Status.OK else Status.FAIL, leadingIcon = Icons.Rounded.Shield)
-                StatusRow("Perfil", if (f.profileMatch) f.profileId else "não suportado", if (f.profileMatch) Status.OK else Status.FAIL, leadingIcon = Icons.Rounded.Verified)
-                StatusRow("Dispositivo", "${f.manufacturer} ${f.model}", Status.OK, leadingIcon = Icons.Rounded.Fingerprint)
-                StatusRow("Android", "${f.androidRelease.ifBlank { "?" }} (SDK ${f.androidSdk})", Status.OK, leadingIcon = Icons.Rounded.Android)
-                StatusRow("SELinux", f.selinux, Status.UNKNOWN, leadingIcon = Icons.Rounded.Security)
-                StatusRow("Arquitetura ABI", f.abi, Status.UNKNOWN)
-                StatusRow("Build Fingerprint", f.fingerprint.ifBlank { "Não informado" }, Status.UNKNOWN, leadingIcon = Icons.Rounded.Tag)
+                StatusRow(
+                    label = stringResource(R.string.diag_root_access),
+                    value = if (f.rootOk) f.rootManager.ifBlank { stringResource(R.string.ok) } else stringResource(R.string.no),
+                    status = if (f.rootOk) Status.OK else Status.FAIL,
+                    leadingIcon = Icons.Rounded.Shield,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_profile),
+                    value = if (f.profileMatch) f.profileId else stringResource(R.string.not_supported),
+                    status = if (f.profileMatch) Status.OK else Status.FAIL,
+                    leadingIcon = Icons.Rounded.Verified,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_device),
+                    value = "${f.manufacturer} ${f.model}",
+                    status = Status.OK,
+                    leadingIcon = Icons.Rounded.Fingerprint,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_android),
+                    value = "${f.androidRelease.ifBlank { "?" }} (SDK ${f.androidSdk})",
+                    status = Status.OK,
+                    leadingIcon = Icons.Rounded.Android,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_selinux),
+                    value = f.selinux,
+                    status = Status.UNKNOWN,
+                    leadingIcon = Icons.Rounded.Security,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_abi),
+                    value = f.abi,
+                    status = Status.UNKNOWN,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_fingerprint),
+                    value = f.fingerprint.ifBlank { stringResource(R.string.not_reported) },
+                    status = Status.UNKNOWN,
+                    leadingIcon = Icons.Rounded.Tag,
+                )
             }
         }
 
-        InfoCard("Google Play Services (GMS)") {
+        InfoCard(stringResource(R.string.diag_card_gms)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                StatusRow("Caminho (Path)", f.gmsPath ?: "ausente", Status.UNKNOWN, leadingIcon = Icons.Rounded.Folder)
-                StatusRow("Versão", f.gmsVersion ?: "Não informado", Status.UNKNOWN)
-                StatusRow("UID", f.gmsUid ?: "Não informado", Status.UNKNOWN)
-                StatusRow("Privileged (priv-app)", if (f.gmsPrivileged) "sim" else "não", if (f.gmsPrivileged) Status.OK else Status.FAIL)
+                StatusRow(
+                    label = stringResource(R.string.diag_path),
+                    value = f.gmsPath ?: stringResource(R.string.absent),
+                    status = Status.UNKNOWN,
+                    leadingIcon = Icons.Rounded.Folder,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_version),
+                    value = f.gmsVersion ?: stringResource(R.string.not_reported),
+                    status = Status.UNKNOWN,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_uid),
+                    value = f.gmsUid ?: stringResource(R.string.not_reported),
+                    status = Status.UNKNOWN,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_privileged),
+                    value = if (f.gmsPrivileged) stringResource(R.string.yes) else stringResource(R.string.no),
+                    status = if (f.gmsPrivileged) Status.OK else Status.FAIL,
+                )
 
                 val flagsList = f.gmsFlags?.split(" ")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
                 if (flagsList.isNotEmpty()) {
                     Column(modifier = Modifier.padding(top = 8.dp)) {
                         Text(
-                            text = "Flags de Pacote",
+                            text = stringResource(R.string.diag_package_flags),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -144,34 +197,78 @@ fun DiagnosticsScreen(ui: UiState) {
                         }
                     }
                 } else {
-                    StatusRow("Flags de Pacote", "Não informado", Status.UNKNOWN)
+                    StatusRow(
+                        label = stringResource(R.string.diag_package_flags),
+                        value = stringResource(R.string.not_reported),
+                        status = Status.UNKNOWN,
+                    )
                 }
             }
         }
 
-        InfoCard("Framework & Store") {
+        InfoCard(stringResource(R.string.diag_card_framework)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                StatusRow("GSF Presente", if (f.gsfPath != null) "sim" else "não", if (f.gsfPath == null) Status.OK else Status.FAIL, leadingIcon = Icons.Rounded.Layers)
-                if (f.gsfPath != null) StatusRow("GSF Path", f.gsfPath, Status.UNKNOWN)
-                StatusRow("Play Store Path", f.storePath ?: "ausente", Status.UNKNOWN, leadingIcon = Icons.Rounded.Store)
-                if (f.storeVersion != null) StatusRow("Play Store Versão", f.storeVersion, Status.UNKNOWN)
+                StatusRow(
+                    label = stringResource(R.string.diag_gsf_present),
+                    value = if (f.gsfPath != null) stringResource(R.string.yes) else stringResource(R.string.no),
+                    status = if (f.gsfPath == null) Status.OK else Status.FAIL,
+                    leadingIcon = Icons.Rounded.Layers,
+                )
+                if (f.gsfPath != null) StatusRow(stringResource(R.string.diag_gsf_path), f.gsfPath, Status.UNKNOWN)
+                StatusRow(
+                    label = stringResource(R.string.diag_store_path),
+                    value = f.storePath ?: stringResource(R.string.absent),
+                    status = Status.UNKNOWN,
+                    leadingIcon = Icons.Rounded.Store,
+                )
+                if (f.storeVersion != null) StatusRow(stringResource(R.string.diag_store_version), f.storeVersion, Status.UNKNOWN)
             }
         }
 
-        InfoCard("Bind Mounts (/product)") {
+        InfoCard(stringResource(R.string.diag_card_mounts)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                StatusRow("GMS Mount", if (f.mountGms) "mascarado (microG)" else "visível (stock)", if (f.mountGms) Status.OK else Status.ABSENT, leadingIcon = if (f.mountGms) Icons.Rounded.Folder else Icons.Rounded.FolderOff)
-                StatusRow("GSF Mount", if (f.mountGsf) "mascarado (vazio)" else "visível (stock)", if (f.mountGsf) Status.OK else Status.ABSENT)
-                StatusRow("Store Mount", if (f.mountStore) "mascarado (companion)" else "visível (stock)", if (f.mountStore) Status.OK else Status.ABSENT)
-                StatusRow("Fonte GMS", f.mountGmsSource ?: "Não informado", Status.UNKNOWN)
+                StatusRow(
+                    label = stringResource(R.string.diag_mount_gms),
+                    value = if (f.mountGms) stringResource(R.string.diag_mount_masked_microg) else stringResource(R.string.diag_mount_visible_stock),
+                    status = if (f.mountGms) Status.OK else Status.ABSENT,
+                    leadingIcon = if (f.mountGms) Icons.Rounded.Folder else Icons.Rounded.FolderOff,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_mount_gsf),
+                    value = if (f.mountGsf) stringResource(R.string.diag_mount_masked_empty) else stringResource(R.string.diag_mount_visible_stock),
+                    status = if (f.mountGsf) Status.OK else Status.ABSENT,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_mount_store),
+                    value = if (f.mountStore) stringResource(R.string.diag_mount_masked_companion) else stringResource(R.string.diag_mount_visible_stock),
+                    status = if (f.mountStore) Status.OK else Status.ABSENT,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_mount_gms_source),
+                    value = f.mountGmsSource ?: stringResource(R.string.not_reported),
+                    status = Status.UNKNOWN,
+                )
             }
         }
 
-        InfoCard("Snapshot de Dados (Backup)") {
+        InfoCard(stringResource(R.string.diag_card_backup)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                StatusRow("Backup Presente", if (f.backupPresent) "sim" else "não", if (f.backupPresent) Status.OK else Status.ABSENT, leadingIcon = Icons.Rounded.Backup)
-                StatusRow("Formato de Exportação", "MicroG Session (user0 + user_de)", Status.UNKNOWN)
-                StatusRow("Diretório Local", "/data/local/tmp/microg-backup", Status.UNKNOWN)
+                StatusRow(
+                    label = stringResource(R.string.diag_backup_present),
+                    value = if (f.backupPresent) stringResource(R.string.yes) else stringResource(R.string.no),
+                    status = if (f.backupPresent) Status.OK else Status.ABSENT,
+                    leadingIcon = Icons.Rounded.Backup,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_export_format),
+                    value = stringResource(R.string.backup_structure_value),
+                    status = Status.UNKNOWN,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_local_dir),
+                    value = stringResource(R.string.backup_storage_path_value),
+                    status = Status.UNKNOWN,
+                )
             }
         }
 
@@ -195,7 +292,7 @@ fun DiagnosticsScreen(ui: UiState) {
                 )
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    if (copied) "Diagnóstico Copiado!" else "Copiar Relatório Completo",
+                    if (copied) stringResource(R.string.diag_report_copied) else stringResource(R.string.diag_copy_full_report),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -218,7 +315,7 @@ fun DiagnosticsScreen(ui: UiState) {
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        text = "O relatório gerado é seguro e não contém tokens, senhas ou dados pessoais.",
+                        text = stringResource(R.string.diag_security_notice),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

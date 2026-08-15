@@ -56,8 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.degoogle.app.R
 import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.Screen
@@ -88,16 +90,16 @@ fun HomeScreen(
         // Cabeçalho One UI
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "DeGoogle",
+                text = stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
                 text = if (ui.facts.model.isNotBlank()) {
-                    "${ui.facts.manufacturer} ${ui.facts.model} · One UI"
+                    stringResource(R.string.home_subtitle_device, ui.facts.manufacturer, ui.facts.model)
                 } else {
-                    "Verificação em tempo real do ambiente"
+                    stringResource(R.string.home_subtitle_realtime)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -117,7 +119,7 @@ fun HomeScreen(
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(24.dp))
                     Text(
-                        text = "Verificando o estado do aparelho…",
+                        text = stringResource(R.string.home_checking_state),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -141,7 +143,7 @@ fun HomeScreen(
         }
 
         if (ui.error != null) {
-            InfoCard("Erro") {
+            InfoCard(stringResource(R.string.error_title)) {
                 Text(
                     text = ui.error ?: "",
                     style = MaterialTheme.typography.bodyMedium,
@@ -151,7 +153,7 @@ fun HomeScreen(
         }
 
         if (ui.operationInProgress || ui.steps.isNotEmpty()) {
-            InfoCard(if (ui.operationInProgress) "Operação em andamento" else "Resultado da última operação") {
+            InfoCard(if (ui.operationInProgress) stringResource(R.string.operation_in_progress) else stringResource(R.string.last_operation_result)) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 8.dp),
@@ -198,7 +200,7 @@ fun HomeScreen(
                     modifier = Modifier.size(20.dp),
                 )
                 Text(
-                    text = "Apenas o Soft Reboot (userspace) é utilizado pelo app. Um reboot completo zera mounts dinâmicos e perde o root temporário do exploit.",
+                    text = stringResource(R.string.home_volatile_root_notice),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -211,14 +213,9 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { showDeGoogleConfirm = false },
             icon = { Icon(Icons.Rounded.DownloadForOffline, contentDescription = null) },
-            title = { Text("DeGoogle?") },
+            title = { Text(stringResource(R.string.home_dialog_degoogle_title)) },
             text = {
-                Text(
-                    "O aplicativo fará alterações temporárias no ambiente de sistema " +
-                        "usando root e bind mounts.\n\n" +
-                        "Nenhum arquivo da partição /product será alterado fisicamente.\n\n" +
-                        "O processo requer um reboot (soft reboot).",
-                )
+                Text(stringResource(R.string.home_dialog_degoogle_text))
             },
             confirmButton = {
                 Button(
@@ -227,10 +224,10 @@ fun HomeScreen(
                         showDeGoogleConfirm = false
                         vm.degoogle()
                     },
-                ) { Text("Continuar") }
+                ) { Text(stringResource(R.string.continue_btn)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeGoogleConfirm = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDeGoogleConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -239,13 +236,9 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { showRestoreConfirm = false },
             icon = { Icon(Icons.Rounded.Undo, contentDescription = null) },
-            title = { Text("Restaurar Google?") },
+            title = { Text(stringResource(R.string.home_dialog_restore_title)) },
             text = {
-                Text(
-                    "O microG será removido do ambiente ativo e os componentes Google " +
-                        "originais serão revelados novamente.\n\n" +
-                        "Seu backup do microG será mantido.",
-                )
+                Text(stringResource(R.string.home_dialog_restore_text))
             },
             confirmButton = {
                 Button(
@@ -255,10 +248,10 @@ fun HomeScreen(
                         showRestoreConfirm = false
                         vm.restoreGoogle()
                     },
-                ) { Text("Restaurar Google") }
+                ) { Text(stringResource(R.string.home_btn_restore_google_stock)) }
             },
             dismissButton = {
-                TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancelar") }
+                TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -267,13 +260,9 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { vm.dismissSetupPrompt() },
             icon = { Icon(Icons.Rounded.VerifiedUser, contentDescription = null) },
-            title = { Text("microG instalado com sucesso") },
+            title = { Text(stringResource(R.string.home_dialog_setup_title)) },
             text = {
-                Text(
-                    "Abra as configurações do microG e faça a configuração inicial, " +
-                        "incluindo sua conta, Cloud Messaging e demais opções desejadas.\n\n" +
-                        "Quando terminar, volte para este aplicativo e crie um backup.",
-                )
+                Text(stringResource(R.string.home_dialog_setup_text))
             },
             confirmButton = {
                 Button(
@@ -282,10 +271,10 @@ fun HomeScreen(
                         vm.dismissSetupPrompt()
                         openMicrogSettings(context)
                     },
-                ) { Text("Abrir microG") }
+                ) { Text(stringResource(R.string.home_dialog_open_microg)) }
             },
             dismissButton = {
-                TextButton(onClick = { vm.dismissSetupPrompt() }) { Text("Entendi") }
+                TextButton(onClick = { vm.dismissSetupPrompt() }) { Text(stringResource(R.string.understand_btn)) }
             },
         )
     }
@@ -295,10 +284,9 @@ fun HomeScreen(
 
 @Composable
 private fun NoRootCard() {
-    InfoCard("Root não disponível") {
+    InfoCard(stringResource(R.string.home_no_root_title)) {
         Text(
-            text = "Este aplicativo requer acesso root e não fará nenhuma alteração sem ele.\n" +
-                "Instale KernelSU, Magisk ou APatch e conceda root.",
+            text = stringResource(R.string.home_no_root_desc),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp),
         )
@@ -307,22 +295,21 @@ private fun NoRootCard() {
 
 @Composable
 private fun UnsupportedCard(ui: UiState) {
-    InfoCard("Dispositivo não suportado") {
+    InfoCard(stringResource(R.string.home_unsupported_title)) {
         Text(
-            text = "O aparelho possui root, mas sua configuração não corresponde a um perfil " +
-                "suportado. Nenhuma modificação foi feita.\n",
+            text = stringResource(R.string.home_unsupported_desc),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
         )
         val f = ui.facts
-        StatusRow("Fabricante", f.manufacturer, Status.UNKNOWN, leadingIcon = Icons.Rounded.Android)
-        StatusRow("Modelo", f.model, Status.UNKNOWN, leadingIcon = Icons.Rounded.Fingerprint)
-        StatusRow("Dispositivo", f.device, Status.UNKNOWN, leadingIcon = Icons.Rounded.Security)
-        StatusRow("Android", "${f.androidRelease} (SDK ${f.androidSdk})", Status.UNKNOWN, leadingIcon = Icons.Rounded.Android)
-        StatusRow("Fingerprint", f.fingerprint.ifBlank { "Não informado" }, Status.UNKNOWN)
-        StatusRow("GMS real", f.gmsPath ?: "ausente", Status.UNKNOWN)
-        StatusRow("GSF real", f.gsfPath ?: "ausente", Status.UNKNOWN)
-        StatusRow("Play Store real", f.storePath ?: "ausente", Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_manufacturer), f.manufacturer, Status.UNKNOWN, leadingIcon = Icons.Rounded.Android)
+        StatusRow(stringResource(R.string.diag_model), f.model, Status.UNKNOWN, leadingIcon = Icons.Rounded.Fingerprint)
+        StatusRow(stringResource(R.string.diag_device), f.device, Status.UNKNOWN, leadingIcon = Icons.Rounded.Security)
+        StatusRow(stringResource(R.string.diag_android), "${f.androidRelease} (SDK ${f.androidSdk})", Status.UNKNOWN, leadingIcon = Icons.Rounded.Android)
+        StatusRow(stringResource(R.string.diag_fingerprint), f.fingerprint.ifBlank { stringResource(R.string.not_reported) }, Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_real_gms), f.gmsPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_real_gsf), f.gsfPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_real_store), f.storePath ?: stringResource(R.string.absent), Status.UNKNOWN)
     }
 }
 
@@ -336,10 +323,10 @@ private fun StockContent(
     val f = ui.facts
 
     InfoCard(
-        title = "Ambiente do Sistema",
+        title = stringResource(R.string.home_system_environment),
         action = {
             StateBadge(
-                text = "Google Stock",
+                text = stringResource(R.string.state_stock),
                 icon = Icons.Rounded.Lock,
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -348,26 +335,26 @@ private fun StockContent(
     ) {
         Column(modifier = Modifier.padding(top = 8.dp)) {
             StatusRow(
-                "Acesso Root",
-                if (f.rootOk) f.rootManager.ifBlank { "ok" } else "não",
+                stringResource(R.string.diag_root_access),
+                if (f.rootOk) f.rootManager.ifBlank { stringResource(R.string.ok) } else stringResource(R.string.no),
                 if (f.rootOk) Status.OK else Status.FAIL,
                 leadingIcon = Icons.Rounded.Shield,
             )
             StatusRow(
-                "Play Services",
-                f.gmsVersion ?: f.gmsPath ?: "Não informado",
+                stringResource(R.string.diag_play_services),
+                f.gmsVersion ?: f.gmsPath ?: stringResource(R.string.not_reported),
                 if (f.gmsPath != null) Status.OK else Status.FAIL,
                 leadingIcon = Icons.Rounded.Layers,
             )
             StatusRow(
-                "Framework (GSF)",
-                if (!f.gsfPath.isNullOrEmpty()) "stock ativo" else "ausente",
+                stringResource(R.string.diag_framework_gsf),
+                if (!f.gsfPath.isNullOrEmpty()) stringResource(R.string.diag_stock_active) else stringResource(R.string.absent),
                 if (!f.gsfPath.isNullOrEmpty()) Status.OK else Status.FAIL,
                 leadingIcon = Icons.Rounded.Store,
             )
             StatusRow(
-                "Backup microG",
-                if (f.backupPresent) "disponível" else "não criado",
+                stringResource(R.string.diag_backup_microg),
+                if (f.backupPresent) stringResource(R.string.available) else stringResource(R.string.not_created),
                 if (f.backupPresent) Status.OK else Status.ABSENT,
                 leadingIcon = Icons.Rounded.Backup,
             )
@@ -383,7 +370,7 @@ private fun StockContent(
     ) {
         Icon(Icons.Rounded.DownloadForOffline, contentDescription = null)
         Spacer(Modifier.size(8.dp))
-        Text("Instalar microG (DeGoogle)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.home_install_microg_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -394,10 +381,10 @@ private fun PreparedContent(
     onNavigate: (Screen) -> Unit,
 ) {
     InfoCard(
-        title = "Preparação concluída",
+        title = stringResource(R.string.home_prepared_title),
         action = {
             StateBadge(
-                text = "Requer Reboot",
+                text = stringResource(R.string.home_badge_reboot_required),
                 icon = Icons.Rounded.RestartAlt,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -405,8 +392,7 @@ private fun PreparedContent(
         },
     ) {
         Text(
-            text = "As máscaras foram aplicadas no mount namespace global.\n\n" +
-                "O aparelho precisa de um soft reboot para o PackageManager registrar os novos pacotes priv-app.",
+            text = stringResource(R.string.home_prepared_desc),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp),
         )
@@ -421,7 +407,7 @@ private fun PreparedContent(
     ) {
         Icon(Icons.Rounded.RestartAlt, contentDescription = null)
         Spacer(Modifier.size(8.dp))
-        Text("Soft Reboot (Userspace)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.home_soft_reboot_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 
     OutlinedButton(
@@ -433,17 +419,17 @@ private fun PreparedContent(
     ) {
         Icon(Icons.Rounded.Undo, contentDescription = null)
         Spacer(Modifier.size(8.dp))
-        Text("Cancelar e restaurar Google")
+        Text(stringResource(R.string.home_cancel_and_restore_btn))
     }
 }
 
 @Composable
 private fun BootedContent(ui: UiState, vm: AppViewModel) {
     InfoCard(
-        title = "Configuração pronta",
+        title = stringResource(R.string.home_booted_title),
         action = {
             StateBadge(
-                text = "Pós-Reboot",
+                text = stringResource(R.string.home_badge_post_reboot),
                 icon = Icons.Rounded.Verified,
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -451,8 +437,7 @@ private fun BootedContent(ui: UiState, vm: AppViewModel) {
         },
     ) {
         Text(
-            text = "O microG foi registrado como priv-app e o GSF stock foi removido.\n\n" +
-                "As permissões, AppOps e Doze bypass serão finalizados agora.",
+            text = stringResource(R.string.home_booted_desc),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp),
         )
@@ -467,7 +452,7 @@ private fun BootedContent(ui: UiState, vm: AppViewModel) {
     ) {
         Icon(Icons.Rounded.VerifiedUser, contentDescription = null)
         Spacer(Modifier.size(8.dp))
-        Text("Concluir configuração", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.home_complete_setup_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -482,10 +467,10 @@ private fun ActiveContent(
     val isBackedUp = ui.state == DeviceState.MICROG_ACTIVE_BACKED_UP
 
     InfoCard(
-        title = "microG Ativo",
+        title = stringResource(R.string.home_microg_active_title),
         action = {
             StateBadge(
-                text = if (isBackedUp) "Ativo & Seguro" else "Ativo (Sem Backup)",
+                text = if (isBackedUp) stringResource(R.string.home_badge_active_safe) else stringResource(R.string.home_badge_active_no_backup),
                 icon = if (isBackedUp) Icons.Rounded.Shield else Icons.Rounded.WarningAmber,
                 containerColor = if (isBackedUp) {
                     MaterialTheme.colorScheme.primaryContainer
@@ -502,32 +487,32 @@ private fun ActiveContent(
     ) {
         Column(modifier = Modifier.padding(top = 8.dp)) {
             StatusRow(
-                "Priv-app",
-                if (f.gmsPrivileged) "registrado (ok)" else "não",
+                stringResource(R.string.diag_privileged),
+                if (f.gmsPrivileged) stringResource(R.string.diag_registered_ok) else stringResource(R.string.no),
                 if (f.gmsPrivileged) Status.OK else Status.FAIL,
                 leadingIcon = Icons.Rounded.VerifiedUser,
             )
             StatusRow(
-                "GSF Stock",
-                "removido/mascarado",
+                stringResource(R.string.diag_framework_gsf),
+                stringResource(R.string.diag_stock_removed_masked),
                 Status.OK,
                 leadingIcon = Icons.Rounded.CloudOff,
             )
             StatusRow(
-                "microG Companion",
-                if (!f.storePath.isNullOrEmpty()) "ativo" else "ausente",
+                stringResource(R.string.diag_companion),
+                if (!f.storePath.isNullOrEmpty()) stringResource(R.string.active) else stringResource(R.string.absent),
                 if (!f.storePath.isNullOrEmpty()) Status.OK else Status.FAIL,
                 leadingIcon = Icons.Rounded.Store,
             )
             StatusRow(
-                "Backup FCM",
-                if (f.backupPresent) "disponível" else "não criado",
+                stringResource(R.string.diag_backup_fcm),
+                if (f.backupPresent) stringResource(R.string.available) else stringResource(R.string.not_created),
                 if (f.backupPresent) Status.OK else Status.ABSENT,
                 leadingIcon = Icons.Rounded.Backup,
             )
             if (f.gmsVersion != null) {
                 StatusRow(
-                    "Versão microG",
+                    stringResource(R.string.diag_version_microg),
                     f.gmsVersion,
                     Status.UNKNOWN,
                     leadingIcon = Icons.Rounded.Layers,
@@ -547,7 +532,7 @@ private fun ActiveContent(
             Icon(Icons.Rounded.CloudDone, contentDescription = null)
             Spacer(Modifier.size(8.dp))
             Text(
-                text = if (isBackedUp) "Atualizar Backup dos Tokens" else "Criar Backup dos Tokens",
+                text = if (isBackedUp) stringResource(R.string.home_btn_update_token_backup) else stringResource(R.string.home_btn_create_token_backup),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -562,7 +547,7 @@ private fun ActiveContent(
         ) {
             Icon(Icons.Rounded.Undo, contentDescription = null)
             Spacer(Modifier.size(8.dp))
-            Text("Restaurar Google Stock")
+            Text(stringResource(R.string.home_btn_restore_google_stock))
         }
     }
 }
@@ -570,10 +555,10 @@ private fun ActiveContent(
 @Composable
 private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
     InfoCard(
-        title = "Rollback preparado",
+        title = stringResource(R.string.home_restore_prepared_title),
         action = {
             StateBadge(
-                text = "Requer Reboot",
+                text = stringResource(R.string.home_badge_reboot_required),
                 icon = Icons.Rounded.RestartAlt,
                 containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                 contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -581,7 +566,7 @@ private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
         },
     ) {
         Text(
-            text = "As máscaras foram removidas e o ambiente Google original será revelado após o soft reboot.",
+            text = stringResource(R.string.home_restore_prepared_desc),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp),
         )
@@ -596,17 +581,17 @@ private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
     ) {
         Icon(Icons.Rounded.RestartAlt, contentDescription = null)
         Spacer(Modifier.size(8.dp))
-        Text("Soft Reboot (Userspace)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.home_soft_reboot_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 }
 
 @Composable
 private fun ErrorContent(ui: UiState, vm: AppViewModel, onNavigate: (Screen) -> Unit) {
     InfoCard(
-        title = "Estado inconsistente",
+        title = stringResource(R.string.home_error_state_title),
         action = {
             StateBadge(
-                text = "Atenção",
+                text = stringResource(R.string.home_badge_warning),
                 icon = Icons.Rounded.ErrorOutline,
                 containerColor = MaterialTheme.colorScheme.errorContainer,
                 contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -614,18 +599,17 @@ private fun ErrorContent(ui: UiState, vm: AppViewModel, onNavigate: (Screen) -> 
         },
     ) {
         Text(
-            text = "O aparelho está em um estado não esperado. Nenhuma operação foi executada automaticamente.\n\n" +
-                "Consulte a aba de Diagnóstico para ver os detalhes.",
+            text = stringResource(R.string.home_error_state_desc),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
         )
         val f = ui.facts
-        StatusRow("GMS", f.gmsPath ?: "ausente", Status.UNKNOWN)
-        StatusRow("GSF", f.gsfPath ?: "ausente", Status.UNKNOWN)
-        StatusRow("Play Store", f.storePath ?: "ausente", Status.UNKNOWN)
-        StatusRow("Mount GMS", if (f.mountGms) "ativo" else "inativo", Status.UNKNOWN)
-        StatusRow("Mount GSF", if (f.mountGsf) "ativo" else "inativo", Status.UNKNOWN)
-        StatusRow("Mount Store", if (f.mountStore) "ativo" else "inativo", Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_real_gms), f.gmsPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_real_gsf), f.gsfPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_real_store), f.storePath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_mount_gms), if (f.mountGms) stringResource(R.string.active) else stringResource(R.string.inactive), Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_mount_gsf), if (f.mountGsf) stringResource(R.string.active) else stringResource(R.string.inactive), Status.UNKNOWN)
+        StatusRow(stringResource(R.string.diag_mount_store), if (f.mountStore) stringResource(R.string.active) else stringResource(R.string.inactive), Status.UNKNOWN)
     }
 
     val gmsUpdatable = ui.facts.gmsPath?.startsWith("/data/app/") == true ||
@@ -638,7 +622,7 @@ private fun ErrorContent(ui: UiState, vm: AppViewModel, onNavigate: (Screen) -> 
                 .height(56.dp),
             shape = RoundedCornerShape(20.dp),
         ) {
-            Text("Remover update e voltar ao stock")
+            Text(stringResource(R.string.home_btn_remove_update_stock))
         }
     }
 }

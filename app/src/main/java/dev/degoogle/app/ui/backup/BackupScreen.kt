@@ -37,8 +37,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.degoogle.app.R
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
@@ -62,23 +64,23 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
     ) {
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "Backup & Tokens",
+                text = stringResource(R.string.backup_title),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "Preservação de credenciais e notificações push (FCM)",
+                text = stringResource(R.string.backup_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
         InfoCard(
-            title = "Estado do Snapshot",
+            title = stringResource(R.string.backup_card_snapshot_state),
             action = {
                 StateBadge(
-                    text = if (f.backupPresent) "Disponível" else "Não Criado",
+                    text = if (f.backupPresent) stringResource(R.string.backup_status_badge_saved) else stringResource(R.string.backup_status_badge_pending),
                     icon = if (f.backupPresent) Icons.Rounded.CloudDone else Icons.Rounded.WarningAmber,
                     containerColor = if (f.backupPresent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                     contentColor = if (f.backupPresent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -87,21 +89,21 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         ) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 StatusRow(
-                    "Status do Backup",
-                    if (f.backupPresent) "salvo em disco" else "pendente",
-                    if (f.backupPresent) Status.OK else Status.ABSENT,
+                    label = stringResource(R.string.backup_status_label),
+                    value = if (f.backupPresent) stringResource(R.string.backup_status_saved_disk) else stringResource(R.string.backup_status_pending),
+                    status = if (f.backupPresent) Status.OK else Status.ABSENT,
                     leadingIcon = Icons.Rounded.CloudDone,
                 )
                 StatusRow(
-                    "Estrutura",
-                    "user0 + user_de (MicroG Session)",
-                    Status.UNKNOWN,
+                    label = stringResource(R.string.backup_structure_label),
+                    value = stringResource(R.string.backup_structure_value),
+                    status = Status.UNKNOWN,
                     leadingIcon = Icons.Rounded.FolderZip,
                 )
                 StatusRow(
-                    "Local no Armazenamento",
-                    "/data/local/tmp/microg-backup",
-                    Status.UNKNOWN,
+                    label = stringResource(R.string.backup_storage_path_label),
+                    value = stringResource(R.string.backup_storage_path_value),
+                    status = Status.UNKNOWN,
                 )
             }
         }
@@ -124,13 +126,13 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "Por que fazer o backup?",
+                        text = stringResource(R.string.backup_why_title),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                     Text(
-                        text = "Apps como WhatsApp e Telegram registram um token FCM único na primeira abertura. Ao salvar o backup, você restaura essas notificações instantaneamente após qualquer re-instalação.",
+                        text = stringResource(R.string.backup_why_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -139,7 +141,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         }
 
         if (ui.error != null) {
-            InfoCard("Erro") {
+            InfoCard(stringResource(R.string.error_title)) {
                 Text(
                     text = ui.error,
                     style = MaterialTheme.typography.bodyMedium,
@@ -149,7 +151,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         }
 
         if (ui.operationInProgress || ui.steps.isNotEmpty()) {
-            InfoCard(if (ui.operationInProgress) "Operação em andamento" else "Resultado da última operação") {
+            InfoCard(if (ui.operationInProgress) stringResource(R.string.operation_in_progress) else stringResource(R.string.last_operation_result)) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 8.dp),
@@ -188,7 +190,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                 Icon(Icons.Rounded.Sync, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
                 Text(
-                    text = if (f.backupPresent) "Atualizar Snapshot do microG" else "Criar Snapshot do microG",
+                    text = if (f.backupPresent) stringResource(R.string.backup_btn_update_snapshot) else stringResource(R.string.backup_btn_create_snapshot),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -204,7 +206,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                 ) {
                     Icon(Icons.Rounded.SettingsBackupRestore, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Restaurar Dados do Backup")
+                    Text(stringResource(R.string.backup_btn_restore_data))
                 }
 
                 OutlinedButton(
@@ -219,7 +221,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                 ) {
                     Icon(Icons.Rounded.DeleteOutline, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Excluir Arquivos do Backup")
+                    Text(stringResource(R.string.backup_btn_delete_files))
                 }
             }
         }
@@ -229,12 +231,9 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         AlertDialog(
             onDismissRequest = { showRestoreConfirm = false },
             icon = { Icon(Icons.Rounded.SettingsBackupRestore, contentDescription = null) },
-            title = { Text("Restaurar backup?") },
+            title = { Text(stringResource(R.string.backup_dialog_restore_title)) },
             text = {
-                Text(
-                    "Os dados atuais do microG serão substituídos pelos dados salvos " +
-                        "em /data/local/tmp/microg-backup. O processo do microG será finalizado durante a cópia.",
-                )
+                Text(stringResource(R.string.backup_dialog_restore_desc))
             },
             confirmButton = {
                 Button(
@@ -243,10 +242,10 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                         showRestoreConfirm = false
                         vm.restoreBackup()
                     },
-                ) { Text("Restaurar") }
+                ) { Text(stringResource(R.string.backup_dialog_restore_btn)) }
             },
             dismissButton = {
-                TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancelar") }
+                TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -255,12 +254,9 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             icon = { Icon(Icons.Rounded.DeleteOutline, contentDescription = null) },
-            title = { Text("Excluir backup permanentemente?") },
+            title = { Text(stringResource(R.string.backup_dialog_delete_title)) },
             text = {
-                Text(
-                    "Os arquivos em /data/local/tmp/microg-backup serão apagados. " +
-                        "Esta ação não pode ser desfeita.",
-                )
+                Text(stringResource(R.string.backup_dialog_delete_desc))
             },
             confirmButton = {
                 Button(
@@ -270,10 +266,10 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                         showDeleteConfirm = false
                         vm.deleteBackup()
                     },
-                ) { Text("Excluir") }
+                ) { Text(stringResource(R.string.backup_dialog_delete_btn)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDeleteConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
