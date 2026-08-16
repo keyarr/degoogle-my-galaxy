@@ -43,6 +43,10 @@ Status dos testes:
 
 A interface usa Material 3 / Material You e possui suporte a inglês e português do Brasil.
 
+<img width="280" alt="Screenshot_20260815_213426_DeGoogle" src="https://github.com/user-attachments/assets/5113741f-5378-4504-b864-5530cd1d4ff8" />
+<img width="280"  alt="Screenshot_20260815_213424_DeGoogle" src="https://github.com/user-attachments/assets/5e44c62c-3a4e-4071-a0fa-7b472c734a3e" />
+<img width="280"  alt="Screenshot_20260815_213351_DeGoogle" src="https://github.com/user-attachments/assets/a5f3905b-370d-4a19-8805-238708fdb0e1" />
+
 **English:** see [`README.md`](README.md).
 
 ## Perfil de dispositivo suportado
