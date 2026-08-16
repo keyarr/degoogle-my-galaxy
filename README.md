@@ -43,6 +43,10 @@ Test status:
 
 The app uses a Material 3 / Material You interface and supports English and Brazilian Portuguese.
 
+<img width="280"  alt="Screenshot_20260815_213817_DeGoogle" src="https://github.com/user-attachments/assets/0c148a0a-8923-486c-8067-8f2148200a57" />
+<img width="280"  alt="Screenshot_20260815_213815_DeGoogle" src="https://github.com/user-attachments/assets/0f8b068f-bb02-47a6-b0e8-dab120bcaaa8" />
+<img width="280"  alt="Screenshot_20260815_213809_DeGoogle" src="https://github.com/user-attachments/assets/a6e35626-ddd2-430c-a777-b4d9c601ab12" />
+
 **Português:** see [`README.pt-BR.md`](README.pt-BR.md).
 
 ## Supported device profile
