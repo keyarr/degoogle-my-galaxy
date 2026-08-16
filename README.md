@@ -32,15 +32,15 @@ STOCK
 
 Test status:
 
-- ✅ Shell backend: 79/79 host scenarios
-- ✅ Android unit tests: 39/39
-- ✅ Main lifecycle validated on a real device
-- ✅ microG official certificate & FakeGApps signature validation
-- ✅ microG backup validated on-device
-- ✅ Restore-to-stock flow validated
-- ✅ Complete bilingual localization (English / pt-BR)
-- ⏳ Additional hardening
-- ⏳ Reinstallation test with automatic backup restore
+✅ Shell backend: 79/79 host scenarios
+✅ Android unit tests: 39/39
+✅ Main lifecycle validated on a real device
+✅ microG official certificate & FakeGApps signature validation
+✅ microG backup validated on-device
+✅ Restore-to-stock flow validated
+✅ Complete bilingual localization (English / pt-BR)
+   Additional hardening
+
 
 The app uses a Material 3 / Material You interface and supports English and Brazilian Portuguese.
 
@@ -63,7 +63,7 @@ The initial Known-Good database contains one validated profile:
 
 Other Samsung devices are diagnosed dynamically, but are not declared supported
 without a matching firmware/root entry and passing capabilities. They may only
-reach the experimental opt-in path; a similar model alone is never sufficient.
+reach the experimental opt-in path.
 
 Root-My-Galaxy relies on a volatile exploit to load KernelSU. A **full kernel reboot loses both root and the temporary microG environment**.
 
@@ -286,7 +286,7 @@ app/
     domain, security, state-machine, parser, and mocked-backend tests
 ```
 
-## Known firmware issue
+## Known issues
 
 A firmware-level `system_server` crash has been observed around userspace soft reboots on the tested Samsung firmware.
 
@@ -328,18 +328,25 @@ settings put global cached_apps_freezer 0
 
 This changes system memory-management behavior and is **not enabled by default**. It should be treated as an experimental mitigation requiring explicit user choice.
 
+---
+
+Aurora store can update the microg module to the last version of play services, so if you use it, remove the microg from the auto-updates
+
+During a normal reboot, there's a chance of package manager have some problems with the microg, use the restore path on the app and it will be fixed
+
+
 ## Roadmap
 
-- ✅ Initial analysis
-- ✅ Shell backend + host harness
-- ✅ Android state detection, UI, and tests
-- ✅ `STOCK → PREPARED` validated on-device
-- ✅ `PREPARED → MICROG_ACTIVE` validated
-- ✅ microG backup validated on-device
-- ✅ `MICROG_ACTIVE → STOCK` validated
-- ✅ Hybrid capability/known-good/transaction architecture
-- ⏳ Physical homologation of additional firmware families
-- ⏳ Reinstallation test with automatic backup restore
+✅ Initial analysis
+  ✅ Shell backend + host harness
+  ✅ Android state detection, UI, and tests
+  ✅ `STOCK → PREPARED` validated on-device
+  ✅ `PREPARED → MICROG_ACTIVE` validated
+  ✅ microG backup validated on-device
+  ✅ `MICROG_ACTIVE → STOCK` validated
+  ✅ Hybrid capability/known-good/transaction architecture
+     Physical homologation of additional firmware families
+
 
 ## Documentation
 
