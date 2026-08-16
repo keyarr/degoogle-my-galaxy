@@ -48,6 +48,8 @@ The app uses a Material 3 / Material You interface and supports English and Braz
 <img width="280"  alt="Screenshot_20260815_213815_DeGoogle" src="https://github.com/user-attachments/assets/0f8b068f-bb02-47a6-b0e8-dab120bcaaa8" />
 <img width="280"  alt="Screenshot_20260815_213809_DeGoogle" src="https://github.com/user-attachments/assets/a6e35626-ddd2-430c-a777-b4d9c601ab12" />
 
+
+
 **Português:** see [`README.pt-BR.md`](README.pt-BR.md).
 
 ## Supported device profile
@@ -57,7 +59,7 @@ The initial Known-Good database contains one validated profile:
 - **Samsung Galaxy S24 Ultra (SM-S928x)**
 - **KernelSU root**
 - **Required module: `fakegapps`** (provides signature spoofing required by microG. Ensure this module is installed and active before activating microG.)
-- Main target: devices rooted through [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy)
+- Main target: devices rooted through [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy); But anyone who unlocked the bootloader and rooted their device the "conventional" way can give it a try; however, I believe there are likely better alternatives for de-Googling for a device with bootloader unlocked.
 
 Other Samsung devices are diagnosed dynamically, but are not declared supported
 without a matching firmware/root entry and passing capabilities. They may only
