@@ -1,6 +1,6 @@
 # Incidente: reboot completo via Rescue Party durante instalação do microG
 
-**Data:** 15/08/2026 · **Aparelho:** SM-S928B (Galaxy S24 Ultra) · **Build:** One UI 16 (`S928BXXU5DZDP`) · **Root:** KernelSU
+**Data:** 15/08/2026 · **Aparelho:** SM-S928B (Galaxy S24 Ultra) · **Build:** Android 16 / One UI 8.5 (`S928BXXU5DZDP`) · **Root:** KernelSU
 
 ## Síntese
 
