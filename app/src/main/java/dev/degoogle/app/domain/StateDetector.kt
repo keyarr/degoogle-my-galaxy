@@ -22,10 +22,33 @@ object StateDetector {
 
         if (!facts.mountGms && !facts.mountGsf && !facts.mountStore) {
             // Nenhum mount ativo: stock ou rollback pendente de reboot.
-            val gmsAtMask = facts.gmsPath?.startsWith(profileSafe.gmsSystemDir) == true
-            if (!gmsAtMask) return DeviceState.ERROR
-            val stockVisible = !facts.gsfPath.isNullOrEmpty() && !facts.storePath.isNullOrEmpty()
-            return if (stockVisible) DeviceState.STOCK else DeviceState.RESTORE_PREPARED
+            //
+            // Uma atualização legítima de um app de sistema aparece em
+            // /data/app. Ela só é aceita quando o Package Locator também
+            // confirmou hasDataUpdate; um path /data/app isolado continua
+            // sendo tratado como estado inesperado.
+            val gmsIsStock = isStockPackagePath(
+                facts.gmsPath,
+                profileSafe.gmsSystemDir,
+                facts.gmsPackage,
+            )
+            if (!gmsIsStock) return DeviceState.ERROR
+
+            val gsfPresent = !facts.gsfPath.isNullOrBlank()
+            val storePresent = !facts.storePath.isNullOrBlank()
+            if (!gsfPresent || !storePresent) return DeviceState.RESTORE_PREPARED
+
+            val gsfIsStock = isStockPackagePath(
+                facts.gsfPath,
+                profileSafe.gsfSystemDir,
+                facts.gsfPackage,
+            )
+            val storeIsStock = isStockPackagePath(
+                facts.storePath,
+                profileSafe.storeSystemDir,
+                facts.storePackage,
+            )
+            return if (gsfIsStock && storeIsStock) DeviceState.STOCK else DeviceState.ERROR
         }
 
         // Existe mount ativo — deve ser completo e por NOSSAS máscaras.
@@ -62,6 +85,22 @@ object StateDetector {
             // pela UI com base no prompt já exibido — dado auxiliar).
             DeviceState.MICROG_ACTIVE
         }
+    }
+
+    /**
+     * Aceita o APK stock no diretório homologado ou uma atualização registrada
+     * pelo Package Locator em /data/app. O segundo caso nunca é inferido só
+     * pelo texto do path.
+     */
+    private fun isStockPackagePath(
+        path: String?,
+        systemDir: String,
+        packageInfo: SystemPackageInfo?,
+    ): Boolean {
+        val actual = path?.takeIf { it.isNotBlank() } ?: return false
+        val expectedRoot = systemDir.trimEnd('/')
+        if (actual.startsWith("$expectedRoot/")) return true
+        return actual.startsWith("/data/app/") && packageInfo?.hasDataUpdate == true
     }
 }
 

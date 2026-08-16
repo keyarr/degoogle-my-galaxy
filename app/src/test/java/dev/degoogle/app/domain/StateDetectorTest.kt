@@ -56,6 +56,39 @@ class StateDetectorTest {
         assertEquals(DeviceState.ERROR, StateDetector.detect(f, profile))
     }
 
+    // 4b. atualização legítima em /data/app, confirmada pelo locator
+    @Test
+    fun `updates confirmados em data app mantêm estado STOCK`() {
+        val gmsUpdate = "/data/app/~~gms/com.google.android.gms-1/base.apk"
+        val storeUpdate = "/data/app/~~store/com.android.vending-1/base.apk"
+        val f = facts {
+            gmsPath = gmsUpdate
+            gmsPackage = SystemPackageInfo(
+                packageName = "com.google.android.gms",
+                activeCodePath = gmsUpdate,
+                hasDataUpdate = true,
+            )
+            gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework/GoogleServicesFramework.apk"
+            storePath = storeUpdate
+            storePackage = SystemPackageInfo(
+                packageName = "com.android.vending",
+                activeCodePath = storeUpdate,
+                hasDataUpdate = true,
+            )
+        }
+        assertEquals(DeviceState.STOCK, StateDetector.detect(f, profile))
+    }
+
+    @Test
+    fun `path inesperado em pacote presente não vira STOCK`() {
+        val f = facts {
+            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gsfPath = "/data/local/tmp/GoogleServicesFramework.apk"
+            storePath = "${profile.storeSystemDir}/Phonesky.apk"
+        }
+        assertEquals(DeviceState.ERROR, StateDetector.detect(f, profile))
+    }
+
     // 5. GMS mascarado + GSF ainda presente (pré-reboot)
     @Test
     fun `GMS mascarado com GSF presente vira PREPARED`() {
@@ -193,13 +226,16 @@ private class FactsBuilder(private val profile: DeviceProfile) {
     var selinux = "Enforcing"
     var abi = "arm64-v8a"
     var gmsPath: String? = null
+    var gmsPackage: SystemPackageInfo? = null
     var gmsVersion: String? = null
     var gmsVersionCode: String? = null
     var gmsUid: String? = null
     var gmsFlags: String? = null
     var gmsPrivileged = false
     var gsfPath: String? = null
+    var gsfPackage: SystemPackageInfo? = null
     var storePath: String? = null
+    var storePackage: SystemPackageInfo? = null
     var storeVersion: String? = null
     var mountGms = false
     var mountGmsIsOurs = false
@@ -232,13 +268,16 @@ private class FactsBuilder(private val profile: DeviceProfile) {
         selinux = selinux,
         abi = abi,
         gmsPath = gmsPath,
+        gmsPackage = gmsPackage,
         gmsVersion = gmsVersion,
         gmsVersionCode = gmsVersionCode,
         gmsUid = gmsUid,
         gmsFlags = gmsFlags,
         gmsPrivileged = gmsPrivileged,
         gsfPath = gsfPath,
+        gsfPackage = gsfPackage,
         storePath = storePath,
+        storePackage = storePackage,
         storeVersion = storeVersion,
         mountGms = mountGms,
         mountGmsIsOurs = mountGmsIsOurs,

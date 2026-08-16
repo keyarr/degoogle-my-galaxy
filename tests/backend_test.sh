@@ -24,6 +24,14 @@
 #  11. restore-stock usa lazy umount quando ocupado
 #  12. mounts de fonte desconhecida (microg-mask) → prepare recusa e probe=ERROR
 #  13. fonte relativa ao fs é reconhecida como nossa
+#  14. dry-run/preflight não alteram mounts
+#  15. preflight detecta mudança de hash desde o probe
+#  16. opt-in usa targets descobertos em diretório permitido
+#  17. rollback recusa mount externo
+#  18. rollback com GSF/Store ausentes do PM usa targets seguros e reindex pendente
+#  19. rollback prefere targets dinâmicos persistidos no snapshot
+#  20. updates legítimos em /data/app não viram estado inesperado
+#  21. FakeGApps/LSPosed detectados sem falso PASS funcional
 # =============================================================================
 
 set -u
@@ -105,6 +113,17 @@ done
 exec "$@"
 EOF
 
+    # O container de CI pode bloquear a leitura de /proc/1/ns/mnt. No Android
+    # real o readlink é permitido pelo backend root; aqui fixamos uma identidade
+    # coerente para testar a comparação self/PID 1 sem depender do host.
+    cat > "$FAKEBIN/readlink" <<'EOF'
+#!/bin/sh
+case "$1" in
+    /proc/self/ns/mnt|/proc/1/ns/mnt) echo "mnt:[4026534000]" ;;
+    *) exec /usr/bin/readlink "$@" ;;
+esac
+EOF
+
     cat > "$FAKEBIN/mount" <<'EOF'
 #!/bin/sh
 MI="${DEGOOGLE_MOUNTINFO:?}"
@@ -152,7 +171,10 @@ case "$1" in
     -c)
         case "$2" in
             %u:%g) echo "0:0"; exit 0 ;;
-            %a) echo "644"; exit 0 ;;
+            %a)
+                if [ -d "$3" ]; then echo "755"; else echo "644"; fi
+                exit 0
+                ;;
             %u) echo "0"; exit 0 ;;
         esac
         ;;
@@ -161,6 +183,11 @@ exec /usr/bin/stat "$@"
 EOF
 
     cat > "$FAKEBIN/restorecon" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+
+    cat > "$FAKEBIN/chcon" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
@@ -185,22 +212,39 @@ EOF
 case "$1" in
     path)
         case "$2" in
+            com.google.android.gsf)
+                [ "${PM_GSF_MISSING:-0}" = "1" ] && exit 1
+                echo "package:${PM_GSF_PATH:-$DEGOOGLE_PROFILE_GSF/GoogleServicesFramework.apk}" ;;
+            inc.whew.android.fakegapps)
+                [ "${FAKEGAPPS_PRESENT:-0}" = "1" ] || exit 1
+                echo "package:/data/app/fakegapps/base.apk" ;;
+            com.android.vending)
+                [ "${PM_STORE_MISSING:-0}" = "1" ] && exit 1
+                echo "package:${PM_STORE_PATH:-$DEGOOGLE_PROFILE_STORE/Phonesky.apk}" ;;
             com.google.android.gms) echo "package:${PM_GMS_PATH:-$DEGOOGLE_PROFILE_GMS/GmsCore.apk}" ;;
-            com.google.android.gsf) echo "package:${PM_GSF_PATH:-$DEGOOGLE_PROFILE_GSF/GoogleServicesFramework.apk}" ;;
-            com.android.vending) echo "package:${PM_STORE_PATH:-$DEGOOGLE_PROFILE_STORE/Phonesky.apk}" ;;
             *) exit 1 ;;
         esac
+        ;;
+    enable)
+        case "$2" in
+            com.google.android.gsf)
+                [ "${PM_GSF_MISSING:-0}" = "1" ] && exit 1 ;;
+            com.android.vending)
+                [ "${PM_STORE_MISSING:-0}" = "1" ] && exit 1 ;;
+        esac
+        exit 0
         ;;
     *) exit 0 ;;
 esac
 EOF
 
-    cat > "$FAKEBIN/dumpsys" <<'EOF'
+cat > "$FAKEBIN/dumpsys" <<'EOF'
 #!/bin/sh
 echo "  versionCode=23484 minSdk=23"
 echo "  versionName=0.3.4.240913"
 echo "  pkgFlags=[ PRIVILEGED SYSTEM ]"
 echo "    userId=10123"
+echo "  User 0: enabled=0"
 exit 0
 EOF
 
@@ -239,6 +283,14 @@ run_script()
         DEGOOGLE_LOCK_DIR="$LOCK_DIR" \
         DEGOOGLE_MOUNTINFO="$MOUNTINFO" \
         DEGOOGLE_PM_CACHE="$PM_CACHE" \
+        DEGOOGLE_EXPERIMENTAL="${DEGOOGLE_EXPERIMENTAL:-}" \
+        PM_GMS_PATH="${PM_GMS_PATH:-}" \
+        PM_GSF_PATH="${PM_GSF_PATH:-}" \
+        PM_STORE_PATH="${PM_STORE_PATH:-}" \
+        PM_GSF_MISSING="${PM_GSF_MISSING:-}" \
+        PM_STORE_MISSING="${PM_STORE_MISSING:-}" \
+        FAKEGAPPS_PRESENT="${FAKEGAPPS_PRESENT:-}" \
+        DEGOOGLE_LSPOSED_MARKER="${DEGOOGLE_LSPOSED_MARKER:-}" \
         sh "$SCRIPT" "$@" 2>&1)"
     rc=$?
     if [ "$rc" = "$want" ]; then
@@ -265,6 +317,8 @@ run_script 0 "prepare com APKs válidos" prepare "$ROOT/gms.apk" "$ROOT/companio
 [ -f "$MASK_BASE/store/Companion.apk" ] && ok "máscara store com APK" || bad "máscara store sem APK"
 [ -d "$MASK_BASE/gsf" ] && ok "máscara GSF (vazia) criada" || bad "máscara GSF ausente"
 [ -f "$PROF_GMS/GmsCore.apk" ] && ok "GMS visível via mount fake" || bad "GMS não visível via mount fake"
+[ -f "$BACKUP_BASE/transaction/snapshot.json" ] && ok "snapshot persistido antes da máscara" || bad "snapshot ausente"
+grep -q 'selinuxContext' "$BACKUP_BASE/transaction/snapshot.json" && ok "snapshot contém metadados SELinux" || bad "snapshot sem metadados SELinux"
 teardown_root
 
 echo "== cenário 2: idempotência (re-execução do prepare)"
@@ -403,6 +457,111 @@ probe_out="$(PATH="$FAKEBIN:/usr/bin:/bin" \
     sh "$SCRIPT" probe 2>/dev/null)"
 echo "$probe_out" | grep -q "DEGOOGLE_MOUNT_GMS_IS_OURS=1" && ok "MOUNT_GMS_IS_OURS=1 com fonte relativa (kernel real)" || bad "MOUNT_GMS_IS_OURS!=1 com fonte relativa"
 echo "$probe_out" | grep -q "DEGOOGLE_MOUNT_STORE_IS_OURS=1" && ok "MOUNT_STORE_IS_OURS=1 com fonte relativa" || bad "MOUNT_STORE_IS_OURS!=1 com fonte relativa"
+teardown_root
+
+echo "== cenário 14: dry-run e preflight são não destrutivos"
+setup_root
+dry_out="$(PATH="$FAKEBIN:/usr/bin:/bin" \
+    DEGOOGLE_PROFILE_GMS="$PROF_GMS" \
+    DEGOOGLE_PROFILE_GSF="$PROF_GSF" \
+    DEGOOGLE_PROFILE_STORE="$PROF_STORE" \
+    DEGOOGLE_MASK_BASE="$MASK_BASE" \
+    DEGOOGLE_BACKUP_BASE="$BACKUP_BASE" \
+    DEGOOGLE_TRANSACTION_BASE="$BACKUP_BASE/transaction" \
+    DEGOOGLE_LOCK_DIR="$LOCK_DIR" \
+    DEGOOGLE_MOUNTINFO="$MOUNTINFO" \
+    DEGOOGLE_PM_CACHE="$PM_CACHE" \
+    sh "$SCRIPT" dry-run 2>&1)"
+echo "$dry_out" | grep -q 'DEGOOGLE_DRY_RUN=1' && ok "dry-run emite protocolo estruturado" || bad "dry-run sem marcador estruturado"
+echo "$dry_out" | grep -q 'DEGOOGLE_CAP_BIND_MOUNT_STATUS=' && ok "dry-run emite capabilities" || bad "dry-run sem capabilities"
+[ "$(mount_count)" = "0" ] && ok "dry-run não deixou mounts" || bad "dry-run deixou mounts"
+run_script 0 "preflight após dry-run" preflight >/dev/null || true
+[ "$(mount_count)" = "0" ] && ok "preflight não alterou mounts" || bad "preflight alterou mounts"
+teardown_root
+
+echo "== cenário 15: preflight detecta TOCTOU por hash"
+setup_root
+run_script 0 "probe cria baseline" probe >/dev/null || true
+printf 'stock apk mudou\n' > "$PROF_GMS/GmsCore.apk"
+run_script 3 "preflight bloqueia hash alterado" preflight >/dev/null || true
+[ "$(mount_count)" = "0" ] && ok "hash alterado não causou mount" || bad "hash alterado causou mount"
+teardown_root
+
+echo "== cenário 16: opt-in usa target descoberto permitido"
+setup_root
+ALT_GMS_DIR="$PROF_GMS/alt"
+mkdir -p "$ALT_GMS_DIR"
+printf 'stock-alt\n' > "$ALT_GMS_DIR/base.apk"
+DEGOOGLE_EXPERIMENTAL=1 PM_GMS_PATH="$ALT_GMS_DIR/base.apk" \
+    run_script 0 "prepare experimental com GMS em diretório descoberto" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" || true
+[ "$(mount_count)" = "3" ] && ok "opt-in aplicou os 3 mounts" || bad "opt-in deixou $(mount_count) mounts"
+grep -q "$ALT_GMS_DIR" "$MOUNTINFO" && ok "mount GMS usa target descoberto" || bad "mount GMS não usa target descoberto"
+teardown_root
+
+echo "== cenário 17: rollback recusa mount externo"
+setup_root
+printf '0 0 0:0 /local/tmp/foreign %s rw - ext4 /dev/root rw\n' "$PROF_GMS" >> "$MOUNTINFO"
+run_script 4 "restore-stock não desmonta fonte externa" restore-stock --wipe-data >/dev/null || true
+[ "$(mount_count)" = "1" ] && ok "mount externo permaneceu intacto" || bad "mount externo foi alterado"
+teardown_root
+
+echo "== cenário 18: rollback com GSF/Store ausentes do PM"
+setup_root
+mkdir -p "$MASK_BASE/gms" "$MASK_BASE/gsf" "$MASK_BASE/store"
+cp "$ROOT/gms.apk" "$MASK_BASE/gms/GmsCore.apk"
+cp "$ROOT/companion.apk" "$MASK_BASE/store/Companion.apk"
+printf '0 0 0:0 %s %s rw - ext4 /dev/root rw\n' "$MASK_BASE/gms" "$PROF_GMS" >> "$MOUNTINFO"
+printf '0 0 0:0 %s %s rw - ext4 /dev/root rw\n' "$MASK_BASE/gsf" "$PROF_GSF" >> "$MOUNTINFO"
+printf '0 0 0:0 %s %s rw - ext4 /dev/root rw\n' "$MASK_BASE/store" "$PROF_STORE" >> "$MOUNTINFO"
+PM_GSF_MISSING=1 PM_STORE_MISSING=1 run_script 0 "restore-stock não depende de pm path para resolver targets" restore-stock >/dev/null || true
+[ "$(mount_count)" = "0" ] && ok "GSF/Store desmontados mesmo ausentes do PM" || bad "mounts remanescentes: $(mount_count)"
+[ ! -f "$MASK_BASE/gms/GmsCore.apk" ] && [ ! -f "$MASK_BASE/store/Companion.apk" ] && ok "APKs removidos somente após unmount" || bad "APKs da máscara permanecem"
+grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && ok "journal marca reindexamento pendente" || bad "journal não marca REINDEX_PENDING"
+teardown_root
+
+echo "== cenário 19: rollback usa target dinâmico persistido no snapshot"
+setup_root
+ALT_GMS_DIR="$PROF_GMS/alt"
+mkdir -p "$ALT_GMS_DIR"
+printf 'stock-alt\n' > "$ALT_GMS_DIR/base.apk"
+DEGOOGLE_EXPERIMENTAL=1 PM_GMS_PATH="$ALT_GMS_DIR/base.apk" run_script 0 "prepare cria snapshot com target dinâmico" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" >/dev/null || true
+PM_GMS_PATH="$ALT_GMS_DIR/base.apk" PM_GSF_MISSING=1 PM_STORE_MISSING=1 \
+    run_script 0 "restore-stock usa snapshot mesmo com GSF/Store ausentes" restore-stock >/dev/null || true
+[ "$(mount_count)" = "0" ] && ok "target dinâmico desmontado pelo snapshot" || bad "target dinâmico permaneceu montado"
+teardown_root
+
+echo "== cenário 20: updates legítimos em /data/app"
+setup_root
+PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
+PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
+    run_script 0 "probe classifica updates como stock" probe > "$ROOT/update_probe.out" || true
+grep -q '^DEGOOGLE_STATE=STOCK$' "$ROOT/update_probe.out" && ok "updates em /data/app resultam em STOCK" || bad "updates em /data/app resultaram em estado inesperado"
+grep -q '^DEGOOGLE_GMS_HAS_DATA_UPDATE=1$' "$ROOT/update_probe.out" && \
+    grep -q '^DEGOOGLE_STORE_HAS_DATA_UPDATE=1$' "$ROOT/update_probe.out" && \
+    ok "locator confirmou os dois updates" || bad "locator não confirmou os updates"
+PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
+PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
+    run_script 0 "dry-run aceita updates removíveis" dry-run > "$ROOT/update_dry_run.out" || true
+grep -q '^DEGOOGLE_CAP_GMS_MASKABLE_STATUS=PASS$' "$ROOT/update_dry_run.out" && \
+    grep -q '^DEGOOGLE_CAP_STORE_MASKABLE_STATUS=PASS$' "$ROOT/update_dry_run.out" && \
+    ok "GMS/Store update não geram WARN de maskabilidade" || bad "GMS/Store update ainda geram WARN"
+grep -q 'update em /data/app será removido durante a preparação' "$ROOT/update_dry_run.out" && \
+    ok "dry-run informa o cleanup automático" || bad "dry-run não informa o cleanup automático"
+PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
+PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
+    run_script 0 "preflight aceita update antes do cleanup" preflight >/dev/null || true
+teardown_root
+
+echo "== cenário 21: FakeGApps/LSPosed detectados com WARN"
+setup_root
+touch "$ROOT/lsposed.marker"
+FAKEGAPPS_PRESENT=1 DEGOOGLE_LSPOSED_MARKER="$ROOT/lsposed.marker" \
+    run_script 0 "probe detecta FakeGApps sem afirmar PASS funcional" probe > "$ROOT/fakegapps_probe.out" || true
+grep -q '^DEGOOGLE_CAP_SIGNATURE_SPOOFING_STATUS=WARN$' "$ROOT/fakegapps_probe.out" && \
+    ok "FakeGApps resulta em WARN conservador" || bad "FakeGApps não resultou em WARN"
+grep -q 'FakeGApps' "$ROOT/fakegapps_probe.out" && ok "evidência do módulo foi registrada" || bad "evidência do módulo ausente"
+! grep -q 'desabilitado para o usuário' "$ROOT/fakegapps_probe.out" && \
+    ok "enabled=0 não é tratado como pacote desabilitado" || bad "enabled=0 foi interpretado como desabilitado"
 teardown_root
 
 # ---------------------------------------------------------------------------

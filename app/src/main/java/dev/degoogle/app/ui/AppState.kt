@@ -1,6 +1,7 @@
 package dev.degoogle.app.ui
 
 import dev.degoogle.app.domain.DeviceState
+import dev.degoogle.app.domain.CompatibilityDecision
 import dev.degoogle.app.domain.SystemFacts
 
 /** Uma linha de log de uma operação (passos do backend, visíveis na UI). */
@@ -14,11 +15,14 @@ enum class Screen {
     HOME,
     DIAGNOSTICS,
     BACKUP,
+    SETTINGS,
 }
 
 data class UiState(
     val refreshing: Boolean = true,
     val facts: SystemFacts = SystemFacts.EMPTY,
+    val compatibility: CompatibilityDecision = CompatibilityDecision.EMPTY,
+    val recoveryRequired: Boolean = false,
     val state: DeviceState = DeviceState.NO_ROOT,
     val operationInProgress: Boolean = false,
     val steps: List<StepLog> = emptyList(),

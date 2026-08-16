@@ -59,33 +59,32 @@ hardcodá-las quebra em qualquer outro perfil e não é verificável. Correção
 derivar o contexto do diretório de dados recém-criado pelo PackageManager
 (`stat -c %C`) e aplicá-lo; validar com `ls -Z`; nunca declarar sucesso sem validar.
 
-### 2.4 `restore` (rollback) não restaura a Play Store
+### 2.4 Rollback da Play Store
 
-O rollback só desmonta GMS/GSF. A loja, se mascarada, fica mascarada; e se o
-`prep` a desabilitou (`pm disable-user`), ela permanece desabilitada — o próprio
-script orienta o usuário a reabilitar manualmente. O `restore-stock` novo deve
-contemplar GMS + GSF + Store, remover APKs das máscaras, desmontar tudo e
-verificar o estado stock após reboot.
+O `restore-stock` contempla GMS + GSF + Store. Primeiro resolve os targets pelo
+snapshot ou pelo perfil S24 validado, usando `mountinfo` mesmo quando GSF/Store
+sumiram temporariamente do Package Manager. Só remove os APKs da máscara depois
+de desmontar todos os mounts próprios. Se o PM ainda estiver stale, registra
+`REINDEX_PENDING`, deixa o enable para o re-scan pós-boot e exige reboot antes de
+confirmar `RESTORED` na UI.
 
-### 2.5 `prep` desabilita a loja sem transação
+### 2.5 Estado da loja durante `prepare`
 
-`pm disable-user com.android.vending` acontece no passo 1; se qualquer passo
-seguinte falhar, o aparelho fica com a loja desabilitada sem aviso. Toda ação
-destrutiva precisa de rollback ou de execução tardia.
+O estado disabled/enabled da Store é capturado antes do cleanup. APKs inválidos,
+falha de preflight, falha de metadados ou falha de mount não deixam a Store
+desabilitada silenciosamente; o rollback tenta restaurar o estado anterior e o
+journal registra a recuperação necessária se isso falhar.
 
 ### 2.6 Namespace inconsistente no `restorecon`
 
-`restorecon -R "$GMS_SYSTEM"` roda **fora** do namespace global (sem `global()`).
-Se o namespace atual não enxerga o bind mount, o `restorecon` rotula o diretório
-original de `/product` em vez da máscara. Correção: `global restorecon -R ...` +
-validação com `global ls -laZ` (o script já valida com `ls`, mas rotula no lugar errado).
+O backend atual usa `global restorecon -R ...` e valida os três contextos com
+`global ls -Z`; antes do mount também clona owner, mode e contexto SELinux do
+diretório original e aborta se o contexto não puder ser reproduzido.
 
 ### 2.7 `is_global_mount` valida só o mountpoint
 
-`grep -Fq " $1 " /proc/1/mountinfo` confirma que existe um mount no caminho,
-mas não que a **fonte** seja a nossa máscara. Se outro processo montar algo no
-mesmo caminho, o script assume "já mascarado" e não faz nada. Correção: parsear
-`mountinfo` (campo 5 = mountpoint, campo 6 = root/fonte) e exigir fonte == máscara.
+O backend atual parseia `mountinfo` (mountpoint e root/fonte), compara a fonte
+com a máscara e, durante rollback, recusa desmontar qualquer origem externa.
 
 ### 2.8 `store install` em duas fases = 3 reboots
 
@@ -257,10 +256,32 @@ Repo F-Droid oficial: `https://microg.org/fdroid/repo/`.
 
 - `setprop sys.powerctl reboot,userspace` (AOSP 11+); init falha o setprop se o
   userspace reboot não for suportado → detectável.
-- Fallback seguro: reboot completo (`reboot`). O app pergunta antes e nunca
-  assume que o reboot aconteceu.
-- `RebootController` (`softReboot(): Result`) encapsula: tentativa → detecção de
-  falha → fallback com consentimento.
+- `ksud soft-reboot` é preferido quando o backend KernelSU está disponível.
+- Não existe fallback automático para reboot completo: em root volátil ele
+  remove o próprio root e os bind mounts. A estratégia é registrada como
+  `WARN` até ser homologada para a combinação firmware/backend.
+- `RebootController` encapsula a solicitação, mas o commit só ocorre depois de
+  `post-boot-validate` confirmar `system_server`, `boot_completed`, packages,
+  priv-app, SELinux e ausência de sinal de Rescue Party.
+
+### 4.8 Arquitetura híbrida implementada
+
+O backend agora expõe `dry-run`, `preflight` e `post-boot-validate`, além do
+fluxo existente. O `probe` coleta propriedades completas do build, kernel,
+PackageManager, paths base/split, updates em `/data/app`, filesystem e
+mountinfo. Cada verificação crítica é emitida como:
+
+```text
+DEGOOGLE_CAP_<NAME>_STATUS=PASS|WARN|FAIL|UNKNOWN
+DEGOOGLE_CAP_<NAME>_EVIDENCE=...
+DEGOOGLE_CAP_<NAME>_REASON=...
+```
+
+O Kotlin faz o matching contra o banco local versionado, mantém um journal
+atômico da transação e nunca converte `UNKNOWN` em aprovação. O opt-in
+experimental somente chega ao shell como uma autorização adicional; não
+desliga o preflight nem as verificações de caminho, namespace, SELinux,
+rollback ou soft reboot.
 
 ## 5. Plano incremental (execução)
 

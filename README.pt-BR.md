@@ -5,7 +5,7 @@ DeGoogle é um aplicativo Android com root que transforma o procedimento shell d
 > [!WARNING]
 > O DeGoogle altera estado privilegiado do Android e ainda é experimental.
 >
-> Ele foi testado apenas com **KernelSU** no **Samsung Galaxy S24 Ultra (SM-S928x)**. Nenhuma alteração é aplicada sem validar o acesso root e um perfil de dispositivo compatível.
+> Ele foi testado apenas com **KernelSU** no **Samsung Galaxy S24 Ultra (SM-S928x)**. Nenhuma alteração é aplicada sem validar root, capabilities críticas e segurança de rollback; firmware não homologado exige opt-in explícito.
 
 ## Status do projeto
 
@@ -33,11 +33,13 @@ STOCK
 
 Status dos testes:
 
-- ✅ Backend shell: 46/46 cenários no harness de host
-- ✅ Testes unitários Android: 19/19
+- ✅ Backend shell: 79/79 cenários no harness de host
+- ✅ Testes unitários Android: 39/39
 - ✅ Ciclo principal validado em aparelho real
+- ✅ Validação de certificado oficial do microG e signature spoofing FakeGApps
 - ✅ Backup do microG validado no aparelho
 - ✅ Retorno ao estado stock validado
+- ✅ Suporte completo bilíngue e internacionalização (Inglês / Português do Brasil)
 - ⏳ Hardening adicional
 - ⏳ Teste de reinstalação com restauração automática do backup
 
@@ -51,12 +53,17 @@ A interface usa Material 3 / Material You e possui suporte a inglês e portuguê
 
 ## Perfil de dispositivo suportado
 
-A V1 atualmente suporta um único perfil:
+O banco Known-Good inicial contém um único perfil homologado:
 
 - **Samsung Galaxy S24 Ultra (SM-S928x)**
 - **Root via KernelSU**
 - **Módulo obrigatório: `fakegapps`** (fornece spoofing de assinatura necessário pelo microG). Certifique-se de que este módulo esteja instalado e ativo antes de ativar o microG.
 - Público principal: aparelhos com root via [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy)
+
+Outros Samsung são diagnosticados dinamicamente, mas não são declarados
+suportados sem uma entrada correspondente de firmware/root e capabilities
+aprovadas. Eles só podem chegar ao fluxo experimental; semelhança de modelo
+sozinha nunca é suficiente.
 
 O Root-My-Galaxy depende de um exploit volátil para carregar o KernelSU. Um **reboot completo do kernel perde tanto o root quanto o ambiente temporário do microG**.
 
@@ -84,7 +91,7 @@ Sequência da operação:
 6. Opcionalmente criar um backup dos dados do microG.
 7. Restaurar o ambiente stock do Google quando solicitado.
 
-Se uma operação `prepare` falhar parcialmente, o backend tenta fazer rollback e retorna um código específico de falha parcial/rollback.
+Se uma operação `prepare` falhar parcialmente, o backend tenta fazer rollback e retorna um código específico de falha parcial/rollback. Durante a restauração stock, os alvos vêm do snapshot transacional ou do perfil S24 validado; entradas ausentes no Package Manager só viram `REINDEX_PENDING` quando o target stock existe. Os APKs da máscara só são removidos depois que todos os mounts próprios foram desmontados, e o reboot/validação pós-boot conclui a recuperação.
 
 ## Modelo de segurança
 
@@ -96,6 +103,40 @@ Quando uma verificação falha, o app interrompe a operação ou executa rollbac
 - **Validação no namespace global**: `restorecon` e `ls -Z` são executados no namespace global e o sucesso é validado.
 - **Destino explícito de backup**: a restauração do backup do microG usa `com.google.android.gms`, com UID e SELinux derivados em runtime.
 - **Reboot nunca é assumido**: o estado é derivado novamente sempre que o app é aberto.
+
+## Compatibilidade híbrida
+
+A lista de modelos deixou de ser a prova principal de compatibilidade. O app combina:
+
+```text
+Device Probe + Package Locator
+        ↓
+Capability Matrix com evidências
+        ↓
+Known-Good Database versionado
+        ↓
+Safety Preflight + snapshot/journal
+        ↓
+execução somente quando o rollback é verificável
+```
+
+Os estados da engine são `SUPPORTED`, `PROBABLY_SUPPORTED`, `REQUIRES_PROFILE`, `UNSUPPORTED` e `UNSAFE`. Um match apenas por modelo nunca gera `SUPPORTED`; `FAIL` ou `UNKNOWN` em capability crítica bloqueia a execução. O S24 só é aprovado automaticamente quando a combinação de fingerprint, SDK, backend de root e capacidades coincide com o banco.
+
+O diagnóstico não altera GMS, GSF, Store, dados, cache ou reboot:
+
+```bash
+degoogle.sh dry-run
+degoogle.sh preflight
+```
+
+Além do texto em `stderr`, o backend emite `DEGOOGLE_CAP_*` em `stdout`; o Kotlin transforma isso em um relatório JSON exportável. O opt-in experimental não desativa a detecção: ele só pode autorizar uma classificação `PROBABLY_SUPPORTED` se todas as capabilities críticas estiverem em `PASS`, inclusive rollback e estratégia de soft reboot.
+
+O banco inicial está em [`app/src/main/assets/compatibility/known_good.json`](app/src/main/assets/compatibility/known_good.json). Não há atualização remota automática.
+
+A implementação não declara suporte físico para outra família Samsung.
+Signature spoofing e segurança do soft reboot continuam bloqueando quando o
+aparelho não fornece evidência funcional; um mantenedor precisa validar o
+relatório e adicionar o firmware ao banco antes de ele se tornar `SUPPORTED`.
 
 ## Mensageiros e notificações push
 
@@ -177,9 +218,9 @@ Exit codes:
 ```text
 degoogle.sh
   backend shell:
-  probe / prepare / finalize / backup /
-  restore-backup / restore-stock /
-  soft-reboot / status / test
+  probe / dry-run / preflight / prepare / finalize /
+  backup / restore-backup / restore-stock / rollback /
+  post-boot-validate / soft-reboot / status / test
 
 microg-session.sh
   script original de referência; não usado pelo app
@@ -192,19 +233,24 @@ tests/
   backend_test.sh
 
 app/
-  src/main/assets/root/degoogle.sh
+  src/main/assets/
+    root/degoogle.sh
+    compatibility/known_good.json
 
   src/main/java/dev/degoogle/app/
     domain/
-      DeviceState
-      StateDetector
-      DeviceProfile
-      SystemFacts
+      DeviceFacts, SystemPackageInfo, PackageLocator
+      Capability, CompatibilityEngine, KnownGoodDatabase
+      TransactionJournal, DeviceState, StateDetector
 
     root/
       RootExecutor
+      RootBackend
       BackendInstaller
       BackendRunner
+
+    security/
+      SignatureSpoofingProbe
 
     microg/
       ReleaseRepository
@@ -221,13 +267,14 @@ app/
       home
       diagnostics
       backup
+      settings
       components
 
     boot/
       BootReceiver
 
   src/test/
-    testes de máquina de estados, parser e backend mockado
+    testes de domínio, segurança, máquina de estados, parser e backend mockado
 ```
 
 ## Problema conhecido no firmware
@@ -281,7 +328,8 @@ Essa alteração modifica o comportamento de gerenciamento de memória do sistem
 - ✅ `PREPARED → MICROG_ACTIVE` validado
 - ✅ Backup do microG validado no aparelho
 - ✅ `MICROG_ACTIVE → STOCK` validado
-- ⏳ Hardening adicional
+- ✅ Arquitetura híbrida de capabilities/known-good/transação
+- ⏳ Homologação física de outras famílias de firmware
 - ⏳ Teste de reinstalação com restauração automática do backup
 
 ## Documentação

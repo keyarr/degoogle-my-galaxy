@@ -25,6 +25,8 @@ class Prefs(private val context: Context) {
         val SETUP_PROMPT_SEEN = booleanPreferencesKey("setup_prompt_seen")
         val PENDING_OPERATION = stringPreferencesKey("pending_operation")
         val PENDING_SINCE = longPreferencesKey("pending_since")
+        val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+        val EXPERIMENTAL_OPT_IN = booleanPreferencesKey("experimental_opt_in")
     }
 
     val setupPromptSeen: Flow<Boolean> =
@@ -33,8 +35,22 @@ class Prefs(private val context: Context) {
     val pendingOperation: Flow<String?> =
         context.dataStore.data.map { it[Keys.PENDING_OPERATION] }
 
+    val notificationsEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.NOTIFICATIONS_ENABLED] ?: true }
+
+    val experimentalOptIn: Flow<Boolean> =
+        context.dataStore.data.map { it[Keys.EXPERIMENTAL_OPT_IN] ?: false }
+
     suspend fun markSetupPromptSeen() {
         context.dataStore.edit { it[Keys.SETUP_PROMPT_SEEN] = true }
+    }
+
+    suspend fun setNotificationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
+    }
+
+    suspend fun setExperimentalOptIn(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.EXPERIMENTAL_OPT_IN] = enabled }
     }
 
     suspend fun markOperationPending(op: String) {

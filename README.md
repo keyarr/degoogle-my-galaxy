@@ -5,7 +5,7 @@ DeGoogle is a root Android app that turns the shell procedure for temporarily re
 > [!WARNING]
 > DeGoogle modifies privileged Android state and is still experimental.
 >
-> It has been tested only with **KernelSU** on the **Samsung Galaxy S24 Ultra (SM-S928x)**. No changes are applied unless root access and a compatible device profile are verified.
+> It has been tested only with **KernelSU** on the **Samsung Galaxy S24 Ultra (SM-S928x)**. No changes are applied unless root access, critical capabilities, and rollback safety are verified; non-homologated firmware additionally requires explicit opt-in.
 
 ## Project status
 
@@ -33,11 +33,13 @@ STOCK
 
 Test status:
 
-- ✅ Shell backend: 46/46 host scenarios
-- ✅ Android unit tests: 19/19
+- ✅ Shell backend: 79/79 host scenarios
+- ✅ Android unit tests: 39/39
 - ✅ Main lifecycle validated on a real device
+- ✅ microG official certificate & FakeGApps signature validation
 - ✅ microG backup validated on-device
 - ✅ Restore-to-stock flow validated
+- ✅ Complete bilingual localization (English / pt-BR)
 - ⏳ Additional hardening
 - ⏳ Reinstallation test with automatic backup restore
 
@@ -51,12 +53,16 @@ The app uses a Material 3 / Material You interface and supports English and Braz
 
 ## Supported device profile
 
-V1 currently supports a single profile:
+The initial Known-Good database contains one validated profile:
 
 - **Samsung Galaxy S24 Ultra (SM-S928x)**
 - **KernelSU root**
 - **Required module: `fakegapps`** — provides signature spoofing required by microG. Ensure this module is installed and active before activating microG.
 - Main target: devices rooted through [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy)
+
+Other Samsung devices are diagnosed dynamically, but are not declared supported
+without a matching firmware/root entry and passing capabilities. They may only
+reach the experimental opt-in path; a similar model alone is never sufficient.
 
 Root-My-Galaxy relies on a volatile exploit to load KernelSU. A **full kernel reboot loses both root and the temporary microG environment**.
 
@@ -84,7 +90,7 @@ Operation sequence:
 6. Optionally create a microG data backup.
 7. Restore the stock Google environment when requested.
 
-If a partial `prepare` operation fails, the backend attempts rollback and reports a dedicated partial/rollback exit code.
+If a partial `prepare` operation fails, the backend attempts rollback and reports a dedicated partial/rollback exit code. During stock recovery, targets come from the transaction snapshot or the validated S24 profile; missing Package Manager entries are handled as `REINDEX_PENDING` only when the stock target exists. APKs are removed from the mask only after all owned mounts are gone, and reboot/post-boot validation completes the recovery.
 
 ## Safety model
 
@@ -96,6 +102,40 @@ When a check fails, the app stops or rolls back instead of continuing with an un
 - **Global namespace validation**: `restorecon` and `ls -Z` run in the global namespace and success is verified.
 - **Explicit backup destination**: microG backup restoration targets `com.google.android.gms`, with UID and SELinux derived at runtime.
 - **Reboot is never assumed**: state is re-derived every time the app starts.
+
+## Hybrid compatibility
+
+The model list is no longer the primary compatibility proof. The app combines:
+
+```text
+Device Probe + Package Locator
+        ↓
+Capability Matrix with evidence
+        ↓
+Versioned Known-Good Database
+        ↓
+Safety Preflight + snapshot/journal
+        ↓
+execution only when rollback is verifiable
+```
+
+The engine states are `SUPPORTED`, `PROBABLY_SUPPORTED`, `REQUIRES_PROFILE`, `UNSUPPORTED`, and `UNSAFE`. A model-only match never produces `SUPPORTED`; `FAIL` or `UNKNOWN` on a critical capability blocks execution. The S24 is automatically approved only when fingerprint, SDK, root backend, and capabilities match the database.
+
+The diagnostic path does not modify GMS, GSF, Store, data, cache, or reboot:
+
+```bash
+degoogle.sh dry-run
+degoogle.sh preflight
+```
+
+Besides human-readable `stderr`, the backend emits `DEGOOGLE_CAP_*` records on `stdout`; Kotlin converts them into an exportable JSON report. Experimental opt-in does not disable detection: it can only authorize a `PROBABLY_SUPPORTED` result when every critical capability, including rollback and the soft-reboot strategy, is `PASS`.
+
+The initial database is [`app/src/main/assets/compatibility/known_good.json`](app/src/main/assets/compatibility/known_good.json). There is no automatic remote database update.
+
+The implementation does not claim physical support for another Samsung family.
+Signature spoofing and soft-reboot safety remain blocking when the device cannot
+provide functional evidence; a maintainer must validate a report and add the
+firmware to the database before it can become `SUPPORTED`.
 
 ## Messaging apps and push notifications
 
@@ -177,9 +217,9 @@ Exit codes:
 ```text
 degoogle.sh
   shell backend:
-  probe / prepare / finalize / backup /
-  restore-backup / restore-stock /
-  soft-reboot / status / test
+  probe / dry-run / preflight / prepare / finalize /
+  backup / restore-backup / restore-stock / rollback /
+  post-boot-validate / soft-reboot / status / test
 
 microg-session.sh
   original reference script; not used by the app
@@ -192,19 +232,24 @@ tests/
   backend_test.sh
 
 app/
-  src/main/assets/root/degoogle.sh
+  src/main/assets/
+    root/degoogle.sh
+    compatibility/known_good.json
 
   src/main/java/dev/degoogle/app/
     domain/
-      DeviceState
-      StateDetector
-      DeviceProfile
-      SystemFacts
+      DeviceFacts, SystemPackageInfo, PackageLocator
+      Capability, CompatibilityEngine, KnownGoodDatabase
+      TransactionJournal, DeviceState, StateDetector
 
     root/
       RootExecutor
+      RootBackend
       BackendInstaller
       BackendRunner
+
+    security/
+      SignatureSpoofingProbe
 
     microg/
       ReleaseRepository
@@ -221,13 +266,14 @@ app/
       home
       diagnostics
       backup
+      settings
       components
 
     boot/
       BootReceiver
 
   src/test/
-    state-machine, parser, and mocked-backend tests
+    domain, security, state-machine, parser, and mocked-backend tests
 ```
 
 ## Known firmware issue
@@ -281,7 +327,8 @@ This changes system memory-management behavior and is **not enabled by default**
 - ✅ `PREPARED → MICROG_ACTIVE` validated
 - ✅ microG backup validated on-device
 - ✅ `MICROG_ACTIVE → STOCK` validated
-- ⏳ Additional hardening
+- ✅ Hybrid capability/known-good/transaction architecture
+- ⏳ Physical homologation of additional firmware families
 - ⏳ Reinstallation test with automatic backup restore
 
 ## Documentation

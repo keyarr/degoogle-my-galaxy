@@ -11,6 +11,10 @@ import dev.degoogle.app.domain.SystemFacts
 class BackendRunner(
     private val executor: RootExecutor,
     private val backendPath: String,
+    private val experimentalOptIn: () -> Boolean = { false },
+    private val transactionBase: String? = null,
+    private val operationId: () -> String? = { null },
+    private val onProgress: (String) -> Unit = {},
 ) {
 
     /** Exit codes do backend. */
@@ -28,10 +32,24 @@ class BackendRunner(
         listOf("sh", backendPath) + args.toList()
 
     suspend fun probe(): BackendProbeResult {
-        val result = executor.execute(script("probe"))
+        val result = executor.execute(script("probe"), env = environment())
         val facts = ProbeParser.parse(result.stdout)
-        return BackendProbeResult(facts = facts, raw = result)
+        return BackendProbeResult(
+            facts = facts,
+            raw = result,
+            rootBackend = rootBackendFor(facts.rootManager),
+        )
     }
+
+    /** Seleciona a implementação sem acoplar o fluxo a KernelSU. */
+    fun rootBackendFor(rootManager: String): RootBackend =
+        RootBackendFactory.fromName(rootManager, executor)
+
+    /** Probe explícito: não altera GMS, GSF, Store, cache ou dados. */
+    suspend fun dryRun(): BackendCommandResult = runCommand(listOf("dry-run"), streamProgress = false)
+
+    /** Revalida o ambiente imediatamente antes de uma operação destrutiva. */
+    suspend fun preflight(): BackendCommandResult = runCommand(listOf("preflight"))
 
     suspend fun prepare(gmsApk: String, companionApk: String): BackendCommandResult =
         runCommand(listOf("prepare", gmsApk, companionApk))
@@ -50,10 +68,30 @@ class BackendRunner(
 
     suspend fun softReboot(): BackendCommandResult = runCommand(listOf("soft-reboot"))
 
-    suspend fun status(): BackendCommandResult = runCommand(listOf("status"))
+    suspend fun postBootValidate(): BackendCommandResult = runCommand(listOf("post-boot-validate"))
 
-    private suspend fun runCommand(args: List<String>): BackendCommandResult {
-        val result = executor.execute(listOf("sh", backendPath) + args)
+    suspend fun rollback(wipeData: Boolean = false): BackendCommandResult =
+        runCommand(if (wipeData) listOf("rollback", "--wipe-data") else listOf("rollback"))
+
+    suspend fun status(): BackendCommandResult = runCommand(listOf("status"), streamProgress = false)
+
+    private suspend fun runCommand(
+        args: List<String>,
+        streamProgress: Boolean = true,
+    ): BackendCommandResult {
+        val command = listOf("sh", backendPath) + args
+        val result = if (streamProgress) {
+            executor.executeStreaming(
+                command,
+                env = environment(),
+                onStderrLine = onProgress,
+            )
+        } else {
+            executor.execute(
+                command,
+                env = environment(),
+            )
+        }
         val facts = ProbeParser.parse(result.stdout)
         return BackendCommandResult(
             succeeded = result.succeeded,
@@ -62,11 +100,23 @@ class BackendRunner(
             stderr = result.stderr,
         )
     }
+
+    private fun environment(): Map<String, String> = buildMap {
+        if (experimentalOptIn()) put("DEGOOGLE_EXPERIMENTAL", "1")
+        transactionBase?.takeIf { it.isNotBlank() }?.let {
+            put("DEGOOGLE_TRANSACTION_BASE", it)
+        }
+        operationId()?.takeIf { it.isNotBlank() }?.let {
+            put("DEGOOGLE_OPERATION_ID", it)
+        }
+    }
+
 }
 
 data class BackendProbeResult(
     val facts: SystemFacts,
     val raw: RootResult,
+    val rootBackend: RootBackend,
 )
 
 data class BackendCommandResult(

@@ -6,6 +6,28 @@
     <string name="nav_home">Home</string>
     <string name="nav_diagnostics">Diagnostics</string>
     <string name="nav_backup">Backup</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_subtitle">Behavior and device compatibility options</string>
+    <string name="settings_notifications_title">Notifications</string>
+    <string name="settings_notifications_label">Pending operation alerts</string>
+    <string name="settings_notifications_desc">Notify after boot when a DeGoogle operation needs to be completed.</string>
+    <string name="settings_profile_title">Device compatibility</string>
+    <string name="settings_profile_label">Experimental opt-in</string>
+    <string name="settings_profile_desc">Allow an unhomologated firmware only when every critical capability passes. The compatibility engine still blocks unsafe states.</string>
+    <string name="settings_profile_warning">Experimental mode never overrides FAIL or UNKNOWN. Review the compatibility report before every operation.</string>
+    <string name="settings_footer">The known-good database is versioned with the app. An unknown device is never approved by model similarity alone.</string>
+    <string name="diag_card_compatibility">Compatibility engine</string>
+    <string name="diag_compatibility">Classification</string>
+    <string name="diag_known_good_match">Known-good match</string>
+    <string name="diag_preparation_info">Active GMS/Play Store updates are removable during preparation; the target stock paths are revalidated afterward.</string>
+    <string name="diag_capabilities">Capabilities</string>
+    <string name="diag_capability_pass">PASS</string>
+    <string name="diag_capability_warn">WARN</string>
+    <string name="diag_capability_fail">FAIL</string>
+    <string name="diag_capability_unknown">UNKNOWN</string>
 
     <!-- Device States -->
     <string name="state_no_root">No Root</string>
@@ -19,6 +41,64 @@
     <string name="state_microg_active_backed_up">microG Active (Backed Up)</string>
     <string name="state_restore_prepared">Restore Prepared</string>
     <string name="state_error">Error</string>
+
+    <!-- Compatibility Decisions & Match Levels -->
+    <string name="compat_supported">Supported</string>
+    <string name="compat_probably_supported">Probably Supported</string>
+    <string name="compat_requires_profile">Requires Profile</string>
+    <string name="compat_unsafe">Unsafe</string>
+    <string name="compat_unsupported">Unsupported</string>
+    <string name="match_exact">Exact Match</string>
+    <string name="match_family">Firmware Family</string>
+    <string name="match_model_only">Model Only</string>
+    <string name="match_none">No Match</string>
+
+    <!-- Operation Status & Step Logs -->
+    <string name="op_preparing_env">Preparing environment…</string>
+    <string name="op_querying_repo">Checking official microG repository…</string>
+    <string name="op_repo_error">Failed to query microG repository.</string>
+    <string name="op_companion_error">Failed to query microG Companion release.</string>
+    <string name="op_downloading_gms">Downloading microG Services…</string>
+    <string name="op_downloading_companion">Downloading microG Companion…</string>
+    <string name="op_download_gms_failed">Failed to download microG Services.</string>
+    <string name="op_download_companion_failed">Failed to download microG Companion.</string>
+    <string name="op_validating_apks">Validating APKs (package, version, signature, hash)…</string>
+    <string name="op_invalid_gms">Invalid microG Services: %1$s</string>
+    <string name="op_invalid_companion">Invalid microG Companion: %1$s</string>
+    <string name="op_preflight">Revalidating environment before changes…</string>
+    <string name="op_preflight_blocked">Safety preflight blocked the operation (exit %1$d).\n%2$s</string>
+    <string name="op_applying_masks">Applying masks and bind mounts (root)…</string>
+    <string name="op_prepare_failed">Prepare failed (exit %1$d). No changes were kept.\n%2$s</string>
+    <string name="op_prepared_success">Preparation complete; soft reboot required.</string>
+    <string name="op_validating_post_boot">Validating post-boot configuration…</string>
+    <string name="op_post_boot_success">Post-boot configuration and validation completed.</string>
+    <string name="op_post_boot_failed">Post-boot validation failed; rollback recommended.</string>
+    <string name="op_restore_backup_failed">Failed to restore microG backup.</string>
+    <string name="op_finalize_failed">Failed to complete microG configuration.</string>
+    <string name="op_creating_backup">Creating local backup…</string>
+    <string name="op_backup_success">Local backup created/updated successfully.</string>
+    <string name="op_backup_failed">Failed to create or update local backup.</string>
+    <string name="op_restoring_backup">Restoring local backup…</string>
+    <string name="op_restore_success">Local backup restored successfully.</string>
+    <string name="op_removing_updates">Removing Google updates and preparing stock…</string>
+    <string name="op_updates_removed">Updates removed; stock environment restored.</string>
+    <string name="op_updates_remove_failed">Failed to remove Google updates.</string>
+    <string name="op_deleting_backup">Deleting local backup…</string>
+    <string name="op_backup_deleted">Local backup deleted.</string>
+    <string name="op_delete_backup_failed">Failed to delete backup.</string>
+    <string name="op_rollback_starting">Starting Google stock rollback…</string>
+    <string name="op_rollback_prepared">Rollback prepared; soft reboot required.</string>
+    <string name="op_rollback_failed">Rollback failed.</string>
+    <string name="op_soft_reboot_requesting">Requesting soft reboot…</string>
+
+    <!-- Compatibility Error Messages -->
+    <string name="compat_err_not_homologated">This firmware is not homologated. Enable experimental opt-in and verify all critical capabilities pass.</string>
+    <string name="compat_err_preflight_blocked">Preflight has not authorized this operation yet. Refresh diagnostics.</string>
+    <string name="compat_err_execution_blocked">Execution blocked: %1$s. Check diagnostics before modifying the system.</string>
+
+    <!-- Notifications -->
+    <string name="notif_pending_title">DeGoogle</string>
+    <string name="notif_pending_text">microG configuration is ready to be completed.</string>
 
     <!-- Common / General -->
     <string name="yes">yes</string>
@@ -36,8 +116,8 @@
     <string name="cancel">Cancel</string>
     <string name="continue_btn">Continue</string>
     <string name="understand_btn">Got it</string>
-    <string name="operation_in_progress">Operation in progress</string>
-    <string name="last_operation_result">Last operation result</string>
+    <string name="operation_log_live">Live operation log</string>
+    <string name="operation_log_last">Last operation log</string>
     <string name="technical_details">Technical details</string>
 
     <!-- Home Screen -->
@@ -50,6 +130,8 @@
     <string name="home_unsupported_desc">The device has root access, but its configuration does not match any supported profile. No modifications were made.\n</string>
     <string name="home_volatile_root_notice">Only Soft Reboot (userspace) is used by the app. A full reboot clears dynamic mounts and loses temporary exploit root.</string>
     <string name="home_system_environment">System Environment</string>
+    <string name="home_updates_detected_title">Google updates detected</string>
+    <string name="home_updates_detected_text">The active GMS/Play Store updates will be removed automatically at the beginning of preparation, returning to the stock APKs. Play Store will be temporarily disabled to prevent an immediate re-update.</string>
     <string name="home_install_microg_btn">Install microG (DeGoogle)</string>
     <string name="home_prepared_title">Preparation completed</string>
     <string name="home_badge_reboot_required">Reboot Required</string>
@@ -74,6 +156,10 @@
     <string name="home_btn_remove_update_stock">Remove update and return to stock</string>
     <string name="home_dialog_degoogle_title">DeGoogle?</string>
     <string name="home_dialog_degoogle_text">The application will make temporary changes to the system environment using root and bind mounts.\n\nNo files on the /product partition will be physically modified.\n\nThe process requires a soft reboot.</string>
+    <string name="home_dialog_experimental_text">This firmware is not in the known-good database. The operation will proceed only if the compatibility engine has PASS for every critical capability and experimental opt-in is enabled.</string>
+    <string name="home_experimental_button">Review experimental operation</string>
+    <string name="home_compatibility_blocked">Compatibility engine blocked execution. Open Diagnostics for evidence.</string>
+    <string name="home_recovery_required">An incomplete transaction was found. Do not start another operation; inspect diagnostics and restore stock if necessary.</string>
     <string name="home_dialog_restore_title">Restore Google?</string>
     <string name="home_dialog_restore_text">microG will be removed from the active environment and original Google components will be revealed again.\n\nYour microG backup will be preserved.</string>
     <string name="home_dialog_setup_title">microG installed successfully</string>

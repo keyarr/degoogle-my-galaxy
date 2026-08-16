@@ -44,10 +44,12 @@ import dev.degoogle.app.R
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
+import dev.degoogle.app.ui.components.OperationLog
 import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusIcon
 import dev.degoogle.app.ui.components.StatusRow
+import dev.degoogle.app.ui.components.TechnicalStatusRow
 
 @Composable
 fun BackupScreen(ui: UiState, vm: AppViewModel) {
@@ -100,7 +102,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                     status = Status.UNKNOWN,
                     leadingIcon = Icons.Rounded.FolderZip,
                 )
-                StatusRow(
+                TechnicalStatusRow(
                     label = stringResource(R.string.backup_storage_path_label),
                     value = stringResource(R.string.backup_storage_path_value),
                     status = Status.UNKNOWN,
@@ -151,27 +153,25 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         }
 
         if (ui.operationInProgress || ui.steps.isNotEmpty()) {
-            InfoCard(if (ui.operationInProgress) stringResource(R.string.operation_in_progress) else stringResource(R.string.last_operation_result)) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    ui.steps.forEach { step ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            StatusIcon(
-                                when (step.ok) {
-                                    true -> Status.OK
-                                    false -> Status.FAIL
-                                    null -> Status.UNKNOWN
-                                },
-                            )
-                            Text(text = step.text, style = MaterialTheme.typography.bodySmall)
-                        }
+            InfoCard(
+                title = stringResource(
+                    if (ui.operationInProgress) R.string.operation_log_live
+                    else R.string.operation_log_last,
+                ),
+                action = {
+                    if (ui.operationInProgress) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
                     }
-                }
+                },
+            ) {
+                OperationLog(
+                    steps = ui.steps,
+                    inProgress = ui.operationInProgress,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
 

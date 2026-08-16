@@ -2,6 +2,7 @@ package dev.degoogle.app.microg
 
 import android.content.Context
 import android.util.Log
+import dev.degoogle.app.R
 import dev.degoogle.app.root.BackendRunner
 import dev.degoogle.app.root.RootExecutor
 import java.io.File
@@ -37,16 +38,16 @@ class MicrogManager(
 
     suspend fun prepareNewSession(): PrepareResult {
         Log.i(TAG, "iniciando prepareNewSession")
-        onStep("Consultando o repositório oficial do microG…")
+        onStep(context.getString(R.string.op_querying_repo))
         val gms = releases.latest("com.google.android.gms")
-            ?: return PrepareResult(false, null, null, "Não foi possível consultar o repositório do microG.").also {
+            ?: return PrepareResult(false, null, null, context.getString(R.string.op_repo_error)).also {
                 Log.e(TAG, "falha ao consultar release do GmsCore")
             }
         Log.i(TAG, "GmsCore: v${gms.versionCode} ${gms.apkName} sha256=${gms.sha256.take(16)}…")
         onStep("microG Services: ${label(gms)}")
 
         val companion = releases.latest("com.android.vending")
-            ?: return PrepareResult(false, gms, null, "Não foi possível consultar a release do Companion.").also {
+            ?: return PrepareResult(false, gms, null, context.getString(R.string.op_companion_error)).also {
                 Log.e(TAG, "falha ao consultar release do Companion")
             }
         Log.i(TAG, "Companion: v${companion.versionCode} ${companion.apkName}")
@@ -57,32 +58,30 @@ class MicrogManager(
         val gmsApk = File(downloads, gms.downloadFileName)
         val companionApk = File(downloads, companion.downloadFileName)
 
-        onStep("Baixando microG Services…")
+        onStep(context.getString(R.string.op_downloading_gms))
         if (!releases.download(gms, gmsApk)) {
             gmsApk.delete()
-            return PrepareResult(false, gms, companion, "Falha no download do microG Services.")
+            return PrepareResult(false, gms, companion, context.getString(R.string.op_download_gms_failed))
         }
-        onStep("Baixando microG Companion…")
+        onStep(context.getString(R.string.op_downloading_companion))
         if (!releases.download(companion, companionApk)) {
             gmsApk.delete(); companionApk.delete()
-            return PrepareResult(false, gms, companion, "Falha no download do Companion.")
+            return PrepareResult(false, gms, companion, context.getString(R.string.op_download_companion_failed))
         }
 
-        onStep("Validando APKs (pacote, versão, assinatura, hash)…")
+        onStep(context.getString(R.string.op_validating_apks))
         val v1 = validator.validate(
             file = gmsApk,
             expectedPackage = "com.google.android.gms",
             expectedVersionCode = gms.versionCode,
-            // GitHub não publica versionName por pacote (tag vale para o GmsCore;
-            // o Companion tem o seu). Só exigimos versionName quando a fonte
-            // (F-Droid v2) informa um por pacote.
             expectedVersionName = gms.versionName.takeIf { gms.sha256.isNotEmpty() } ?: "",
             expectedSha256 = gms.sha256,
-            expectedCertSha256 = null, // índice v1 não publica cert; v2 sim
+            expectedCertSha256 = null,
         )
         if (v1 !is ApkValidator.ValidationResult.Ok) {
             gmsApk.delete()
-            return PrepareResult(false, gms, companion, "microG Services inválido: ${(v1 as? ApkValidator.ValidationResult.Failed)?.reason}")
+            val reason = (v1 as? ApkValidator.ValidationResult.Failed)?.reason.orEmpty()
+            return PrepareResult(false, gms, companion, context.getString(R.string.op_invalid_gms, reason))
         }
         val v2 = validator.validate(
             file = companionApk,
@@ -94,69 +93,94 @@ class MicrogManager(
         )
         if (v2 !is ApkValidator.ValidationResult.Ok) {
             companionApk.delete()
-            return PrepareResult(false, gms, companion, "Companion inválido: ${(v2 as? ApkValidator.ValidationResult.Failed)?.reason}")
+            val reason = (v2 as? ApkValidator.ValidationResult.Failed)?.reason.orEmpty()
+            return PrepareResult(false, gms, companion, context.getString(R.string.op_invalid_companion, reason))
         }
 
-        onStep("Aplicando máscaras e bind mounts (root)…")
+        onStep(context.getString(R.string.op_preflight))
+        val preflight = backend.preflight()
+        if (!preflight.succeeded) {
+            return PrepareResult(
+                false,
+                gms,
+                companion,
+                context.getString(
+                    R.string.op_preflight_blocked,
+                    preflight.exitCode,
+                    preflight.stderr.trim().takeLast(400),
+                ),
+            )
+        }
+
+        onStep(context.getString(R.string.op_applying_masks))
         val r = backend.prepare(gmsApk.absolutePath, companionApk.absolutePath)
         if (!r.succeeded) {
             Log.e(TAG, "prepare falhou exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
             return PrepareResult(
                 false, gms, companion,
-                "prepare falhou (exit ${r.exitCode}). Nenhuma alteração foi mantida.\n" +
+                context.getString(
+                    R.string.op_prepare_failed,
+                    r.exitCode,
                     r.stderr.trim().takeLast(400),
+                ),
             )
         }
         Log.i(TAG, "prepare ok")
-        onStep("Preparação concluída — soft reboot necessário.")
+        onStep(context.getString(R.string.op_prepared_success))
         return PrepareResult(true, gms, companion, "ok")
     }
 
     suspend fun finalize(): Boolean {
-        onStep("Verificando priv-app e aplicando configuração técnica…")
+        onStep(context.getString(R.string.op_validating_post_boot))
         val r = backend.finalize()
         if (!r.succeeded) {
-            onStep("finalize falhou (exit ${r.exitCode}): ${r.stderr.lineSequence().lastOrNull()}")
+            onStep("finalize exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
             return false
         }
+        val postBoot = backend.postBootValidate()
+        if (!postBoot.succeeded) {
+            onStep(context.getString(R.string.op_post_boot_failed))
+            return false
+        }
+        onStep(context.getString(R.string.op_post_boot_success))
         return true
     }
 
     suspend fun createBackup(): Boolean {
-        onStep("Criando backup do microG…")
+        onStep(context.getString(R.string.op_creating_backup))
         val r = backend.backup()
         if (!r.succeeded) {
-            onStep("backup falhou (exit ${r.exitCode}): ${r.stderr.lineSequence().lastOrNull()}")
+            onStep("backup exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
             return false
         }
-        onStep("Backup criado.")
+        onStep(context.getString(R.string.op_backup_success))
         return true
     }
 
     suspend fun restoreBackup(): Boolean {
-        onStep("Restaurando backup do MicroG Session…")
+        onStep(context.getString(R.string.op_restoring_backup))
         val r = backend.restoreBackup()
         if (!r.succeeded) {
-            onStep("restore-backup falhou (exit ${r.exitCode}): ${r.stderr.lineSequence().lastOrNull()}")
+            onStep("restore-backup exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
             return false
         }
-        onStep("Backup restaurado.")
+        onStep(context.getString(R.string.op_restore_success))
         return true
     }
 
     suspend fun restoreStock(wipeData: Boolean = true): Boolean {
-        onStep("Removendo máscaras e revelando o stock…")
+        onStep(context.getString(R.string.op_rollback_starting))
         val r = backend.restoreStock(wipeData)
         if (!r.succeeded) {
-            onStep("restore-stock falhou (exit ${r.exitCode}): ${r.stderr.lineSequence().lastOrNull()}")
+            onStep("restore-stock exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
             return false
         }
-        onStep("Rollback preparado — soft reboot necessário.")
+        onStep(context.getString(R.string.op_rollback_prepared))
         return true
     }
 
     suspend fun softReboot(): Boolean {
-        onStep("Solicitando soft reboot…")
+        onStep(context.getString(R.string.op_soft_reboot_requesting))
         val r = backend.softReboot()
         return r.succeeded
     }

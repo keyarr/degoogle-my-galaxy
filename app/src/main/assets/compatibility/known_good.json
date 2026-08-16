@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "devices": [
+    {
+      "id": "samsung-sm-s928b-android16-kernelsu",
+      "manufacturer": "samsung",
+      "model": "SM-S928B",
+      "androidSdk": 36,
+      "buildFingerprintPattern": "^samsung/.*/e3q:16/.*/S928BXXU5DZDP:user/release-keys$",
+      "rootBackend": "KERNELSU",
+      "rebootStrategy": "KSUD_SOFT_REBOOT",
+      "firmwareValidated": true,
+      "status": "KNOWN_GOOD",
+      "expectedPaths": {
+        "gms": "/product/priv-app/GmsCore",
+        "gsf": "/system_ext/priv-app/GoogleServicesFramework",
+        "store": "/product/priv-app/Phonesky"
+      }
+    }
+  ]
+}

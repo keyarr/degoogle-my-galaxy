@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import dev.degoogle.app.data.Prefs
 
@@ -25,15 +26,21 @@ class BootReceiver : BroadcastReceiver() {
         if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_LOCKED_BOOT_COMPLETED) {
             return
         }
-        val pending = runBlocking { Prefs(context).hasPendingOperation() }
+        val prefs = Prefs(context)
+        val pending = runBlocking { prefs.hasPendingOperation() }
         if (!pending) return
+
+        // Notificações desativadas: operação pendente é concluída apenas
+        // abrindo o app — nada é notificado.
+        val notificationsOn = runBlocking { prefs.notificationsEnabled.first() }
+        if (!notificationsOn) return
 
         createChannel(context)
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle("DeGoogle")
-            .setContentText("A configuração do microG está pronta para ser concluída.")
+            .setContentTitle(context.getString(dev.degoogle.app.R.string.notif_pending_title))
+            .setContentText(context.getString(dev.degoogle.app.R.string.notif_pending_text))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(

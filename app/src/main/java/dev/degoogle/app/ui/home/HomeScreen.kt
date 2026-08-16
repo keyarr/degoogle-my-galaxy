@@ -65,10 +65,12 @@ import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.Screen
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
+import dev.degoogle.app.ui.components.OperationLog
 import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusIcon
 import dev.degoogle.app.ui.components.StatusRow
+import dev.degoogle.app.ui.components.TechnicalStatusRow
 
 @Composable
 fun HomeScreen(
@@ -127,9 +129,29 @@ fun HomeScreen(
             return@Column
         }
 
+        if (ui.recoveryRequired) {
+            InfoCard(stringResource(R.string.error_title)) {
+                Text(
+                    text = stringResource(R.string.home_recovery_required),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                OutlinedButton(
+                    onClick = { vm.restoreGoogle() },
+                    enabled = !ui.operationInProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(stringResource(R.string.home_btn_restore_google_stock))
+                }
+            }
+        }
+
         when (ui.state) {
             DeviceState.NO_ROOT -> NoRootCard()
-            DeviceState.UNSUPPORTED -> UnsupportedCard(ui)
+            DeviceState.UNSUPPORTED -> UnsupportedCard(ui) { showDeGoogleConfirm = true }
             DeviceState.STOCK -> StockContent(ui, vm, onNavigate, { showDeGoogleConfirm = true })
             DeviceState.PREPARED -> PreparedContent(ui, vm, onNavigate)
             DeviceState.MICROG_BOOTED -> BootedContent(ui, vm)
@@ -153,30 +175,25 @@ fun HomeScreen(
         }
 
         if (ui.operationInProgress || ui.steps.isNotEmpty()) {
-            InfoCard(if (ui.operationInProgress) stringResource(R.string.operation_in_progress) else stringResource(R.string.last_operation_result)) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    ui.steps.forEach { s ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            StatusIcon(
-                                when (s.ok) {
-                                    true -> Status.OK
-                                    false -> Status.FAIL
-                                    null -> Status.UNKNOWN
-                                },
-                            )
-                            Text(
-                                text = s.text,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
+            InfoCard(
+                title = stringResource(
+                    if (ui.operationInProgress) R.string.operation_log_live
+                    else R.string.operation_log_last,
+                ),
+                action = {
+                    if (ui.operationInProgress) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
                     }
-                }
+                },
+            ) {
+                OperationLog(
+                    steps = ui.steps,
+                    inProgress = ui.operationInProgress,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
 
@@ -215,7 +232,15 @@ fun HomeScreen(
             icon = { Icon(Icons.Rounded.DownloadForOffline, contentDescription = null) },
             title = { Text(stringResource(R.string.home_dialog_degoogle_title)) },
             text = {
-                Text(stringResource(R.string.home_dialog_degoogle_text))
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.home_dialog_degoogle_text))
+                    if (ui.compatibility.compatibility.name != "SUPPORTED") {
+                        Text(
+                            stringResource(R.string.home_dialog_experimental_text),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             },
             confirmButton = {
                 Button(
@@ -294,7 +319,7 @@ private fun NoRootCard() {
 }
 
 @Composable
-private fun UnsupportedCard(ui: UiState) {
+private fun UnsupportedCard(ui: UiState, onExperimental: () -> Unit) {
     InfoCard(stringResource(R.string.home_unsupported_title)) {
         Text(
             text = stringResource(R.string.home_unsupported_desc),
@@ -306,10 +331,33 @@ private fun UnsupportedCard(ui: UiState) {
         StatusRow(stringResource(R.string.diag_model), f.model, Status.UNKNOWN, leadingIcon = Icons.Rounded.Fingerprint)
         StatusRow(stringResource(R.string.diag_device), f.device, Status.UNKNOWN, leadingIcon = Icons.Rounded.Security)
         StatusRow(stringResource(R.string.diag_android), "${f.androidRelease} (SDK ${f.androidSdk})", Status.UNKNOWN, leadingIcon = Icons.Rounded.Android)
-        StatusRow(stringResource(R.string.diag_fingerprint), f.fingerprint.ifBlank { stringResource(R.string.not_reported) }, Status.UNKNOWN)
-        StatusRow(stringResource(R.string.diag_real_gms), f.gmsPath ?: stringResource(R.string.absent), Status.UNKNOWN)
-        StatusRow(stringResource(R.string.diag_real_gsf), f.gsfPath ?: stringResource(R.string.absent), Status.UNKNOWN)
-        StatusRow(stringResource(R.string.diag_real_store), f.storePath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        TechnicalStatusRow(stringResource(R.string.diag_fingerprint), f.fingerprint.ifBlank { stringResource(R.string.not_reported) }, Status.UNKNOWN)
+        TechnicalStatusRow(stringResource(R.string.diag_real_gms), f.gmsPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        TechnicalStatusRow(stringResource(R.string.diag_real_gsf), f.gsfPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        TechnicalStatusRow(stringResource(R.string.diag_real_store), f.storePath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        StatusRow(
+            stringResource(R.string.diag_compatibility),
+            when (ui.compatibility.compatibility) {
+                dev.degoogle.app.domain.DeviceCompatibility.SUPPORTED -> stringResource(R.string.compat_supported)
+                dev.degoogle.app.domain.DeviceCompatibility.PROBABLY_SUPPORTED -> stringResource(R.string.compat_probably_supported)
+                dev.degoogle.app.domain.DeviceCompatibility.REQUIRES_PROFILE -> stringResource(R.string.compat_requires_profile)
+                dev.degoogle.app.domain.DeviceCompatibility.UNSAFE -> stringResource(R.string.compat_unsafe)
+                dev.degoogle.app.domain.DeviceCompatibility.UNSUPPORTED -> stringResource(R.string.compat_unsupported)
+            },
+            if (ui.compatibility.compatibility.name == "PROBABLY_SUPPORTED") Status.UNKNOWN else Status.FAIL,
+            leadingIcon = Icons.Rounded.WarningAmber,
+        )
+        if (ui.compatibility.compatibility.name == "PROBABLY_SUPPORTED") {
+            Button(
+                onClick = onExperimental,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(stringResource(R.string.home_experimental_button))
+            }
+        }
     }
 }
 
@@ -321,6 +369,8 @@ private fun StockContent(
     onDeGoogle: () -> Unit,
 ) {
     val f = ui.facts
+    val gmsHasUpdate = f.gmsPackage?.hasDataUpdate == true || f.gmsPath?.startsWith("/data/app/") == true
+    val storeHasUpdate = f.storePackage?.hasDataUpdate == true || f.storePath?.startsWith("/data/app/") == true
 
     InfoCard(
         title = stringResource(R.string.home_system_environment),
@@ -357,6 +407,17 @@ private fun StockContent(
                 if (f.backupPresent) stringResource(R.string.available) else stringResource(R.string.not_created),
                 if (f.backupPresent) Status.OK else Status.ABSENT,
                 leadingIcon = Icons.Rounded.Backup,
+            )
+        }
+    }
+
+    if (gmsHasUpdate || storeHasUpdate) {
+        InfoCard(stringResource(R.string.home_updates_detected_title)) {
+            Text(
+                text = stringResource(R.string.home_updates_detected_text),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
             )
         }
     }
@@ -604,9 +665,9 @@ private fun ErrorContent(ui: UiState, vm: AppViewModel, onNavigate: (Screen) -> 
             modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
         )
         val f = ui.facts
-        StatusRow(stringResource(R.string.diag_real_gms), f.gmsPath ?: stringResource(R.string.absent), Status.UNKNOWN)
-        StatusRow(stringResource(R.string.diag_real_gsf), f.gsfPath ?: stringResource(R.string.absent), Status.UNKNOWN)
-        StatusRow(stringResource(R.string.diag_real_store), f.storePath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        TechnicalStatusRow(stringResource(R.string.diag_real_gms), f.gmsPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        TechnicalStatusRow(stringResource(R.string.diag_real_gsf), f.gsfPath ?: stringResource(R.string.absent), Status.UNKNOWN)
+        TechnicalStatusRow(stringResource(R.string.diag_real_store), f.storePath ?: stringResource(R.string.absent), Status.UNKNOWN)
         StatusRow(stringResource(R.string.diag_mount_gms), if (f.mountGms) stringResource(R.string.active) else stringResource(R.string.inactive), Status.UNKNOWN)
         StatusRow(stringResource(R.string.diag_mount_gsf), if (f.mountGsf) stringResource(R.string.active) else stringResource(R.string.inactive), Status.UNKNOWN)
         StatusRow(stringResource(R.string.diag_mount_store), if (f.mountStore) stringResource(R.string.active) else stringResource(R.string.inactive), Status.UNKNOWN)

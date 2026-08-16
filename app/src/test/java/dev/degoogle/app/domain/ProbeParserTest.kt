@@ -19,6 +19,13 @@ class ProbeParserTest {
         DEGOOGLE_ANDROID_SDK=36
         DEGOOGLE_ANDROID_RELEASE=16
         DEGOOGLE_FINGERPRINT=samsung/e3qxxx/e3q:16/UP1A.231005.007:user/release-keys
+        DEGOOGLE_BOARD=kalama
+        DEGOOGLE_HARDWARE=qcom
+        DEGOOGLE_BUILD_ID=UP1A.231005.007
+        DEGOOGLE_SECURITY_PATCH=2026-08-01
+        DEGOOGLE_ONE_UI_VERSION=8.5
+        DEGOOGLE_KERNEL_VERSION=Linux test
+        DEGOOGLE_ABI_LIST=arm64-v8a,armeabi-v7a
         DEGOOGLE_SELINUX=Enforcing
         DEGOOGLE_ABI=arm64-v8a
         DEGOOGLE_GMS_PATH=/product/priv-app/GmsCore/GmsCore.apk
@@ -29,7 +36,25 @@ class ProbeParserTest {
         DEGOOGLE_GMS_PRIVILEGED=1
         DEGOOGLE_GSF_PATH=
         DEGOOGLE_STORE_PATH=/product/priv-app/Phonesky/Companion.apk
+        DEGOOGLE_PREPARATION_INFO=GMS: update em /data/app será removido durante a preparação
         DEGOOGLE_STORE_VERSION=0.3.0
+        DEGOOGLE_GMS_ACTIVE_CODE_PATH=/product/priv-app/GmsCore/base.apk
+        DEGOOGLE_GMS_ORIGINAL_SYSTEM_PATH=/product/priv-app/GmsCore/base.apk
+        DEGOOGLE_GMS_TARGET_DIRECTORY=/product/priv-app/GmsCore
+        DEGOOGLE_GMS_BASE_APK=/product/priv-app/GmsCore/base.apk
+        DEGOOGLE_GMS_SPLIT_APKS=/product/priv-app/GmsCore/split_config.arm64.apk
+        DEGOOGLE_GMS_HAS_DATA_UPDATE=0
+        DEGOOGLE_CAP_GLOBAL_MOUNT_NAMESPACE_STATUS=PASS
+        DEGOOGLE_CAP_GLOBAL_MOUNT_NAMESPACE_EVIDENCE=nsenter exit=0
+        DEGOOGLE_CAP_BIND_MOUNT_STATUS=PASS
+        DEGOOGLE_CAP_SELINUX_CONTEXT_CLONABLE_STATUS=PASS
+        DEGOOGLE_CAP_SIGNATURE_SPOOFING_STATUS=PASS
+        DEGOOGLE_CAP_PACKAGE_MANAGER_CACHE_ACCESS_STATUS=PASS
+        DEGOOGLE_CAP_SAFE_SOFT_REBOOT_STATUS=WARN
+        DEGOOGLE_CAP_SAFE_RESTORE_STATUS=PASS
+        DEGOOGLE_REBOOT_STRATEGY_BACKEND=KERNELSU
+        DEGOOGLE_REBOOT_STRATEGY_METHOD=KSUD_SOFT_REBOOT
+        DEGOOGLE_REBOOT_STRATEGY_CONFIDENCE=LOW
         DEGOOGLE_MOUNT_GMS=1
         DEGOOGLE_MOUNT_GSF=1
         DEGOOGLE_MOUNT_STORE=1
@@ -49,15 +74,24 @@ class ProbeParserTest {
         assertEquals("samsung", f.manufacturer)
         assertEquals("SM-S928B", f.model)
         assertEquals("36", f.androidSdk)
+        assertEquals("kalama", f.board)
+        assertEquals("UP1A.231005.007", f.buildId)
+        assertEquals(listOf("arm64-v8a", "armeabi-v7a"), f.abiList)
         assertEquals("/product/priv-app/GmsCore/GmsCore.apk", f.gmsPath)
         assertEquals("0.3.4.240913", f.gmsVersion)
         assertEquals("10123", f.gmsUid)
         assertTrue(f.gmsPrivileged)
         assertEquals(null, f.gsfPath)
+        assertEquals("GMS: update em /data/app será removido durante a preparação", f.preparationInfo)
         assertTrue(f.mountGms)
         assertTrue(f.mountGsf)
         assertTrue(f.mountStore)
         assertEquals("/data/local/tmp/degoogle-mask/gms", f.mountGmsSource)
+        assertEquals("/product/priv-app/GmsCore/base.apk", f.gmsPackage?.baseApk)
+        assertEquals(listOf("/product/priv-app/GmsCore/split_config.arm64.apk"), f.gmsPackage?.splitApks)
+        assertEquals(CapabilityStatus.PASS, f.capabilityResults[Capability.BIND_MOUNT]?.status)
+        assertEquals(CapabilityStatus.WARN, f.capabilityResults[Capability.SAFE_SOFT_REBOOT]?.status)
+        assertEquals("KSUD_SOFT_REBOOT", f.rebootStrategy?.method)
         assertTrue(f.backupPresent)
         assertTrue(f.finalizeDone)
         assertEquals(DeviceState.MICROG_ACTIVE_BACKED_UP, f.shellState)

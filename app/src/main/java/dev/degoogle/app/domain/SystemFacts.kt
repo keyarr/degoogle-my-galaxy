@@ -40,6 +40,22 @@ data class SystemFacts(
     val finalizeDone: Boolean,
     /** Estado derivado pelo próprio backend (informativo; o app recalcula). */
     val shellState: DeviceState?,
+    // Fatos adicionais de discovery. Defaults preservam compatibilidade com
+    // fixtures e callers da primeira versão.
+    val board: String = "",
+    val hardware: String = "",
+    val buildId: String = "",
+    val securityPatch: String = "",
+    val oneUiVersion: String = "",
+    val kernelVersion: String = "",
+    val abiList: List<String> = emptyList(),
+    val gmsPackage: SystemPackageInfo? = null,
+    val gsfPackage: SystemPackageInfo? = null,
+    val storePackage: SystemPackageInfo? = null,
+    val capabilityResults: Map<Capability, CapabilityResult> = emptyMap(),
+    val rebootStrategy: RebootStrategy? = null,
+    /** Aviso operacional quando GMS/Store têm update removível no fluxo. */
+    val preparationInfo: String = "",
 ) {
     companion object {
         val EMPTY = SystemFacts(
@@ -71,6 +87,56 @@ object ProbeParser {
 
         fun str(key: String): String? = map[key]?.takeIf { it.isNotEmpty() }
         fun bool(key: String): Boolean = map[key] == "1"
+        fun list(key: String): List<String> = str(key).orEmpty().split(',')
+            .map(String::trim).filter(String::isNotBlank)
+
+        fun packageInfo(prefix: String, packageName: String): SystemPackageInfo? {
+            val info = SystemPackageInfo(
+                packageName = packageName,
+                activeCodePath = str("${prefix}_ACTIVE_CODE_PATH"),
+                originalSystemPath = str("${prefix}_ORIGINAL_SYSTEM_PATH"),
+                targetDirectory = str("${prefix}_TARGET_DIRECTORY"),
+                baseApk = str("${prefix}_BASE_APK"),
+                splitApks = list("${prefix}_SPLIT_APKS"),
+                hasDataUpdate = bool("${prefix}_HAS_DATA_UPDATE"),
+                backingPartition = str("${prefix}_BACKING_PARTITION"),
+                filesystemType = str("${prefix}_FILESYSTEM_TYPE"),
+                resolvedRealPath = str("${prefix}_RESOLVED_REAL_PATH"),
+            )
+            return info.takeIf {
+                it.activeCodePath != null || it.originalSystemPath != null ||
+                    it.targetDirectory != null || it.hasDataUpdate
+            }
+        }
+
+        val capabilityResults = buildMap {
+            Capability.entries.forEach { capability ->
+                val status = str("CAP_${capability.name}_STATUS")?.let {
+                    runCatching { CapabilityStatus.valueOf(it.uppercase()) }.getOrNull()
+                } ?: return@forEach
+                put(
+                    capability,
+                    CapabilityResult(
+                        status = status,
+                        evidence = str("CAP_${capability.name}_EVIDENCE").orEmpty(),
+                        reason = str("CAP_${capability.name}_REASON").orEmpty(),
+                    ),
+                )
+            }
+        }
+
+        val rebootStrategy = str("REBOOT_STRATEGY_METHOD")?.let {
+            RebootStrategy(
+                backend = str("REBOOT_STRATEGY_BACKEND")?.let { backend ->
+                    runCatching { RootBackendType.valueOf(backend.uppercase()) }.getOrDefault(RootBackendType.UNKNOWN)
+                } ?: RootBackendType.UNKNOWN,
+                method = it,
+                confidence = str("REBOOT_STRATEGY_CONFIDENCE")?.let { confidence ->
+                    runCatching { Confidence.valueOf(confidence.uppercase()) }.getOrDefault(Confidence.UNKNOWN)
+                } ?: Confidence.UNKNOWN,
+                firmwareValidated = bool("REBOOT_STRATEGY_FIRMWARE_VALIDATED"),
+            )
+        }
 
         return SystemFacts(
             rootOk = bool("ROOT_OK"),
@@ -105,6 +171,19 @@ object ProbeParser {
             backupPresent = bool("BACKUP_PRESENT"),
             finalizeDone = bool("FINALIZE_DONE"),
             shellState = str("STATE")?.let { runCatching { DeviceState.valueOf(it) }.getOrNull() },
+            board = str("BOARD").orEmpty(),
+            hardware = str("HARDWARE").orEmpty(),
+            buildId = str("BUILD_ID").orEmpty(),
+            securityPatch = str("SECURITY_PATCH").orEmpty(),
+            oneUiVersion = str("ONE_UI_VERSION").orEmpty(),
+            kernelVersion = str("KERNEL_VERSION").orEmpty(),
+            abiList = list("ABI_LIST"),
+            gmsPackage = packageInfo("GMS", "com.google.android.gms"),
+            gsfPackage = packageInfo("GSF", "com.google.android.gsf"),
+            storePackage = packageInfo("STORE", "com.android.vending"),
+            capabilityResults = capabilityResults,
+            rebootStrategy = rebootStrategy,
+            preparationInfo = str("PREPARATION_INFO").orEmpty(),
         )
     }
 }

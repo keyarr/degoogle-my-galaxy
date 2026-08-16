@@ -51,11 +51,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.degoogle.app.R
+import dev.degoogle.app.domain.CapabilityStatus
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
 import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusRow
+import dev.degoogle.app.ui.components.TechnicalStatusRow
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -130,22 +132,90 @@ fun DiagnosticsScreen(ui: UiState) {
                     value = f.abi,
                     status = Status.UNKNOWN,
                 )
-                StatusRow(
+                TechnicalStatusRow(
                     label = stringResource(R.string.diag_fingerprint),
                     value = f.fingerprint.ifBlank { stringResource(R.string.not_reported) },
                     status = Status.UNKNOWN,
-                    leadingIcon = Icons.Rounded.Tag,
                 )
+            }
+        }
+
+        val isPortuguese = context.resources.configuration.locales[0].language.startsWith("pt")
+
+        InfoCard(stringResource(R.string.diag_card_compatibility)) {
+            Column(modifier = Modifier.padding(top = 8.dp)) {
+                StatusRow(
+                    label = stringResource(R.string.diag_compatibility),
+                    value = when (ui.compatibility.compatibility) {
+                        dev.degoogle.app.domain.DeviceCompatibility.SUPPORTED -> stringResource(R.string.compat_supported)
+                        dev.degoogle.app.domain.DeviceCompatibility.PROBABLY_SUPPORTED -> stringResource(R.string.compat_probably_supported)
+                        dev.degoogle.app.domain.DeviceCompatibility.REQUIRES_PROFILE -> stringResource(R.string.compat_requires_profile)
+                        dev.degoogle.app.domain.DeviceCompatibility.UNSAFE -> stringResource(R.string.compat_unsafe)
+                        dev.degoogle.app.domain.DeviceCompatibility.UNSUPPORTED -> stringResource(R.string.compat_unsupported)
+                    },
+                    status = when (ui.compatibility.compatibility.name) {
+                        "SUPPORTED" -> Status.OK
+                        "PROBABLY_SUPPORTED" -> Status.UNKNOWN
+                        else -> Status.FAIL
+                    },
+                    leadingIcon = Icons.Rounded.Shield,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_known_good_match),
+                    value = when (ui.compatibility.knownGood.level) {
+                        dev.degoogle.app.domain.KnownGoodMatch.EXACT_MATCH -> stringResource(R.string.match_exact)
+                        dev.degoogle.app.domain.KnownGoodMatch.FIRMWARE_FAMILY_MATCH -> stringResource(R.string.match_family)
+                        dev.degoogle.app.domain.KnownGoodMatch.MODEL_ONLY_MATCH -> stringResource(R.string.match_model_only)
+                        dev.degoogle.app.domain.KnownGoodMatch.NO_MATCH -> stringResource(R.string.match_none)
+                    },
+                    status = if (ui.compatibility.knownGood.level.name == "EXACT_MATCH") Status.OK else Status.UNKNOWN,
+                    leadingIcon = Icons.Rounded.Verified,
+                )
+                if (f.preparationInfo.isNotBlank()) {
+                    Text(
+                        text = stringResource(R.string.diag_preparation_info),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.diag_capabilities),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
+                )
+                ui.compatibility.matrix.results.forEach { (capability, result) ->
+                    val status = when (result.status) {
+                        CapabilityStatus.PASS -> Status.OK
+                        CapabilityStatus.WARN -> Status.UNKNOWN
+                        CapabilityStatus.FAIL -> Status.FAIL
+                        CapabilityStatus.UNKNOWN -> Status.UNKNOWN
+                    }
+                    val rawDetail = result.evidence.ifBlank { result.reason }.ifBlank {
+                        when (result.status) {
+                            CapabilityStatus.PASS -> stringResource(R.string.diag_capability_pass)
+                            CapabilityStatus.WARN -> stringResource(R.string.diag_capability_warn)
+                            CapabilityStatus.FAIL -> stringResource(R.string.diag_capability_fail)
+                            CapabilityStatus.UNKNOWN -> stringResource(R.string.diag_capability_unknown)
+                        }
+                    }
+                    val detail = localizeDetail(rawDetail, isPortuguese)
+                    TechnicalStatusRow(
+                        label = capability.name,
+                        value = detail,
+                        status = status,
+                    )
+                }
             }
         }
 
         InfoCard(stringResource(R.string.diag_card_gms)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
-                StatusRow(
+                TechnicalStatusRow(
                     label = stringResource(R.string.diag_path),
                     value = f.gmsPath ?: stringResource(R.string.absent),
                     status = Status.UNKNOWN,
-                    leadingIcon = Icons.Rounded.Folder,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_version),
@@ -210,16 +280,27 @@ fun DiagnosticsScreen(ui: UiState) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 StatusRow(
                     label = stringResource(R.string.diag_gsf_present),
-                    value = if (f.gsfPath != null) stringResource(R.string.yes) else stringResource(R.string.no),
-                    status = if (f.gsfPath == null) Status.OK else Status.FAIL,
+                    value = if (f.mountGsf) {
+                        stringResource(R.string.diag_mount_masked_empty)
+                    } else if (f.gsfPath != null) {
+                        stringResource(R.string.yes)
+                    } else {
+                        stringResource(R.string.no)
+                    },
+                    status = if (f.mountGsf || f.gsfPath != null) Status.OK else Status.FAIL,
                     leadingIcon = Icons.Rounded.Layers,
                 )
-                if (f.gsfPath != null) StatusRow(stringResource(R.string.diag_gsf_path), f.gsfPath, Status.UNKNOWN)
-                StatusRow(
+                if (f.gsfPath != null) {
+                    TechnicalStatusRow(
+                        label = stringResource(R.string.diag_gsf_path),
+                        value = f.gsfPath,
+                        status = Status.UNKNOWN,
+                    )
+                }
+                TechnicalStatusRow(
                     label = stringResource(R.string.diag_store_path),
                     value = f.storePath ?: stringResource(R.string.absent),
                     status = Status.UNKNOWN,
-                    leadingIcon = Icons.Rounded.Store,
                 )
                 if (f.storeVersion != null) StatusRow(stringResource(R.string.diag_store_version), f.storeVersion, Status.UNKNOWN)
             }
@@ -243,7 +324,7 @@ fun DiagnosticsScreen(ui: UiState) {
                     value = if (f.mountStore) stringResource(R.string.diag_mount_masked_companion) else stringResource(R.string.diag_mount_visible_stock),
                     status = if (f.mountStore) Status.OK else Status.ABSENT,
                 )
-                StatusRow(
+                TechnicalStatusRow(
                     label = stringResource(R.string.diag_mount_gms_source),
                     value = f.mountGmsSource ?: stringResource(R.string.not_reported),
                     status = Status.UNKNOWN,
@@ -264,7 +345,7 @@ fun DiagnosticsScreen(ui: UiState) {
                     value = stringResource(R.string.backup_structure_value),
                     status = Status.UNKNOWN,
                 )
-                StatusRow(
+                TechnicalStatusRow(
                     label = stringResource(R.string.diag_local_dir),
                     value = stringResource(R.string.backup_storage_path_value),
                     status = Status.UNKNOWN,
@@ -341,6 +422,57 @@ private fun copyDiagnostics(context: Context, ui: UiState) {
     sb.appendLine("Store: ${f.storePath ?: "ausente"} v${f.storeVersion ?: "?"}")
     sb.appendLine("Mounts: GMS=${f.mountGms} GSF=${f.mountGsf} Store=${f.mountStore} fonte=${f.mountGmsSource ?: "—"}")
     sb.appendLine("Backup: presente=${f.backupPresent} formato=MicroG Session local=/data/local/tmp/microg-backup")
+    sb.appendLine("Compatibilidade: ${ui.compatibility.compatibility} match=${ui.compatibility.knownGood.level}")
+    sb.appendLine("\n===== COMPATIBILITY REPORT JSON =====")
+    sb.appendLine(
+        kotlinx.serialization.json.Json {
+            prettyPrint = true
+            encodeDefaults = true
+        }.encodeToString(
+            dev.degoogle.app.domain.CompatibilityReport.serializer(),
+            ui.compatibility.report(f),
+        ),
+    )
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("DeGoogle diagnóstico", sb.toString()))
+    cm.setPrimaryClip(ClipData.newPlainText("DeGoogle Diagnostics", sb.toString()))
+}
+
+private fun localizeDetail(detail: String, isPt: Boolean): String {
+    if (detail.isBlank()) return detail
+    if (isPt) return detail
+
+    var text = detail
+    text = text.replace("bind temporário global criado, lido e desmontado", "Global temporary bind created, read and unmounted")
+    text = text.replace("GMS mascarado via microG", "GMS masked via microG")
+    text = text.replace("GSF mascarado (vazio)", "GSF masked (empty)")
+    text = text.replace("Store mascarada via Companion", "Play Store masked via Companion")
+    text = text.replace("alvo=", "target=")
+    text = text.replace("máscara microG ativa", "microG mask active")
+    text = text.replace("máscara vazia ativa", "empty mask active")
+    text = text.replace("máscara companion ativa", "companion mask active")
+    text = text.replace("origem=", "source=")
+    text = text.replace("alvo restaurado=", "restored target=")
+    text = text.replace("microG ativo com assinatura oficial ou FakeGApps verificado", "microG active with official verified signature")
+    text = text.replace("microG ativo com assinatura verificada", "microG active with verified signature")
+    text = text.replace("cache legível e diretório pai gravável", "cache readable and parent directory writable")
+    text = text.replace("MicroG ativo com flag PRIVILEGED", "microG active with PRIVILEGED flag")
+    text = text.replace("microG ativo com flag PRIVILEGED", "microG active with PRIVILEGED flag")
+    text = text.replace("estratégia existe, mas firmware não foi homologado", "reboot strategy exists, but firmware is unhomologated")
+    text = text.replace("estratégia KSUD_SOFT_REBOOT homologada no Known-Good DB para este firmware", "KSUD_SOFT_REBOOT strategy validated in Known-Good DB")
+    text = text.replace("homologada no Known-Good DB para este firmware", "validated in Known-Good DB for this firmware")
+    text = text.replace("snapshot/journal persistentes podem ser criados em", "persistent snapshot/journal can be created in")
+    text = text.replace("modelo, SDK, fingerprint, root e metadados do firmware conferem", "model, SDK, fingerprint, root and firmware metadata match")
+    text = text.replace("somente modelo Samsung conhecido; isso não prova compatibilidade", "only Samsung model known; does not prove compatibility")
+    text = text.replace("modelo, SDK e backend conferem; fingerprint não homologado", "model, SDK and backend match; fingerprint unhomologated")
+    text = text.replace("dumpsys package reporta FAKE_PACKAGE_SIGNATURE concedida ao GMS", "dumpsys package reports FAKE_PACKAGE_SIGNATURE granted to GMS")
+    text = text.replace("permissão especial mencionada, mas concessão não foi confirmada", "special permission mentioned, but grant not confirmed")
+    text = text.replace("detectados; validação funcional pendente", "detected; functional validation pending")
+    text = text.replace("PackageManager retornou a assinatura FakeGApps para GMS e Play Store; verificação funcional concluída", "PackageManager returned FakeGApps signature for GMS and Play Store; functional check passed")
+    text = text.replace("PackageManager ainda não retorna a assinatura spoofada para GMS e Play Store", "PackageManager does not yet return spoofed signature for GMS and Play Store")
+    text = text.replace("nenhuma evidência funcional de signature spoofing", "no functional evidence of signature spoofing")
+    text = text.replace("mecanismo de root ausente ou recusado", "root mechanism absent or denied")
+    text = text.replace("firmware Samsung reconhecido", "Samsung firmware recognized")
+    text = text.replace("não foi possível reproduzir o contexto SELinux do alvo", "could not reproduce target SELinux context")
+    text = text.replace("nsenter validado contra", "nsenter validated against")
+    return text
 }
