@@ -1,6 +1,6 @@
 # DeGoogle
 
-DeGoogle is a root Android app that turns the shell procedure for temporarily replacing Google Play Services / GSF / Play Store with **microG Services + microG Companion** into a near one-click process with explicit checks, rollback, and state validation.
+DeGoogle is a root Android app that turns the shell procedure for temporarily replacing Google Play Services / GSF / Play Store with **microG Services + microG Companion** into a near one-click process. It prepares a volatile microG environment, performs a userspace soft reboot, and can back up microG data for restoration.
 
 > [!WARNING]
 > DeGoogle modifies privileged Android state and is still experimental.
@@ -55,6 +55,7 @@ V1 currently supports a single profile:
 
 - **Samsung Galaxy S24 Ultra (SM-S928x)**
 - **KernelSU root**
+- **Required module: `fakegapps`** — provides signature spoofing required by microG. Ensure this module is installed and active before activating microG.
 - Main target: devices rooted through [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy)
 
 Root-My-Galaxy relies on a volatile exploit to load KernelSU. A **full kernel reboot loses both root and the temporary microG environment**.
@@ -239,7 +240,7 @@ The recorded stack involves:
 com.android.server.am.CachedAppOptimizer.compactApp
 ```
 
-The same crash signature was present on the test device before DeGoogle usage. In one field incident on **2026-08-15**, repeated framework crashes escalated to Android **Rescue Party**, resulting in a full kernel reboot.
+The same crash signature was present on the test device before DeGoogle usage. In one field incident on **2026-08-15**, repeated framework crashes escalated to Android **Rescue Party**, resulting in a reboot loop on the test device. The device remained recoverable and the microG backup under `/data/local/tmp/microg-backup/` survived the incident.
 
 Observed boot reason:
 
