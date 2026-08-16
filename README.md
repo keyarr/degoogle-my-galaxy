@@ -9,7 +9,6 @@ DeGoogle is a root Android app that turns the shell procedure for temporarily re
 
 ## Project status
 
-**v0.2**
 
 The main lifecycle has been validated on a real **SM-S928B** running **Android 16 / One UI 8.5**:
 
