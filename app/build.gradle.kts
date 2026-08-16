@@ -1,9 +1,32 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+val releaseSigningProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.isFile) {
+        propertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun releaseSigningProperty(name: String, environmentName: String): String? =
+    releaseSigningProperties.getProperty(name)
+        ?: providers.environmentVariable(environmentName).orNull
+
+val releaseStoreFile = releaseSigningProperty("storeFile", "DEGOOGLE_RELEASE_STORE_FILE")
+val releaseStorePassword = releaseSigningProperty("storePassword", "DEGOOGLE_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = releaseSigningProperty("keyAlias", "DEGOOGLE_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningProperty("keyPassword", "DEGOOGLE_RELEASE_KEY_PASSWORD")
+val releaseSigningConfigured = !releaseStoreFile.isNullOrBlank() &&
+    !releaseStorePassword.isNullOrBlank() &&
+    !releaseKeyAlias.isNullOrBlank() &&
+    !releaseKeyPassword.isNullOrBlank() &&
+    rootProject.file(releaseStoreFile.orEmpty()).isFile
 
 android {
     namespace = "dev.degoogle.app"
@@ -13,16 +36,25 @@ android {
         applicationId = "dev.degoogle"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            releaseStoreFile?.let { storeFile = rootProject.file(it) }
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -46,6 +78,14 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+}
+
+androidComponents {
+    beforeVariants(selector().withBuildType("release")) {
+        check(releaseSigningConfigured) {
+            "Release signing is not configured. Provide keystore.properties or DEGOOGLE_RELEASE_* environment variables."
         }
     }
 }

@@ -13,6 +13,7 @@ import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.domain.CompatibilityEngine
 import dev.degoogle.app.domain.KnownGoodDatabase
 import dev.degoogle.app.domain.TransactionJournalStore
+import dev.degoogle.app.domain.TransactionReconciliation
 import dev.degoogle.app.domain.TransactionState
 import dev.degoogle.app.domain.StateDetector
 import dev.degoogle.app.domain.SystemFacts
@@ -252,7 +253,27 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            val journal = transactionJournal.read()
+            var journal = transactionJournal.read()
+            if (TransactionReconciliation.shouldCommitActiveState(journal, state)) {
+                // O processo pode ter chegado a MICROG_ACTIVE antes de a
+                // Activity conseguir registrar COMMITTED. A validação completa
+                // é obrigatória antes de fechar o journal; não basta confiar no
+                // estado derivado pelo primeiro probe.
+                val postBoot = backend.postBootValidate(streamProgress = false)
+                if (postBoot.succeeded) {
+                    val current = journal
+                    if (current != null && transactionJournal.update(
+                            operationId = current.operationId,
+                            fingerprint = facts.fingerprint,
+                            state = TransactionState.COMMITTED,
+                            detail = "post-boot validation confirmed active microG state",
+                        )
+                    ) {
+                        prefs.clearPendingOperation()
+                        journal = transactionJournal.read()
+                    }
+                }
+            }
             val stockConfirmed = state == DeviceState.STOCK
             if (stockConfirmed && journal?.state in setOf(
                     TransactionState.ROLLBACK_RUNNING,

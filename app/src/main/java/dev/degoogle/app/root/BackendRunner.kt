@@ -76,7 +76,8 @@ class BackendRunner(
             extraEnvironment = mapOf("DEGOOGLE_REBOOT_SOURCE" to source.value),
         )
 
-    suspend fun postBootValidate(): BackendCommandResult = runCommand(listOf("post-boot-validate"))
+    suspend fun postBootValidate(streamProgress: Boolean = true): BackendCommandResult =
+        runCommand(listOf("post-boot-validate"), streamProgress = streamProgress)
 
     suspend fun rollback(wipeData: Boolean = false): BackendCommandResult =
         runCommand(if (wipeData) listOf("rollback", "--wipe-data") else listOf("rollback"))

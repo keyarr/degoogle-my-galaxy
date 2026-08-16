@@ -42,4 +42,45 @@ class TransactionJournalTest {
             filesDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `transação pós reboot ativa pode ser reconciliada`() {
+        val journal = TransactionJournal(
+            operationId = "op-active",
+            timestamp = 1234L,
+            deviceFingerprint = "fp",
+            state = TransactionState.REBOOT_REQUESTED,
+        )
+
+        assertTrue(
+            TransactionReconciliation.shouldCommitActiveState(
+                journal,
+                DeviceState.MICROG_ACTIVE_BACKED_UP,
+            ),
+        )
+    }
+
+    @Test
+    fun `reconciliação não oculta rollback falho nem boot incompleto`() {
+        val rollback = TransactionJournal(
+            operationId = "op-rollback",
+            timestamp = 1234L,
+            deviceFingerprint = "fp",
+            state = TransactionState.ROLLBACK_REQUIRED,
+        )
+        val booted = rollback.copy(state = TransactionState.REBOOT_REQUESTED)
+
+        assertFalse(
+            TransactionReconciliation.shouldCommitActiveState(
+                rollback,
+                DeviceState.MICROG_ACTIVE,
+            ),
+        )
+        assertFalse(
+            TransactionReconciliation.shouldCommitActiveState(
+                booted,
+                DeviceState.MICROG_BOOTED,
+            ),
+        )
+    }
 }

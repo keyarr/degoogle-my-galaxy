@@ -192,7 +192,11 @@ The Gradle wrapper is tracked in git, so a separate Gradle installation is not r
 
 `local.properties` is local-only and must not be committed.
 
-For release builds, configure a dedicated keystore in `build.gradle.kts`; do not use the debug key.
+For release builds, use a dedicated keystore; the build never uses the debug key. Copy
+`keystore.properties.example` to `keystore.properties`, fill in the values, and keep the
+private keystore out of Git. In CI, the same properties can be provided through
+`DEGOOGLE_RELEASE_STORE_FILE`, `DEGOOGLE_RELEASE_STORE_PASSWORD`, `DEGOOGLE_RELEASE_KEY_ALIAS`, and
+`DEGOOGLE_RELEASE_KEY_PASSWORD`.
 
 ## Backend
 

@@ -192,7 +192,11 @@ O Gradle wrapper já é versionado, então não é necessário instalar Gradle s
 
 `local.properties` é um arquivo local e não deve ser commitado.
 
-Para builds de release, configure uma keystore dedicada em `build.gradle.kts`; não use a chave de debug.
+Para builds de release, use uma keystore dedicada; o build nunca usa a chave de debug. Copie
+`keystore.properties.example` para `keystore.properties`, preencha os valores e mantenha a
+keystore privada fora do Git. Em CI, as mesmas propriedades podem ser fornecidas pelas variáveis
+`DEGOOGLE_RELEASE_STORE_FILE`, `DEGOOGLE_RELEASE_STORE_PASSWORD`, `DEGOOGLE_RELEASE_KEY_ALIAS` e
+`DEGOOGLE_RELEASE_KEY_PASSWORD`.
 
 ## Backend
 

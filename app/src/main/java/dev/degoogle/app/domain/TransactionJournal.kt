@@ -100,3 +100,31 @@ class TransactionJournalStore(
 
     fun clear(): Boolean = runCatching { file.delete() || !file.exists() }.getOrDefault(false)
 }
+
+/** Reconciliação conservadora de uma transação que sobreviveu ao reboot. */
+object TransactionReconciliation {
+    private val ACTIVE_STATES = setOf(
+        DeviceState.MICROG_ACTIVE,
+        DeviceState.MICROG_ACTIVE_BACKED_UP,
+    )
+
+    /** Estados que representam uma instalação em andamento, não um rollback falho. */
+    private val COMMIT_CANDIDATES = setOf(
+        TransactionState.PREFLIGHT_OK,
+        TransactionState.BACKUP_STARTED,
+        TransactionState.BACKUP_COMPLETE,
+        TransactionState.GMS_MASKED,
+        TransactionState.GSF_MASKED,
+        TransactionState.STORE_MASKED,
+        TransactionState.PACKAGE_CACHE_INVALIDATED,
+        TransactionState.REBOOT_REQUESTED,
+        TransactionState.POST_BOOT_VALIDATING,
+    )
+
+    fun shouldCommitActiveState(
+        journal: TransactionJournal?,
+        state: DeviceState,
+    ): Boolean = journal != null &&
+        state in ACTIVE_STATES &&
+        journal.state in COMMIT_CANDIDATES
+}
