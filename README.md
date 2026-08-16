@@ -56,7 +56,7 @@ The initial Known-Good database contains one validated profile:
 
 - **Samsung Galaxy S24 Ultra (SM-S928x)**
 - **KernelSU root**
-- **Required module: `fakegapps`** — provides signature spoofing required by microG. Ensure this module is installed and active before activating microG.
+- **Required module: `fakegapps`** (provides signature spoofing required by microG. Ensure this module is installed and active before activating microG.)
 - Main target: devices rooted through [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy)
 
 Other Samsung devices are diagnosed dynamically, but are not declared supported
