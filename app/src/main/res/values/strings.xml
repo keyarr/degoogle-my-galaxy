@@ -12,8 +12,8 @@
     <string name="settings_title">Settings</string>
     <string name="settings_subtitle">Behavior and device compatibility options</string>
     <string name="settings_notifications_title">Notifications</string>
-    <string name="settings_notifications_label">Pending operation alerts</string>
-    <string name="settings_notifications_desc">Notify after boot when a DeGoogle operation needs to be completed.</string>
+    <string name="settings_notifications_label">Recovery alerts</string>
+    <string name="settings_notifications_desc">Notify after boot about automatic recovery or a failure that needs attention.</string>
     <string name="settings_profile_title">Device compatibility</string>
     <string name="settings_profile_label">Experimental opt-in</string>
     <string name="settings_profile_desc">Allow an unhomologated firmware only when every critical capability passes. The compatibility engine still blocks unsafe states.</string>
@@ -90,6 +90,45 @@
     <string name="op_rollback_prepared">Rollback prepared; soft reboot required.</string>
     <string name="op_rollback_failed">Rollback failed.</string>
     <string name="op_soft_reboot_requesting">Requesting soft reboot…</string>
+    <string name="op_soft_reboot_started">Starting soft reboot…</string>
+    <string name="op_soft_reboot_requested">Soft reboot requested; waiting for post-boot validation.</string>
+    <string name="op_soft_reboot_refused">Soft reboot refused.</string>
+    <string name="op_soft_reboot_started_log">Starting userspace reboot…</string>
+    <string name="op_soft_reboot_requesting_log">Requesting userspace reboot…</string>
+    <string name="op_soft_reboot_requested_log">Userspace reboot requested; waiting for post-boot validation.</string>
+    <string name="op_soft_reboot_cooldown_log">Automatic reboot cooldown is active. No reboot was started.</string>
+    <string name="op_soft_reboot_unsupported_log">No supported userspace reboot method succeeded. Do not use a full reboot.</string>
+    <string name="op_soft_reboot_failed_log">Userspace reboot failed; no reboot was started. You can try again.</string>
+    <string name="op_soft_reboot_failed_detail_log">Userspace reboot failed: %1$s</string>
+    <string name="error_soft_reboot_unsupported">Soft reboot is not supported in this build. Restart the framework through your root manager — never use a full reboot (it loses root and microG).</string>
+    <string name="error_soft_reboot_guard">An automatic soft reboot was requested recently; it will not be repeated. Run diagnostics or restore stock.</string>
+    <string name="op_auto_recovery_starting">Recovering the stock environment after an incomplete reboot…</string>
+    <string name="op_auto_recovery_reboot_requested">Stock recovery prepared; requesting a safe userspace reboot…</string>
+    <string name="op_auto_recovery_success">Automatic recovery completed; known temporary residues were removed.</string>
+    <string name="op_auto_recovery_starting_log">Recovering the stock environment after an incomplete reboot…</string>
+    <string name="op_auto_recovery_reboot_requested_log">Stock recovery prepared; requesting a safe userspace reboot…</string>
+    <string name="op_auto_recovery_success_log">Automatic recovery completed; known temporary residues were removed.</string>
+    <string name="op_auto_recovery_failed">Automatic recovery failed; the device was left unchanged where safety could not be proven.</string>
+    <string name="op_auto_recovery_failed_detail">Automatic recovery failed: %1$s</string>
+    <string name="op_auto_recovery_failed_log">Automatic recovery failed; the device was left unchanged where safety could not be proven.</string>
+    <string name="op_auto_recovery_failed_detail_log">Automatic recovery failed: %1$s</string>
+    <string name="op_gms_release">microG Services: %1$s</string>
+    <string name="op_companion_release">microG Companion: %1$s</string>
+    <string name="op_finalize_command_failed">Finalization failed (exit %1$d): %2$s</string>
+    <string name="op_backup_command_failed">Backup failed (exit %1$d): %2$s</string>
+    <string name="op_restore_backup_command_failed">Backup restoration failed (exit %1$d): %2$s</string>
+    <string name="op_restore_stock_command_failed">Stock restoration failed (exit %1$d): %2$s</string>
+    <string name="backend_store_disabled">Play Store disabled (prevents a GMS update).</string>
+    <string name="backend_selinux_restorecon">Applying SELinux context (global namespace)…</string>
+    <string name="backend_verification">Verifying masks…</string>
+    <string name="backend_masked_target">Masked: %1$s</string>
+    <string name="backend_already_masked">Already masked by this app: %1$s</string>
+    <string name="backend_gms_context_ok">GMS context OK: %1$s</string>
+    <string name="backend_gsf_masked_empty">GSF: masked (empty)</string>
+    <string name="backend_gms_listing">GMS: %1$s</string>
+    <string name="backend_store_listing">Play Store: %1$s</string>
+    <string name="backend_cleanup_failed">Environment cleanup failed; no masks were applied.</string>
+    <string name="backend_store_disable_failed">Could not disable the Play Store.</string>
 
     <!-- Compatibility Error Messages -->
     <string name="compat_err_not_homologated">This firmware is not homologated. Enable experimental opt-in and verify all critical capabilities pass.</string>
@@ -99,6 +138,10 @@
     <!-- Notifications -->
     <string name="notif_pending_title">DeGoogle</string>
     <string name="notif_pending_text">microG configuration is ready to be completed.</string>
+    <string name="notif_recovery_failed_title">DeGoogle recovery needs attention</string>
+    <string name="notif_recovery_failed_text">The app could not safely restore the stock environment automatically.</string>
+    <string name="error_backend_not_installed">Backend is not installed.</string>
+    <string name="error_probe_failed">Probe failed: %1$s</string>
 
     <!-- Common / General -->
     <string name="yes">yes</string>
@@ -178,6 +221,7 @@
     <string name="diag_report_copied">Diagnostics Copied!</string>
     <string name="diag_security_notice">The generated report is safe and does not contain tokens, passwords, or personal data.</string>
     <string name="diag_root_access">Root Access</string>
+    <string name="diag_state">Derived State</string>
     <string name="diag_profile">Profile</string>
     <string name="diag_device">Device</string>
     <string name="diag_android">Android</string>

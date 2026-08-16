@@ -1,6 +1,7 @@
 package dev.degoogle.app.reboot
 
 import dev.degoogle.app.root.BackendRunner
+import dev.degoogle.app.root.RebootSource
 
 /**
  * Controlador de reboot.
@@ -14,13 +15,42 @@ import dev.degoogle.app.root.BackendRunner
  * é re-derivado do sistema.
  */
 interface RebootController {
-    /** Soft reboot (userspace). false = aparelho não suporta; nunca reboot completo. */
-    suspend fun softReboot(): Boolean
+    /** Soft reboot (userspace), with a reason when no reboot was started. */
+    suspend fun softReboot(): SoftRebootResult
 }
+
+enum class SoftRebootFailure {
+    COOLDOWN,
+    UNSUPPORTED,
+    FAILED,
+}
+
+data class SoftRebootResult(
+    val succeeded: Boolean,
+    val exitCode: Int,
+    val failure: SoftRebootFailure? = null,
+    val detail: String = "",
+)
 
 class BackendRebootController(
     private val backend: BackendRunner,
 ) : RebootController {
 
-    override suspend fun softReboot(): Boolean = backend.softReboot().succeeded
+    override suspend fun softReboot(): SoftRebootResult {
+        val result = backend.softReboot(RebootSource.MANUAL)
+        return SoftRebootResult(
+            succeeded = result.succeeded,
+            exitCode = result.exitCode,
+            failure = if (result.succeeded) {
+                null
+            } else {
+                when (result.exitCode) {
+                    BackendRunner.ExitCodes.SOFT_REBOOT_COOLDOWN -> SoftRebootFailure.COOLDOWN
+                    BackendRunner.ExitCodes.UNSUPPORTED -> SoftRebootFailure.UNSUPPORTED
+                    else -> SoftRebootFailure.FAILED
+                }
+            },
+            detail = result.stderr,
+        )
+    }
 }

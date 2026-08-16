@@ -12,8 +12,8 @@
     <string name="settings_title">Configurações</string>
     <string name="settings_subtitle">Comportamento e compatibilidade de dispositivo</string>
     <string name="settings_notifications_title">Notificações</string>
-    <string name="settings_notifications_label">Alertas de operação pendente</string>
-    <string name="settings_notifications_desc">Notificar após o boot quando uma operação do DeGoogle precisar ser concluída.</string>
+    <string name="settings_notifications_label">Alertas de recuperação</string>
+    <string name="settings_notifications_desc">Notificar após o boot sobre recuperação automática ou falha que exija atenção.</string>
     <string name="settings_profile_title">Compatibilidade de dispositivo</string>
     <string name="settings_profile_label">Opt-in experimental</string>
     <string name="settings_profile_desc">Permite firmware não homologado somente quando todas as capabilities críticas passam. O motor ainda bloqueia estados inseguros.</string>
@@ -90,6 +90,45 @@
     <string name="op_rollback_prepared">Rollback preparado; soft reboot necessário.</string>
     <string name="op_rollback_failed">Rollback falhou.</string>
     <string name="op_soft_reboot_requesting">Solicitando soft reboot…</string>
+    <string name="op_soft_reboot_started">Iniciando soft reboot…</string>
+    <string name="op_soft_reboot_requested">Soft reboot solicitado; aguardando validação pós-boot.</string>
+    <string name="op_soft_reboot_refused">Soft reboot recusado.</string>
+    <string name="op_soft_reboot_started_log">Starting userspace reboot…</string>
+    <string name="op_soft_reboot_requesting_log">Requesting userspace reboot…</string>
+    <string name="op_soft_reboot_requested_log">Userspace reboot requested; waiting for post-boot validation.</string>
+    <string name="op_soft_reboot_cooldown_log">Automatic reboot cooldown is active. No reboot was started.</string>
+    <string name="op_soft_reboot_unsupported_log">No supported userspace reboot method succeeded. Do not use a full reboot.</string>
+    <string name="op_soft_reboot_failed_log">Userspace reboot failed; no reboot was started. You can try again.</string>
+    <string name="op_soft_reboot_failed_detail_log">Userspace reboot failed: %1$s</string>
+    <string name="error_soft_reboot_unsupported">Soft reboot não é suportado nesta build. Reinicie o framework pelo gerenciador de root — nunca use um reboot completo (isso perde o root e o microG).</string>
+    <string name="error_soft_reboot_guard">Já houve um soft reboot automático recentemente; ele não será repetido. Execute o diagnóstico ou restaure o stock.</string>
+    <string name="op_auto_recovery_starting">Recuperando o ambiente stock após um reboot incompleto…</string>
+    <string name="op_auto_recovery_reboot_requested">Recuperação stock preparada; solicitando soft reboot seguro…</string>
+    <string name="op_auto_recovery_success">Recuperação automática concluída; resíduos temporários conhecidos foram removidos.</string>
+    <string name="op_auto_recovery_starting_log">Recovering the stock environment after an incomplete reboot…</string>
+    <string name="op_auto_recovery_reboot_requested_log">Stock recovery prepared; requesting a safe userspace reboot…</string>
+    <string name="op_auto_recovery_success_log">Automatic recovery completed; known temporary residues were removed.</string>
+    <string name="op_auto_recovery_failed">A recuperação automática falhou; o app preservou o estado quando a segurança não pôde ser comprovada.</string>
+    <string name="op_auto_recovery_failed_detail">A recuperação automática falhou: %1$s</string>
+    <string name="op_auto_recovery_failed_log">Automatic recovery failed; the device was left unchanged where safety could not be proven.</string>
+    <string name="op_auto_recovery_failed_detail_log">Automatic recovery failed: %1$s</string>
+    <string name="op_gms_release">microG Services: %1$s</string>
+    <string name="op_companion_release">microG Companion: %1$s</string>
+    <string name="op_finalize_command_failed">A finalização falhou (exit %1$d): %2$s</string>
+    <string name="op_backup_command_failed">O backup falhou (exit %1$d): %2$s</string>
+    <string name="op_restore_backup_command_failed">A restauração do backup falhou (exit %1$d): %2$s</string>
+    <string name="op_restore_stock_command_failed">A restauração do stock falhou (exit %1$d): %2$s</string>
+    <string name="backend_store_disabled">Play Store desabilitada (evita um novo update do GMS).</string>
+    <string name="backend_selinux_restorecon">Aplicando o contexto SELinux (namespace global)…</string>
+    <string name="backend_verification">Verificando as máscaras…</string>
+    <string name="backend_masked_target">Mascarado: %1$s</string>
+    <string name="backend_already_masked">Já mascarado por este app: %1$s</string>
+    <string name="backend_gms_context_ok">Contexto GMS OK: %1$s</string>
+    <string name="backend_gsf_masked_empty">GSF: mascarado (vazio)</string>
+    <string name="backend_gms_listing">GMS: %1$s</string>
+    <string name="backend_store_listing">Play Store: %1$s</string>
+    <string name="backend_cleanup_failed">Falha na limpeza do ambiente; nenhuma máscara foi aplicada.</string>
+    <string name="backend_store_disable_failed">Não foi possível desabilitar a Play Store.</string>
 
     <!-- Mensagens de Erro de Compatibilidade -->
     <string name="compat_err_not_homologated">Este firmware não foi homologado. Ative o opt-in experimental e confirme que todas as capabilities críticas passaram.</string>
@@ -99,6 +138,10 @@
     <!-- Notificações -->
     <string name="notif_pending_title">DeGoogle</string>
     <string name="notif_pending_text">A configuração do microG está pronta para ser concluída.</string>
+    <string name="notif_recovery_failed_title">A recuperação do DeGoogle precisa de atenção</string>
+    <string name="notif_recovery_failed_text">O app não conseguiu restaurar o ambiente stock com segurança automaticamente.</string>
+    <string name="error_backend_not_installed">O backend não está instalado.</string>
+    <string name="error_probe_failed">Falha na verificação: %1$s</string>
 
     <!-- Common / General -->
     <string name="yes">sim</string>
@@ -178,6 +221,7 @@
     <string name="diag_report_copied">Diagnóstico Copiado!</string>
     <string name="diag_security_notice">O relatório gerado é seguro e não contém tokens, senhas ou dados pessoais.</string>
     <string name="diag_root_access">Acesso Root</string>
+    <string name="diag_state">Estado derivado</string>
     <string name="diag_profile">Perfil</string>
     <string name="diag_device">Dispositivo</string>
     <string name="diag_android">Android</string>

@@ -25,6 +25,7 @@ class BackendRunner(
         const val PRECONDITION = 3
         const val PARTIAL = 4
         const val UNSUPPORTED = 5
+        const val SOFT_REBOOT_COOLDOWN = 6
     }
 
     /** Serializa `sh <backend> <args>` com argv explícito. */
@@ -59,6 +60,9 @@ class BackendRunner(
     /** Remove updates de /data/app (GMS/vending) e desabilita a Play Store. */
     suspend fun cleanup(): BackendCommandResult = runCommand(listOf("cleanup"))
 
+    /** Remove apenas payloads de máscaras conhecidas, sem tocar no backup. */
+    suspend fun cleanupResidue(): BackendCommandResult = runCommand(listOf("cleanup-residue"))
+
     suspend fun backup(): BackendCommandResult = runCommand(listOf("backup"))
 
     suspend fun restoreBackup(): BackendCommandResult = runCommand(listOf("restore-backup"))
@@ -66,7 +70,11 @@ class BackendRunner(
     suspend fun restoreStock(wipeData: Boolean = true): BackendCommandResult =
         runCommand(if (wipeData) listOf("restore-stock", "--wipe-data") else listOf("restore-stock"))
 
-    suspend fun softReboot(): BackendCommandResult = runCommand(listOf("soft-reboot"))
+    suspend fun softReboot(source: RebootSource = RebootSource.MANUAL): BackendCommandResult =
+        runCommand(
+            args = listOf("soft-reboot"),
+            extraEnvironment = mapOf("DEGOOGLE_REBOOT_SOURCE" to source.value),
+        )
 
     suspend fun postBootValidate(): BackendCommandResult = runCommand(listOf("post-boot-validate"))
 
@@ -78,18 +86,19 @@ class BackendRunner(
     private suspend fun runCommand(
         args: List<String>,
         streamProgress: Boolean = true,
+        extraEnvironment: Map<String, String> = emptyMap(),
     ): BackendCommandResult {
         val command = listOf("sh", backendPath) + args
         val result = if (streamProgress) {
             executor.executeStreaming(
                 command,
-                env = environment(),
+                env = environment(extraEnvironment),
                 onStderrLine = onProgress,
             )
         } else {
             executor.execute(
                 command,
-                env = environment(),
+                env = environment(extraEnvironment),
             )
         }
         val facts = ProbeParser.parse(result.stdout)
@@ -101,7 +110,7 @@ class BackendRunner(
         )
     }
 
-    private fun environment(): Map<String, String> = buildMap {
+    private fun environment(extra: Map<String, String> = emptyMap()): Map<String, String> = buildMap {
         if (experimentalOptIn()) put("DEGOOGLE_EXPERIMENTAL", "1")
         transactionBase?.takeIf { it.isNotBlank() }?.let {
             put("DEGOOGLE_TRANSACTION_BASE", it)
@@ -109,8 +118,14 @@ class BackendRunner(
         operationId()?.takeIf { it.isNotBlank() }?.let {
             put("DEGOOGLE_OPERATION_ID", it)
         }
+        putAll(extra)
     }
 
+}
+
+enum class RebootSource(val value: String) {
+    MANUAL("manual"),
+    AUTOMATIC("automatic"),
 }
 
 data class BackendProbeResult(

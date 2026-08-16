@@ -42,6 +42,15 @@ class TransactionJournalStore(
     private val file: File,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
+    companion object {
+        /**
+         * Mantém o journal Kotlin fora de `files/transaction`, pois esse
+         * diretório é manipulado pelo backend root e pode terminar root:root.
+         */
+        fun forAppFiles(filesDir: File): TransactionJournalStore =
+            TransactionJournalStore(File(filesDir, "app-transaction/journal.json"))
+    }
+
     private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
 
     fun write(journal: TransactionJournal): Boolean = runCatching {
@@ -77,7 +86,6 @@ class TransactionJournalStore(
         TransactionState.BACKUP_COMPLETE,
         TransactionState.GMS_MASKED,
         TransactionState.GSF_MASKED,
-        TransactionState.STORE_MASKED,
         TransactionState.PACKAGE_CACHE_INVALIDATED,
         TransactionState.REBOOT_REQUESTED,
         TransactionState.POST_BOOT_VALIDATING,

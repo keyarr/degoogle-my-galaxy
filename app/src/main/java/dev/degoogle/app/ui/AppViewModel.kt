@@ -21,6 +21,12 @@ import dev.degoogle.app.microg.MicrogManager
 import dev.degoogle.app.microg.ReleaseRepository
 import dev.degoogle.app.reboot.BackendRebootController
 import dev.degoogle.app.reboot.RebootController
+import dev.degoogle.app.reboot.SoftRebootFailure
+import dev.degoogle.app.reboot.SoftRebootResult
+import dev.degoogle.app.recovery.AutoRecoveryAction
+import dev.degoogle.app.recovery.AutoRecoveryCoordinator
+import dev.degoogle.app.recovery.AutoRecoveryStatus
+import dev.degoogle.app.recovery.RecoveryPolicy
 import dev.degoogle.app.root.BackendInstaller
 import dev.degoogle.app.root.BackendRunner
 import dev.degoogle.app.root.SuRootExecutor
@@ -35,6 +41,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import dev.degoogle.app.R
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * ViewModel central. O estado da UI é sempre derivado do estado REAL do
@@ -43,9 +50,7 @@ import kotlinx.coroutines.launch
 class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val prefs = Prefs(app)
-    private val transactionJournal = TransactionJournalStore(
-        File(app.filesDir, "transaction/journal.json"),
-    )
+    private val transactionJournal = TransactionJournalStore.forAppFiles(app.filesDir)
     private val knownGoodDatabase: KnownGoodDatabase = runCatching {
         app.assets.open("compatibility/known_good.json").bufferedReader().use {
             KnownGoodDatabase.fromJson(it.readText())
@@ -78,6 +83,8 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
     private val backupManager = backend?.let { BackupManager(executor) }
     private val reboot: RebootController? = backend?.let { BackendRebootController(it) }
+    private val automaticRecovery = backend?.let { AutoRecoveryCoordinator(it) }
+    private val automaticRecoveryStarted = AtomicBoolean(false)
 
     private val _ui = MutableStateFlow(UiState.INITIAL)
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -127,7 +134,11 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             }
             val backend = backend ?: run {
                 _ui.update {
-                    it.copy(refreshing = false, state = DeviceState.ERROR, error = "Backend não instalado")
+                    it.copy(
+                        refreshing = false,
+                        state = DeviceState.ERROR,
+                        error = app.getString(R.string.error_backend_not_installed),
+                    )
                 }
                 return@launch
             }
@@ -135,7 +146,14 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             val probe = backend.probe()
             if (!probe.raw.succeeded) {
                 _ui.update {
-                    it.copy(refreshing = false, state = DeviceState.ERROR, error = "probe falhou: ${probe.raw.stderr}")
+                    it.copy(
+                        refreshing = false,
+                        state = DeviceState.ERROR,
+                        error = app.getString(
+                            R.string.error_probe_failed,
+                            probe.raw.stderr,
+                        ),
+                    )
                 }
                 return@launch
             }
@@ -152,14 +170,95 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             currentProfile = DeviceProfiles.matching(facts.manufacturer, facts.model, facts.androidSdk)
             val state = StateDetector.detect(facts, currentProfile)
             val compatibility = CompatibilityEngine.evaluate(facts, knownGoodDatabase)
+            val recoveryAssessment = RecoveryPolicy.assess(facts, currentProfile)
+
+            // Um reboot completo pode apagar os mounts sem reindexar o PM. O
+            // app não deixa esse estado esperando uma ação manual: o backend
+            // faz rollback idempotente, preserva o backup e solicita somente
+            // soft reboot. O AtomicBoolean impede loop dentro do mesmo
+            // processo; após um novo boot o diagnóstico começa novamente.
+            if (automaticRecovery != null &&
+                recoveryAssessment.action != AutoRecoveryAction.NONE &&
+                automaticRecoveryStarted.compareAndSet(false, true)
+            ) {
+                _ui.update {
+                    it.copy(
+                        refreshing = false,
+                        facts = facts,
+                        state = state,
+                        compatibility = compatibility,
+                        recoveryRequired = true,
+                        operationInProgress = true,
+                        steps = (it.steps + StepLog(
+                            null,
+                            app.getString(R.string.op_auto_recovery_starting_log),
+                        )).takeLast(MAX_OPERATION_LOG_LINES),
+                        error = null,
+                    )
+                }
+
+                val result = automaticRecovery.runIfNeeded(wipeData = true)
+                when (result.status) {
+                    AutoRecoveryStatus.REBOOT_REQUESTED -> {
+                        transactionJournal.update(
+                            operationId = operationIdForCurrentTransaction(),
+                            fingerprint = facts.fingerprint,
+                            state = TransactionState.REBOOT_REQUESTED,
+                            detail = "recuperação automática solicitou soft reboot",
+                        )
+                        _ui.update {
+                            it.copy(
+                                operationInProgress = false,
+                                steps = (it.steps + StepLog(
+                                    true,
+                                    app.getString(R.string.op_auto_recovery_reboot_requested_log),
+                                )).takeLast(MAX_OPERATION_LOG_LINES),
+                            )
+                        }
+                    }
+                    AutoRecoveryStatus.CLEANED -> {
+                        _ui.update {
+                            it.copy(
+                                operationInProgress = false,
+                                steps = (it.steps + StepLog(
+                                    true,
+                                    app.getString(R.string.op_auto_recovery_success_log),
+                                )).takeLast(MAX_OPERATION_LOG_LINES),
+                            )
+                        }
+                        refresh(clearError = true)
+                    }
+                    AutoRecoveryStatus.FAILED -> {
+                        transactionJournal.update(
+                            operationId = operationIdForCurrentTransaction(),
+                            fingerprint = facts.fingerprint,
+                            state = TransactionState.ROLLBACK_REQUIRED,
+                            detail = result.message,
+                        )
+                        _ui.update {
+                            it.copy(
+                                operationInProgress = false,
+                                recoveryRequired = true,
+                                steps = (it.steps + StepLog(
+                                    false,
+                                    app.getString(R.string.op_auto_recovery_failed_log),
+                                )).takeLast(MAX_OPERATION_LOG_LINES),
+                                error = localizedAutoRecoveryFailure(result.stderr),
+                            )
+                        }
+                    }
+                    AutoRecoveryStatus.NOT_NEEDED -> Unit
+                }
+                return@launch
+            }
+
             val journal = transactionJournal.read()
-            val stockConfirmed = state == DeviceState.STOCK || (
-                !facts.mountGms && !facts.mountGsf && !facts.mountStore &&
-                    facts.gmsPath != null && facts.gsfPath != null && facts.storePath != null
-                )
+            val stockConfirmed = state == DeviceState.STOCK
             if (stockConfirmed && journal?.state in setOf(
                     TransactionState.ROLLBACK_RUNNING,
                     TransactionState.ROLLBACK_REQUIRED,
+                    TransactionState.REBOOT_REQUESTED,
+                    TransactionState.PACKAGE_CACHE_INVALIDATED,
                     TransactionState.GMS_UNMOUNTED,
                     TransactionState.GSF_UNMOUNTED,
                     TransactionState.STORE_UNMOUNTED,
@@ -174,8 +273,14 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                         detail = "estado stock confirmado após rollback",
                     )
                 }
+                prefs.clearPendingOperation()
             }
-            val recoveryRequired = transactionJournal.requiresRecovery()
+            // STORE_MASKED/PREPARED é o estado normal entre a preparação e o
+            // soft reboot. Uma tentativa de reboot recusada não desfaz as
+            // máscaras; portanto não pode transformar PREPARED em "transação
+            // incompleta" só porque o journal registrou a recusa.
+            val recoveryRequired = transactionJournal.requiresRecovery() &&
+                state != DeviceState.PREPARED
 
             // Auxiliar: prompt de configuração na primeira instalação.
             val promptSeen = prefs.setupPromptSeen.firstOrNull() ?: false
@@ -455,10 +560,12 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     fun softReboot() {
         val r = reboot ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            val stateBeforeReboot = _ui.value.state
+            val journalStateBeforeReboot = transactionJournal.read()?.state
             _ui.update {
                 it.copy(
                     operationInProgress = true,
-                    steps = listOf(StepLog(null, "Iniciando soft reboot…")),
+                    steps = listOf(StepLog(null, app.getString(R.string.op_soft_reboot_started_log))),
                     error = null,
                 )
             }
@@ -469,34 +576,68 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                 state = TransactionState.REBOOT_REQUESTED,
                 detail = "soft reboot solicitado; não assumir sucesso até pós-boot",
             )
-            val ok = r.softReboot()
+            val result = r.softReboot()
+            val ok = result.succeeded
             if (!ok) {
+                val stateAfterRefusal = when {
+                    stateBeforeReboot == DeviceState.PREPARED -> TransactionState.STORE_MASKED
+                    stateBeforeReboot == DeviceState.RESTORE_PREPARED -> TransactionState.REINDEX_PENDING
+                    journalStateBeforeReboot != null && journalStateBeforeReboot != TransactionState.REBOOT_REQUESTED ->
+                        journalStateBeforeReboot
+                    else -> TransactionState.FAILED
+                }
                 transactionJournal.update(
                     operationId = operationIdForCurrentTransaction(),
                     fingerprint = _ui.value.facts.fingerprint,
-                    state = TransactionState.FAILED,
+                    state = stateAfterRefusal,
                     detail = "soft reboot recusado",
                 )
+                // A refused request never started a reboot. Do not leave a
+                // stale finalize notification pending for the next boot.
+                prefs.clearPendingOperation()
             }
             _ui.update {
                 it.copy(
                     operationInProgress = false,
                     steps = (it.steps + StepLog(
                         ok,
-                        if (ok) "Soft reboot solicitado; aguardando validação pós-boot." else "Soft reboot recusado.",
+                        if (ok) {
+                            app.getString(R.string.op_soft_reboot_requested_log)
+                        } else {
+                            softRebootFailureMessage(result)
+                        },
                     )).takeLast(MAX_OPERATION_LOG_LINES),
-                    softRebootSupported = ok,
+                    softRebootSupported = when (result.failure) {
+                        SoftRebootFailure.UNSUPPORTED -> false
+                        else -> if (ok) true else it.softRebootSupported
+                    },
                 )
             }
             if (!ok) {
                 _ui.update {
                     it.copy(
-                        error = "Soft reboot não suportado neste build. Reinicie o framework pelo seu " +
-                            "gerenciador de root — nunca use reboot completo (perde root e microG).",
+                        error = softRebootFailureMessage(result),
                     )
                 }
             }
             refresh()
+        }
+    }
+
+    private fun softRebootFailureMessage(result: SoftRebootResult): String {
+        return when (result.failure) {
+            SoftRebootFailure.COOLDOWN -> app.getString(R.string.op_soft_reboot_cooldown_log)
+            SoftRebootFailure.UNSUPPORTED -> app.getString(R.string.op_soft_reboot_unsupported_log)
+            SoftRebootFailure.FAILED, null -> {
+                val detail = result.detail.lineSequence()
+                    .map(String::trim)
+                    .lastOrNull(String::isNotEmpty)
+                if (detail.isNullOrBlank()) {
+                    app.getString(R.string.op_soft_reboot_failed_log)
+                } else {
+                    app.getString(R.string.op_soft_reboot_failed_detail_log, detail)
+                }
+            }
         }
     }
 
@@ -523,7 +664,8 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     private fun appendOperationLog(text: String) = appendOperationLog(null, text)
 
     private fun appendOperationLog(ok: Boolean?, text: String) {
-        val line = text.trim().replace('\u0000', ' ').takeIf { it.isNotBlank() } ?: return
+        val line = localizeProgressLine(text.trim().replace('\u0000', ' '))
+            .takeIf { it.isNotBlank() } ?: return
         _ui.update {
             it.copy(
                 steps = (it.steps + StepLog(ok, line)).takeLast(MAX_OPERATION_LOG_LINES),
@@ -532,6 +674,101 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun logStep(ok: Boolean?, text: String) = appendOperationLog(ok, text)
+
+    private fun localizedAutoRecoveryFailure(stderr: String): String {
+        val detail = stderr.lineSequence()
+            .map(String::trim)
+            .lastOrNull(String::isNotEmpty)
+            ?.let(::localizeProgressLine)
+            .orEmpty()
+        return if (detail.isBlank()) {
+            app.getString(R.string.op_auto_recovery_failed_log)
+        } else {
+            app.getString(R.string.op_auto_recovery_failed_detail_log, detail)
+        }
+    }
+
+    private fun localizeProgressLine(raw: String): String {
+        if (raw.isBlank()) return raw
+        val normalized = raw.trim()
+
+        // O backend também é executável diretamente pelo root e, por isso,
+        // ainda emite algumas mensagens históricas em português. Normalize os
+        // marcos operacionais em recursos do app para que o live log respeite
+        // o idioma selecionado e não duplique textos em caixa alta.
+        when {
+            normalized.startsWith("PREPARE CONCLUÍDO") ->
+                return app.getString(R.string.op_prepared_success)
+            normalized.startsWith("FINALIZE CONCLUÍDO") ->
+                return app.getString(R.string.op_post_boot_success)
+            normalized == "BACKUP CONCLUÍDO." ->
+                return app.getString(R.string.op_backup_success)
+            normalized == "RESTAURAÇÃO CONCLUÍDA." ->
+                return app.getString(R.string.op_restore_success)
+            normalized.startsWith("RESTORE-STOCK PREPARADO") ->
+                return app.getString(R.string.op_rollback_prepared)
+            normalized.startsWith("Resíduos conhecidos das máscaras removidos") ->
+                return app.getString(R.string.op_auto_recovery_success_log)
+            normalized.startsWith("Solicitando soft reboot") ->
+                return app.getString(R.string.op_soft_reboot_requesting_log)
+            normalized.startsWith("Play Store desabilitada") ->
+                return app.getString(R.string.backend_store_disabled)
+            normalized.startsWith("[1/3] Aplicando máscaras") ->
+                return app.getString(R.string.op_applying_masks)
+            normalized.startsWith("[2/3] SELinux") ->
+                return app.getString(R.string.backend_selinux_restorecon)
+            normalized.startsWith("[3/3] Verificação") ->
+                return app.getString(R.string.backend_verification)
+            normalized.startsWith("mascarado:") ->
+                return app.getString(
+                    R.string.backend_masked_target,
+                    normalized.substringAfter(':').trim(),
+                )
+            normalized.contains("já mascarado por nós") ->
+                return app.getString(
+                    R.string.backend_already_masked,
+                    normalized.substringBefore(" já mascarado por nós").trim(),
+                )
+            normalized.startsWith("contexto GMS ok:") ->
+                return app.getString(
+                    R.string.backend_gms_context_ok,
+                    normalized.substringAfter(':').trim(),
+                )
+            normalized.startsWith("GSF : mascarado (vazio)") ->
+                return app.getString(R.string.backend_gsf_masked_empty)
+            normalized.startsWith("GMS :") ->
+                return app.getString(
+                    R.string.backend_gms_listing,
+                    normalized.substringAfter(':').trim(),
+                )
+            normalized.startsWith("Store:") ->
+                return app.getString(
+                    R.string.backend_store_listing,
+                    normalized.substringAfter(':').trim(),
+                )
+        }
+
+        val language = app.resources.configuration.locales[0].language
+        if (language.startsWith("pt")) return raw
+
+        return when {
+            normalized.contains("já houve um soft reboot automático recentemente") ->
+                app.getString(R.string.op_soft_reboot_cooldown_log)
+            normalized.contains("soft reboot não é suportado nesta build") ->
+                app.getString(R.string.op_soft_reboot_unsupported_log)
+            normalized.startsWith("ERRO: cleanup do ambiente falhou") ->
+                app.getString(R.string.backend_cleanup_failed)
+            normalized.startsWith("não foi possível desabilitar a Play Store") ->
+                app.getString(R.string.backend_store_disable_failed)
+            normalized.startsWith("AVISO:") ->
+                normalized.replaceFirst("AVISO:", "WARNING:")
+            normalized.startsWith("ERRO:") ->
+                normalized.replaceFirst("ERRO:", "ERROR:")
+            normalized.startsWith("FALHA:") ->
+                normalized.replaceFirst("FALHA:", "FAILURE:")
+            else -> raw
+        }
+    }
 
     private companion object {
         const val MAX_OPERATION_LOG_LINES = 24

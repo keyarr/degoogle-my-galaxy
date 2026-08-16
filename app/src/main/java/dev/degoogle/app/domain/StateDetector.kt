@@ -9,14 +9,18 @@ object StateDetector {
     fun detect(facts: SystemFacts, profile: DeviceProfile?): DeviceState {
         if (!facts.rootOk) return DeviceState.NO_ROOT
 
-        // Perfil: o backend já emite PROFILE_MATCH, mas revalidamos aqui contra
-        // o perfil local para não depender de uma flag interna.
-        val compatibleProfile = profile ?: DeviceProfiles.matching(
+        // PROFILE_MATCH é telemetria legada do backend. A fonte de verdade da
+        // UI é o perfil local, que também valida fabricante, modelo e SDK. Em
+        // um estado pós-procedimento o PackageManager pode ter sido reindexado
+        // por uma versão diferente do backend; não transforme essa flag stale
+        // em UNSUPPORTED quando o perfil local e as provas operacionais batem.
+        val localProfile = DeviceProfiles.matching(
             manufacturer = facts.manufacturer,
             model = facts.model,
             sdk = facts.androidSdk,
         )
-        if (!facts.profileMatch || compatibleProfile == null) return DeviceState.UNSUPPORTED
+        val compatibleProfile = profile?.takeIf { it.id == localProfile?.id } ?: localProfile
+        if (compatibleProfile == null) return DeviceState.UNSUPPORTED
 
         val profileSafe = compatibleProfile
 

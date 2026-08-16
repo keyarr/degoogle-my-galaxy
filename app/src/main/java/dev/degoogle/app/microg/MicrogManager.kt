@@ -44,14 +44,14 @@ class MicrogManager(
                 Log.e(TAG, "falha ao consultar release do GmsCore")
             }
         Log.i(TAG, "GmsCore: v${gms.versionCode} ${gms.apkName} sha256=${gms.sha256.take(16)}…")
-        onStep("microG Services: ${label(gms)}")
+        onStep(context.getString(R.string.op_gms_release, label(gms)))
 
         val companion = releases.latest("com.android.vending")
             ?: return PrepareResult(false, gms, null, context.getString(R.string.op_companion_error)).also {
                 Log.e(TAG, "falha ao consultar release do Companion")
             }
         Log.i(TAG, "Companion: v${companion.versionCode} ${companion.apkName}")
-        onStep("microG Companion: ${label(companion)}")
+        onStep(context.getString(R.string.op_companion_release, label(companion)))
 
         val downloads = File(context.filesDir, "downloads").apply { mkdirs() }
 
@@ -134,7 +134,13 @@ class MicrogManager(
         onStep(context.getString(R.string.op_validating_post_boot))
         val r = backend.finalize()
         if (!r.succeeded) {
-            onStep("finalize exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
+            onStep(
+                context.getString(
+                    R.string.op_finalize_command_failed,
+                    r.exitCode,
+                    r.stderr.lineSequence().lastOrNull().orEmpty(),
+                ),
+            )
             return false
         }
         val postBoot = backend.postBootValidate()
@@ -150,7 +156,13 @@ class MicrogManager(
         onStep(context.getString(R.string.op_creating_backup))
         val r = backend.backup()
         if (!r.succeeded) {
-            onStep("backup exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
+            onStep(
+                context.getString(
+                    R.string.op_backup_command_failed,
+                    r.exitCode,
+                    r.stderr.lineSequence().lastOrNull().orEmpty(),
+                ),
+            )
             return false
         }
         onStep(context.getString(R.string.op_backup_success))
@@ -161,7 +173,13 @@ class MicrogManager(
         onStep(context.getString(R.string.op_restoring_backup))
         val r = backend.restoreBackup()
         if (!r.succeeded) {
-            onStep("restore-backup exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
+            onStep(
+                context.getString(
+                    R.string.op_restore_backup_command_failed,
+                    r.exitCode,
+                    r.stderr.lineSequence().lastOrNull().orEmpty(),
+                ),
+            )
             return false
         }
         onStep(context.getString(R.string.op_restore_success))
@@ -172,7 +190,13 @@ class MicrogManager(
         onStep(context.getString(R.string.op_rollback_starting))
         val r = backend.restoreStock(wipeData)
         if (!r.succeeded) {
-            onStep("restore-stock exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
+            onStep(
+                context.getString(
+                    R.string.op_restore_stock_command_failed,
+                    r.exitCode,
+                    r.stderr.lineSequence().lastOrNull().orEmpty(),
+                ),
+            )
             return false
         }
         onStep(context.getString(R.string.op_rollback_prepared))
@@ -180,7 +204,7 @@ class MicrogManager(
     }
 
     suspend fun softReboot(): Boolean {
-        onStep(context.getString(R.string.op_soft_reboot_requesting))
+        onStep(context.getString(R.string.op_soft_reboot_requesting_log))
         val r = backend.softReboot()
         return r.succeeded
     }

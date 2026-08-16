@@ -16,14 +16,17 @@ class BackendRunnerTest {
     private class FakeExecutor(
         var responses: ArrayDeque<RootResult> = ArrayDeque(),
         val recorded: MutableList<List<String>> = mutableListOf(),
+        val environments: MutableList<Map<String, String>> = mutableListOf(),
     ) : RootExecutor {
         override suspend fun execute(command: List<String>): RootResult {
             recorded.add(command)
             return responses.removeFirstOrNull() ?: RootResult.Ok(0, "", "")
         }
 
-        override suspend fun execute(command: List<String>, env: Map<String, String>): RootResult =
-            execute(command)
+        override suspend fun execute(command: List<String>, env: Map<String, String>): RootResult {
+            environments += env
+            return execute(command)
+        }
 
         override suspend fun isRootAvailable(): Boolean = true
     }
@@ -85,6 +88,24 @@ class BackendRunnerTest {
     }
 
     @Test
+    fun `cleanup residue usa o comando automático`() = runTest {
+        val fake = FakeExecutor(
+            ArrayDeque(
+                listOf(RootResult.Ok(0, "DEGOOGLE_STATE=STOCK\n", "")),
+            ),
+        )
+        val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
+
+        val result = runner.cleanupResidue()
+
+        assertTrue(result.succeeded)
+        assertEquals(
+            listOf("sh", "/data/local/tmp/degoogle.sh", "cleanup-residue"),
+            fake.recorded.single(),
+        )
+    }
+
+    @Test
     fun `progresso do stderr e encaminhado ao callback`() = runTest {
         val progress = mutableListOf<String>()
         val fake = FakeExecutor(
@@ -107,5 +128,18 @@ class BackendRunnerTest {
         runner.prepare("/x.apk", "/y.apk")
 
         assertEquals(listOf("===== PREPARE =====", "  mascarado: GMS"), progress)
+    }
+
+    @Test
+    fun `soft reboot automático envia origem separada`() = runTest {
+        val fake = FakeExecutor(
+            ArrayDeque(listOf(RootResult.Ok(6, "", "ERROR: cooldown"))),
+        )
+        val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
+
+        val result = runner.softReboot(RebootSource.AUTOMATIC)
+
+        assertEquals(6, result.exitCode)
+        assertEquals("automatic", fake.environments.single()["DEGOOGLE_REBOOT_SOURCE"])
     }
 }

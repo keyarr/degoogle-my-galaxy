@@ -56,10 +56,14 @@ class ProbeParserTest {
         DEGOOGLE_REBOOT_STRATEGY_METHOD=KSUD_SOFT_REBOOT
         DEGOOGLE_REBOOT_STRATEGY_CONFIDENCE=LOW
         DEGOOGLE_MOUNT_GMS=1
+        DEGOOGLE_MOUNT_GMS_IS_LEGACY=0
         DEGOOGLE_MOUNT_GSF=1
+        DEGOOGLE_MOUNT_GSF_IS_LEGACY=0
         DEGOOGLE_MOUNT_STORE=1
+        DEGOOGLE_MOUNT_STORE_IS_LEGACY=0
         DEGOOGLE_MOUNT_GMS_SOURCE=/data/local/tmp/degoogle-mask/gms
         DEGOOGLE_BACKUP_PRESENT=1
+        DEGOOGLE_MASK_RESIDUE_PRESENT=1
         DEGOOGLE_FINALIZE_DONE=1
         DEGOOGLE_STATE=MICROG_ACTIVE_BACKED_UP
         DEGOOGLE_SCRIPT_VERSION=0.1.0
@@ -84,8 +88,10 @@ class ProbeParserTest {
         assertEquals(null, f.gsfPath)
         assertEquals("GMS: update em /data/app será removido durante a preparação", f.preparationInfo)
         assertTrue(f.mountGms)
+        assertTrue(!f.mountGmsIsLegacy)
         assertTrue(f.mountGsf)
         assertTrue(f.mountStore)
+        assertTrue(f.maskResiduePresent)
         assertEquals("/data/local/tmp/degoogle-mask/gms", f.mountGmsSource)
         assertEquals("/product/priv-app/GmsCore/base.apk", f.gmsPackage?.baseApk)
         assertEquals(listOf("/product/priv-app/GmsCore/split_config.arm64.apk"), f.gmsPackage?.splitApks)

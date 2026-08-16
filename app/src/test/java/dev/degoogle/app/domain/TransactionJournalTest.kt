@@ -18,11 +18,28 @@ class TransactionJournalTest {
             assertTrue(store.update("op-1", "fp", TransactionState.REINDEX_PENDING))
             assertTrue(store.requiresRecovery())
             assertEquals(TransactionState.REINDEX_PENDING, store.read()?.state)
+            assertTrue(store.update("op-1", "fp", TransactionState.STORE_MASKED))
+            assertFalse(store.requiresRecovery())
+            assertEquals(TransactionState.STORE_MASKED, store.read()?.state)
             assertTrue(store.update("op-1", "fp", TransactionState.COMMITTED))
             assertFalse(store.requiresRecovery())
             assertEquals(1234L, store.read()?.timestamp)
         } finally {
             dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `journal do app usa diretório separado do backend root`() {
+        val filesDir = Files.createTempDirectory("degoogle-app-files").toFile()
+        try {
+            val store = TransactionJournalStore.forAppFiles(filesDir)
+
+            assertTrue(store.update("op-app", "fp", TransactionState.ROLLBACK_REQUIRED))
+            assertTrue(filesDir.resolve("app-transaction/journal.json").isFile)
+            assertEquals(TransactionState.ROLLBACK_REQUIRED, store.read()?.state)
+        } finally {
+            filesDir.deleteRecursively()
         }
     }
 }

@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.degoogle.app.R
 import dev.degoogle.app.domain.CapabilityStatus
+import dev.degoogle.app.domain.DeviceProfiles
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
 import dev.degoogle.app.ui.components.StateBadge
@@ -64,6 +65,9 @@ import dev.degoogle.app.ui.components.TechnicalStatusRow
 fun DiagnosticsScreen(ui: UiState) {
     val context = LocalContext.current
     val f = ui.facts
+    val localProfile = DeviceProfiles.matching(f.manufacturer, f.model, f.androidSdk)
+    val profileId = f.profileId.takeIf { f.profileMatch && it.isNotBlank() } ?: localProfile?.id
+    val profileMatches = profileId != null
     var copied by remember { mutableStateOf(false) }
 
     Column(
@@ -105,8 +109,8 @@ fun DiagnosticsScreen(ui: UiState) {
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_profile),
-                    value = if (f.profileMatch) f.profileId else stringResource(R.string.not_supported),
-                    status = if (f.profileMatch) Status.OK else Status.FAIL,
+                    value = profileId ?: stringResource(R.string.not_supported),
+                    status = if (profileMatches) Status.OK else Status.FAIL,
                     leadingIcon = Icons.Rounded.Verified,
                 )
                 StatusRow(
@@ -409,20 +413,22 @@ fun DiagnosticsScreen(ui: UiState) {
 private fun copyDiagnostics(context: Context, ui: UiState) {
     val f = ui.facts
     val sb = StringBuilder()
-    sb.appendLine("DeGoogle Diagnóstico")
-    sb.appendLine("Estado derivado: ${ui.state.name}")
-    sb.appendLine("Root: ${if (f.rootOk) f.rootManager else "não"}")
-    sb.appendLine("Perfil: ${if (f.profileMatch) f.profileId else "não suportado"}")
-    sb.appendLine("Dispositivo: ${f.manufacturer} ${f.model} (${f.device}/${f.product})")
-    sb.appendLine("Android: ${f.androidRelease} (SDK ${f.androidSdk})")
-    sb.appendLine("Fingerprint: ${f.fingerprint}")
-    sb.appendLine("SELinux: ${f.selinux}")
-    sb.appendLine("GMS: ${f.gmsPath ?: "ausente"} v${f.gmsVersion ?: "?"} uid=${f.gmsUid ?: "?"} privileged=${f.gmsPrivileged}")
-    sb.appendLine("GSF: ${f.gsfPath ?: "ausente"}")
-    sb.appendLine("Store: ${f.storePath ?: "ausente"} v${f.storeVersion ?: "?"}")
-    sb.appendLine("Mounts: GMS=${f.mountGms} GSF=${f.mountGsf} Store=${f.mountStore} fonte=${f.mountGmsSource ?: "—"}")
-    sb.appendLine("Backup: presente=${f.backupPresent} formato=MicroG Session local=/data/local/tmp/microg-backup")
-    sb.appendLine("Compatibilidade: ${ui.compatibility.compatibility} match=${ui.compatibility.knownGood.level}")
+    sb.appendLine("${context.getString(R.string.app_name)} ${context.getString(R.string.diag_title)}")
+    sb.appendLine("${context.getString(R.string.diag_state)}: ${context.getString(ui.state.labelRes)}")
+    sb.appendLine("${context.getString(R.string.diag_root_access)}: ${if (f.rootOk) f.rootManager else context.getString(R.string.no)}")
+    val localProfile = DeviceProfiles.matching(f.manufacturer, f.model, f.androidSdk)
+    val profileId = f.profileId.takeIf { f.profileMatch && it.isNotBlank() } ?: localProfile?.id
+    sb.appendLine("${context.getString(R.string.diag_profile)}: ${profileId ?: context.getString(R.string.not_supported)}")
+    sb.appendLine("${context.getString(R.string.diag_device)}: ${f.manufacturer} ${f.model} (${f.device}/${f.product})")
+    sb.appendLine("${context.getString(R.string.diag_android)}: ${f.androidRelease} (SDK ${f.androidSdk})")
+    sb.appendLine("${context.getString(R.string.diag_fingerprint)}: ${f.fingerprint}")
+    sb.appendLine("${context.getString(R.string.diag_selinux)}: ${f.selinux}")
+    sb.appendLine("GMS: ${f.gmsPath ?: context.getString(R.string.absent)} v${f.gmsVersion ?: "?"} uid=${f.gmsUid ?: "?"} privileged=${f.gmsPrivileged}")
+    sb.appendLine("GSF: ${f.gsfPath ?: context.getString(R.string.absent)}")
+    sb.appendLine("${context.getString(R.string.diag_store_path)}: ${f.storePath ?: context.getString(R.string.absent)} v${f.storeVersion ?: "?"}")
+    sb.appendLine("Mounts: GMS=${f.mountGms} GSF=${f.mountGsf} Store=${f.mountStore} ${context.getString(R.string.diag_mount_gms_source)}=${f.mountGmsSource ?: "—"}")
+    sb.appendLine("${context.getString(R.string.diag_backup_present)}: ${f.backupPresent} ${context.getString(R.string.diag_export_format)}=MicroG Session ${context.getString(R.string.diag_local_dir)}=/data/local/tmp/microg-backup")
+    sb.appendLine("${context.getString(R.string.diag_compatibility)}: ${ui.compatibility.compatibility} match=${ui.compatibility.knownGood.level}")
     sb.appendLine("\n===== COMPATIBILITY REPORT JSON =====")
     sb.appendLine(
         kotlinx.serialization.json.Json {

@@ -32,6 +32,8 @@
 #  19. rollback prefere targets dinâmicos persistidos no snapshot
 #  20. updates legítimos em /data/app não viram estado inesperado
 #  21. FakeGApps/LSPosed detectados sem falso PASS funcional
+#  22. cleanup-residue remove payloads conhecidos e preserva evidência estranha
+#  23. rollback apaga dados antes de notificar/reabilitar o GMS
 # =============================================================================
 
 set -u
@@ -56,6 +58,7 @@ setup_root()
     PROF_GSF="$SYSTEM/system_ext/priv-app/GoogleServicesFramework"
     PROF_STORE="$SYSTEM/product/priv-app/Phonesky"
     MASK_BASE="$ROOT/mask"
+    LEGACY_MASK_BASE="$ROOT/legacy-mask"
     BACKUP_BASE="$ROOT/backup"
     LOCK_DIR="$ROOT/lock"
     MOUNTINFO="$ROOT/mountinfo"
@@ -210,6 +213,12 @@ EOF
     cat > "$FAKEBIN/pm" <<'EOF'
 #!/bin/sh
 case "$1" in
+    list)
+        if [ "$2" = "packages" ] && [ "$3" = "-d" ] && [ "${FAKE_PM_GMS_DISABLED:-0}" = "1" ]; then
+            echo "package:com.google.android.gms"
+        fi
+        exit 0
+        ;;
     path)
         case "$2" in
             com.google.android.gsf)
@@ -226,6 +235,16 @@ case "$1" in
         esac
         ;;
     enable)
+        if [ "$2" = "--user" ]; then
+            shift 2
+        fi
+        if [ "$2" = "com.google.android.gms" ] && \
+            [ "${PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE:-0}" = "1" ] && \
+            { [ -e "$DEGOOGLE_GMS_DATA_USER0/registration.xml" ] || \
+              [ -e "$DEGOOGLE_GMS_DATA_USERDE/device.xml" ]; }; then
+            echo "GMS habilitado antes da limpeza dos dados" >&2
+            exit 1
+        fi
         case "$2" in
             com.google.android.gsf)
                 [ "${PM_GSF_MISSING:-0}" = "1" ] && exit 1 ;;
@@ -277,6 +296,7 @@ run_script()
         DEGOOGLE_PROFILE_GSF="$PROF_GSF" \
         DEGOOGLE_PROFILE_STORE="$PROF_STORE" \
         DEGOOGLE_MASK_BASE="$MASK_BASE" \
+        DEGOOGLE_LEGACY_MASK_BASE="$LEGACY_MASK_BASE" \
         DEGOOGLE_BACKUP_BASE="$BACKUP_BASE" \
         DEGOOGLE_GMS_DATA_USER0="$DATA_USER0" \
         DEGOOGLE_GMS_DATA_USERDE="$DATA_USERDE" \
@@ -284,12 +304,18 @@ run_script()
         DEGOOGLE_MOUNTINFO="$MOUNTINFO" \
         DEGOOGLE_PM_CACHE="$PM_CACHE" \
         DEGOOGLE_EXPERIMENTAL="${DEGOOGLE_EXPERIMENTAL:-}" \
+        DEGOOGLE_REBOOT_SOURCE="${DEGOOGLE_REBOOT_SOURCE:-}" \
+        DEGOOGLE_REBOOT_COOLDOWN_SECONDS="${DEGOOGLE_REBOOT_COOLDOWN_SECONDS:-}" \
+        DEGOOGLE_KSUD_PATH="${DEGOOGLE_KSUD_PATH:-}" \
         PM_GMS_PATH="${PM_GMS_PATH:-}" \
         PM_GSF_PATH="${PM_GSF_PATH:-}" \
         PM_STORE_PATH="${PM_STORE_PATH:-}" \
         PM_GSF_MISSING="${PM_GSF_MISSING:-}" \
         PM_STORE_MISSING="${PM_STORE_MISSING:-}" \
+        FAKE_PM_GMS_DISABLED="${FAKE_PM_GMS_DISABLED:-}" \
+        PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE="${PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE:-}" \
         FAKEGAPPS_PRESENT="${FAKEGAPPS_PRESENT:-}" \
+        FAKE_SET_PROP_EXIT="${FAKE_SET_PROP_EXIT:-1}" \
         DEGOOGLE_LSPOSED_MARKER="${DEGOOGLE_LSPOSED_MARKER:-}" \
         sh "$SCRIPT" "$@" 2>&1)"
     rc=$?
@@ -562,6 +588,70 @@ grep -q '^DEGOOGLE_CAP_SIGNATURE_SPOOFING_STATUS=WARN$' "$ROOT/fakegapps_probe.o
 grep -q 'FakeGApps' "$ROOT/fakegapps_probe.out" && ok "evidência do módulo foi registrada" || bad "evidência do módulo ausente"
 ! grep -q 'desabilitado para o usuário' "$ROOT/fakegapps_probe.out" && \
     ok "enabled=0 não é tratado como pacote desabilitado" || bad "enabled=0 foi interpretado como desabilitado"
+teardown_root
+
+echo "== cenário 22: limpeza automática de resíduos conhecidos"
+setup_root
+mkdir -p "$MASK_BASE/gms" "$MASK_BASE/gsf" "$MASK_BASE/store" \
+    "$LEGACY_MASK_BASE/gms" "$LEGACY_MASK_BASE/gsf" "$LEGACY_MASK_BASE/store"
+cp "$ROOT/gms.apk" "$MASK_BASE/gms/GmsCore.apk"
+cp "$ROOT/companion.apk" "$MASK_BASE/store/Companion.apk"
+cp "$ROOT/gms.apk" "$LEGACY_MASK_BASE/gms/GmsCore.apk"
+printf 'evidencia-estranha\n' > "$MASK_BASE/gms/keep-for-diagnostics.txt"
+printf 'backup-intacto\n' > "$BACKUP_BASE/keep.txt"
+run_script 0 "cleanup-residue remove payloads conhecidos" cleanup-residue > "$ROOT/residue_cleanup.out" || true
+[ ! -e "$MASK_BASE/gms/GmsCore.apk" ] && \
+    [ ! -e "$MASK_BASE/store/Companion.apk" ] && \
+    [ ! -e "$LEGACY_MASK_BASE/gms/GmsCore.apk" ] && \
+    ok "payloads atuais e legados removidos" || bad "payload conhecido permaneceu"
+[ -f "$MASK_BASE/gms/keep-for-diagnostics.txt" ] && \
+    ok "arquivo desconhecido preservado" || bad "arquivo desconhecido foi removido"
+grep -q '^DEGOOGLE_MASK_RESIDUE_PRESENT=1$' "$ROOT/residue_cleanup.out" && \
+    ok "resíduo desconhecido continua sinalizado" || bad "sinalização de resíduo desconhecido ausente"
+[ -f "$BACKUP_BASE/keep.txt" ] && ok "backup preservado" || bad "backup foi alterado"
+teardown_root
+
+echo "== cenário 23: dados do GMS são apagados antes da habilitação"
+setup_root
+# Marca o GMS como desabilitado para obrigar pm_enable_or_defer a executar
+# `pm enable`; o fake falha se os payloads antigos ainda existirem.
+FAKE_PM_GMS_DISABLED=1 PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE=1 \
+    run_script 0 "restore-stock elimina corrida entre enable e wipe" restore-stock --wipe-data > "$ROOT/ordered_restore.out" || true
+[ ! -e "$DATA_USER0/registration.xml" ] && [ ! -e "$DATA_USERDE/device.xml" ] && \
+    ok "payloads do microG removidos antes do enable" || bad "payloads antigos permaneceram"
+grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && \
+    ok "rollback ordenado alcançou REINDEX_PENDING" || bad "rollback ordenado não foi concluído"
+teardown_root
+
+echo "== cenário 24: cooldown protege apenas a recuperação automática"
+setup_root
+cat > "$FAKEBIN/setprop" <<'EOF'
+#!/bin/sh
+exit "${FAKE_SET_PROP_EXIT:-1}"
+EOF
+KSUD_STUB="$ROOT/ksud"
+cat > "$KSUD_STUB" <<EOF
+#!/bin/sh
+echo invoked > "$ROOT/ksud.called"
+exit 1
+EOF
+chmod +x "$FAKEBIN/setprop" "$KSUD_STUB"
+mkdir -p "$BACKUP_BASE/transaction"
+printf 'last=%s\nattempts=1\n' "$(date +%s)" > "$BACKUP_BASE/transaction/rescue-party.state"
+DEGOOGLE_REBOOT_SOURCE=automatic DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
+    run_script 6 "recovery automática respeita cooldown" soft-reboot || true
+[ ! -e "$ROOT/ksud.called" ] && ok "cooldown não chamou nenhum método" || bad "cooldown chamou o método de reboot"
+[ -f "$BACKUP_BASE/transaction/rescue-party.state" ] && ok "cooldown preservou o guard" || bad "cooldown removeu o guard"
+
+rm -f "$ROOT/ksud.called"
+DEGOOGLE_REBOOT_SOURCE=manual DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
+    run_script 5 "tentativa manual ignora cooldown automático" soft-reboot || true
+[ -e "$ROOT/ksud.called" ] && ok "tentativa manual alcançou o método de reboot" || bad "tentativa manual foi bloqueada pelo cooldown"
+
+rm -f "$BACKUP_BASE/transaction/rescue-party.state" "$ROOT/ksud.called"
+DEGOOGLE_REBOOT_SOURCE=automatic DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
+    run_script 5 "falha dos métodos não consome cooldown" soft-reboot || true
+[ ! -e "$BACKUP_BASE/transaction/rescue-party.state" ] && ok "falha real limpou o guard" || bad "falha real deixou cooldown falso"
 teardown_root
 
 # ---------------------------------------------------------------------------

@@ -163,15 +163,25 @@ object CompatibilityEngine {
             "gsf" to facts.gsfPackage,
             "store" to facts.storePackage,
         )
+        val maskedByUs = mapOf(
+            "gms" to (facts.mountGms && facts.mountGmsIsOurs),
+            "gsf" to (facts.mountGsf && facts.mountGsfIsOurs),
+            "store" to (facts.mountStore && facts.mountStoreIsOurs),
+        )
         return profile.expectedPaths.mapNotNull { (name, expected) ->
             val actual = observed[name]
             val packageInfo = packages[name]
             val activeDataUpdate = packageInfo?.hasDataUpdate == true &&
                 packageInfo.activeCodePath?.startsWith("/data/app/") == true
+            val intentionallyHiddenByMask = maskedByUs[name] == true && actual == null
             // Enquanto um update está ativo, o Package Manager expõe apenas
             // o path em /data/app. Isso não invalida o target stock conhecido;
             // o cleanup explícito ainda será revalidado pelo backend.
-            if (actual == expected || activeDataUpdate) {
+            // Depois do soft reboot, o GSF também pode desaparecer da resposta
+            // do PackageManager porque a máscara vazia está cobrindo o alvo.
+            // Ausência nesse caso é evidência do estado operacional, não um
+            // path mismatch.
+            if (actual == expected || activeDataUpdate || intentionallyHiddenByMask) {
                 null
             } else {
                 "$name: expected=$expected actual=${actual ?: "UNKNOWN"}"

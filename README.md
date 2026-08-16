@@ -149,6 +149,15 @@ Observed workflow:
 
 If the volatile environment is later lost after a full reboot, restoring the microG backup can preserve the registered microG data and avoid repeating the initial setup in the tested workflow.
 
+The current `BootReceiver` also performs this check without requiring the
+Activity to be opened. If a full reboot leaves the Package Manager stale
+(`RESTORE_PREPARED`) or a known legacy mask mounted, the app unmounts only
+known sources, preserves the backup, clears the parse cache, removes orphaned
+microG data, and requests a soft reboot to reindex the system. In `STOCK` with
+only temporary payloads, it removes known residue. Foreign mounts and
+ambiguous states remain blocked and generate an alert instead of being removed
+automatically.
+
 ## Build
 
 Requirements:

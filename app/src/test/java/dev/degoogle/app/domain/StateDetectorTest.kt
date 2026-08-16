@@ -101,6 +101,21 @@ class StateDetectorTest {
         assertEquals(DeviceState.PREPARED, StateDetector.detect(f, profile))
     }
 
+    @Test
+    fun `flag legada de perfil stale não oculta estado operacional validado`() {
+        val f = facts {
+            profileMatch = false
+            mountedByUs()
+            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPrivileged = true
+            gsfPath = null
+            storePath = "${profile.storeSystemDir}/Companion.apk"
+            finalizeDone = true
+            backupPresent = true
+        }
+        assertEquals(DeviceState.MICROG_ACTIVE_BACKED_UP, StateDetector.detect(f, profile))
+    }
+
     // 6. GMS mascarado + GSF ausente + finalize pendente
     @Test
     fun `GMS mascarado com GSF ausente e finalize pendente vira MICROG_BOOTED`() {

@@ -151,6 +151,15 @@ Fluxo observado:
 
 Caso o ambiente volátil seja perdido após um reboot completo, a restauração do backup do microG pode preservar os dados registrados do microG e evitar a repetição da configuração inicial [...]
 
+Desde a versão atual, o `BootReceiver` também executa essa verificação sem
+exigir que a Activity seja aberta. Se um reboot completo deixar o Package
+Manager stale (`RESTORE_PREPARED`) ou uma máscara legada conhecida montada, o
+app desmonta apenas fontes conhecidas, preserva o backup, limpa o cache de
+parse, remove os dados órfãos do microG e solicita um soft reboot para
+reindexar o sistema. Em `STOCK` com apenas payloads temporários, ele remove os
+resíduos conhecidos. Mounts externos ou estados ambíguos continuam bloqueados
+e geram alerta, sem remoção automática.
+
 ## Build
 
 Requisitos:

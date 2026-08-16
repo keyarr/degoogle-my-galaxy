@@ -66,6 +66,13 @@ MASK_BASE="${DEGOOGLE_MASK_BASE:-/data/local/tmp/degoogle-mask}"
 MASK_GMS="$MASK_BASE/gms"
 MASK_GSF="$MASK_BASE/gsf"
 MASK_STORE="$MASK_BASE/store"
+
+# Layout usado pelo script manual legado. Ele continua sendo uma origem
+# conhecida para recuperação, mas nunca é tratado como máscara atual do app.
+LEGACY_MASK_BASE="${DEGOOGLE_LEGACY_MASK_BASE:-/data/local/tmp/microg-mask}"
+LEGACY_MASK_GMS="$LEGACY_MASK_BASE/gms"
+LEGACY_MASK_GSF="$LEGACY_MASK_BASE/gsf"
+LEGACY_MASK_STORE="$LEGACY_MASK_BASE/store"
 GMS_APK="GmsCore.apk"
 STORE_APK="Companion.apk"
 
@@ -105,6 +112,7 @@ JOURNAL_FILE="$TRANSACTION_BASE/journal"
 SNAPSHOT_FILE="$TRANSACTION_BASE/snapshot.json"
 PROBE_BASELINE_FILE="$TRANSACTION_BASE/probe-baseline"
 RESCUE_STATE_FILE="${DEGOOGLE_RESCUE_STATE:-$TRANSACTION_BASE/rescue-party.state}"
+KSUD_PATH="${DEGOOGLE_KSUD_PATH:-/data/adb/ksud}"
 
 # Variáveis de fatos (preenchidas por collect_facts, usadas por compute_state)
 ROOT_OK=0
@@ -168,8 +176,15 @@ MOUNT_GSF=0
 MOUNT_GSF_IS_OURS=0
 MOUNT_STORE=0
 MOUNT_STORE_IS_OURS=0
+MOUNT_GMS_IS_LEGACY=0
+MOUNT_GSF_IS_LEGACY=0
+MOUNT_STORE_IS_LEGACY=0
+MOUNT_GMS_IS_KNOWN=0
+MOUNT_GSF_IS_KNOWN=0
+MOUNT_STORE_IS_KNOWN=0
 MOUNT_GMS_SOURCE=""
 BACKUP_PRESENT=0
+MASK_RESIDUE_PRESENT=0
 FINALIZE_DONE=0
 REBOOT_STRATEGY_BACKEND=""
 REBOOT_STRATEGY_METHOD=""
@@ -215,6 +230,14 @@ fail()
     local code="$1"
     shift
     say "ERRO: $*"
+    exit "$code"
+}
+
+fail_en()
+{
+    local code="$1"
+    shift
+    say "ERROR: $*"
     exit "$code"
 }
 
@@ -542,32 +565,97 @@ is_masked_by_us()
     return 0
 }
 
+is_masked_by_legacy()
+{
+    is_masked_by "$1" "$2" "${3:-}"
+}
+
+is_masked_by()
+{
+    # is_masked_by <mountpoint> <mask> [apk]
+    local mp="$1" mask="$2" apk="${3:-}" root
+    root="$(mountinfo_root "$mp")"
+    [ -n "$root" ] || return 1
+    [ "$root" = "$(fs_root_of "$mask")" ] || return 1
+    if [ -n "$apk" ]; then
+        global test -f "$mp/$apk" 2>/dev/null || return 1
+    else
+        global test -d "$mp" 2>/dev/null || return 1
+    fi
+    return 0
+}
+
+mount_source_matches_mask()
+{
+    # mount_source_matches_mask <mountpoint> <mask>
+    #
+    # mountinfo é a fonte de verdade para classificar mounts já existentes.
+    # Não exija que o arquivo apareça no mountpoint: durante um boot quebrado
+    # o Package Manager pode ainda não ter recriado os diretórios/arquivos,
+    # e os fixtures de recuperação representam apenas a origem do mount.
+    local mp="$1" mask="$2" root
+    root="$(mountinfo_root "$mp")"
+    [ -n "$root" ] || return 1
+    [ "$root" = "$(fs_root_of "$mask")" ]
+}
+
+refresh_residue_facts()
+{
+    MASK_RESIDUE_PRESENT=0
+    for p in "$MASK_BASE" "$LEGACY_MASK_BASE" \
+        "$MASK_GMS/$GMS_APK" "$MASK_STORE/$STORE_APK" \
+        "$LEGACY_MASK_GMS/$GMS_APK" "$LEGACY_MASK_STORE/FakeStore.apk"; do
+        if [ -e "$p" ]; then
+            MASK_RESIDUE_PRESENT=1
+            return 0
+        fi
+    done
+}
+
 refresh_mount_facts()
 {
     # Package Manager pode não listar GSF/Store durante uma recuperação. Os
     # alvos aqui já devem ter sido resolvidos pelo locator, snapshot ou perfil;
     # mountinfo é a fonte de verdade para saber o que ainda está montado.
     local mr
-    MOUNT_GMS=0; MOUNT_GMS_IS_OURS=0; MOUNT_GMS_SOURCE=""
+    MOUNT_GMS=0; MOUNT_GMS_IS_OURS=0; MOUNT_GMS_IS_LEGACY=0; MOUNT_GMS_IS_KNOWN=0; MOUNT_GMS_SOURCE=""
     mr="$(mountinfo_root "${TARGET_GMS:-$PROFILE_GMS}")"
     if [ -n "$mr" ]; then
         MOUNT_GMS=1
         MOUNT_GMS_SOURCE="$mr"
-        [ "$mr" = "$(fs_root_of "$MASK_GMS")" ] && MOUNT_GMS_IS_OURS=1
+        if mount_source_matches_mask "${TARGET_GMS:-$PROFILE_GMS}" "$MASK_GMS"; then
+            MOUNT_GMS_IS_OURS=1
+            MOUNT_GMS_IS_KNOWN=1
+        elif mount_source_matches_mask "${TARGET_GMS:-$PROFILE_GMS}" "$LEGACY_MASK_GMS"; then
+            MOUNT_GMS_IS_LEGACY=1
+            MOUNT_GMS_IS_KNOWN=1
+        fi
     fi
 
-    MOUNT_GSF=0; MOUNT_GSF_IS_OURS=0
+    MOUNT_GSF=0; MOUNT_GSF_IS_OURS=0; MOUNT_GSF_IS_LEGACY=0; MOUNT_GSF_IS_KNOWN=0
     mr="$(mountinfo_root "${TARGET_GSF:-$PROFILE_GSF}")"
     if [ -n "$mr" ]; then
         MOUNT_GSF=1
-        [ "$mr" = "$(fs_root_of "$MASK_GSF")" ] && MOUNT_GSF_IS_OURS=1
+        if mount_source_matches_mask "${TARGET_GSF:-$PROFILE_GSF}" "$MASK_GSF"; then
+            MOUNT_GSF_IS_OURS=1
+            MOUNT_GSF_IS_KNOWN=1
+        elif mount_source_matches_mask "${TARGET_GSF:-$PROFILE_GSF}" "$LEGACY_MASK_GSF"; then
+            MOUNT_GSF_IS_LEGACY=1
+            MOUNT_GSF_IS_KNOWN=1
+        fi
     fi
 
-    MOUNT_STORE=0; MOUNT_STORE_IS_OURS=0
+    MOUNT_STORE=0; MOUNT_STORE_IS_OURS=0; MOUNT_STORE_IS_LEGACY=0; MOUNT_STORE_IS_KNOWN=0
     mr="$(mountinfo_root "${TARGET_STORE:-$PROFILE_STORE}")"
     if [ -n "$mr" ]; then
         MOUNT_STORE=1
-        [ "$mr" = "$(fs_root_of "$MASK_STORE")" ] && MOUNT_STORE_IS_OURS=1
+        if mount_source_matches_mask "${TARGET_STORE:-$PROFILE_STORE}" "$MASK_STORE"; then
+            MOUNT_STORE_IS_OURS=1
+            MOUNT_STORE_IS_KNOWN=1
+        elif mount_source_matches_mask "${TARGET_STORE:-$PROFILE_STORE}" "$LEGACY_MASK_STORE"; then
+            MOUNT_STORE_IS_LEGACY=1
+            MOUNT_STORE_IS_KNOWN=1
+        fi
     fi
 }
 
@@ -1089,6 +1177,8 @@ collect_facts()
         BACKUP_PRESENT=1
     fi
 
+    refresh_residue_facts
+
     probe_capabilities
 }
 
@@ -1153,12 +1243,16 @@ emit_facts()
     emit STORE_RESOLVED_REAL_PATH "$STORE_RESOLVED_REAL_PATH"
     emit MOUNT_GMS "$MOUNT_GMS"
     emit MOUNT_GMS_IS_OURS "$MOUNT_GMS_IS_OURS"
+    emit MOUNT_GMS_IS_LEGACY "$MOUNT_GMS_IS_LEGACY"
     emit MOUNT_GSF "$MOUNT_GSF"
     emit MOUNT_GSF_IS_OURS "$MOUNT_GSF_IS_OURS"
+    emit MOUNT_GSF_IS_LEGACY "$MOUNT_GSF_IS_LEGACY"
     emit MOUNT_STORE "$MOUNT_STORE"
     emit MOUNT_STORE_IS_OURS "$MOUNT_STORE_IS_OURS"
+    emit MOUNT_STORE_IS_LEGACY "$MOUNT_STORE_IS_LEGACY"
     emit MOUNT_GMS_SOURCE "$MOUNT_GMS_SOURCE"
     emit BACKUP_PRESENT "$BACKUP_PRESENT"
+    emit MASK_RESIDUE_PRESENT "$MASK_RESIDUE_PRESENT"
     emit FINALIZE_DONE "$FINALIZE_DONE"
     emit REBOOT_STRATEGY_BACKEND "$REBOOT_STRATEGY_BACKEND"
     emit REBOOT_STRATEGY_METHOD "$REBOOT_STRATEGY_METHOD"
@@ -2003,11 +2097,18 @@ pm_enable_or_defer()
     local pkg="$1" target="$2" label="$3" current
     current="$(pm_path "$pkg")"
     if [ -n "$current" ]; then
-        pm enable "$pkg" >/dev/null 2>&1 || {
-            say "ERRO: não consegui reabilitar $label ($pkg) já registrado no PM."
-            return 1
-        }
-        say "  $label reabilitado ($pkg)."
+        if pm list packages -d --user 0 2>/dev/null | grep -qx "package:$pkg"; then
+            pm enable --user 0 "$pkg" >/dev/null 2>&1 || {
+                say "ERRO: não consegui reabilitar $label ($pkg) já registrado no PM."
+                return 1
+            }
+            say "  $label reabilitado ($pkg)."
+        else
+            # Evita emitir PACKAGE_CHANGED sem necessidade. Em um PM ainda
+            # stale isso pode iniciar imediatamente o APK que acabou de ser
+            # desmontado, antes do reboot/reindexamento obrigatório.
+            say "  $label já estava habilitado; nenhuma alteração enviada ao PM."
+        fi
         return 0
     fi
     if global test -d "$target" 2>/dev/null; then
@@ -2018,17 +2119,50 @@ pm_enable_or_defer()
     return 1
 }
 
+microg_data_is_cleared()
+{
+    # O PackageManager pode recriar a árvore básica (cache/code_cache) logo
+    # após a remoção. Diretórios vazios são inofensivos; qualquer arquivo,
+    # link ou outro payload significa que a limpeza ainda não terminou.
+    local root residue
+    for root in "$GMS_DATA_USER0" "$GMS_DATA_USERDE"; do
+        [ -e "$root" ] || continue
+        [ -d "$root" ] || return 1
+        residue="$(find "$root" -mindepth 1 ! -type d -print -quit 2>/dev/null)" || return 1
+        [ -z "$residue" ] || return 1
+    done
+    return 0
+}
+
+remove_microg_data_safely()
+{
+    local attempt=1
+    while [ "$attempt" -le 3 ]; do
+        # force-stop imediatamente antes de cada tentativa. Reabilitar o GMS
+        # antes deste ponto cria uma corrida com processos persistent/UI.
+        am force-stop "$GMS_PKG" 2>/dev/null || true
+        rm -rf "$GMS_DATA_USER0" "$GMS_DATA_USERDE" 2>/dev/null || true
+        if microg_data_is_cleared; then
+            return 0
+        fi
+        say "  dados do microG foram recriados durante a limpeza; repetindo ($attempt/3)…"
+        attempt=$((attempt + 1))
+    done
+    say "ERRO: ainda há payloads nos diretórios de dados do microG após 3 tentativas."
+    return 1
+}
+
 rollback_unmount()
 {
-    # rollback_unmount <label> <target> <ours>
-    local label="$1" target="$2" ours="$3"
+    # rollback_unmount <label> <target> <known>
+    local label="$1" target="$2" known="$3"
     [ -n "$target" ] && [ "$target" != "." ] || {
         say "ERRO: target $label vazio/inválido durante rollback."
         return 1
     }
     is_mounted "$target" || return 0
-    [ "$ours" = "1" ] || {
-        say "ERRO: mount $label em $target não pertence à nossa máscara."
+    [ "$known" = "1" ] || {
+        say "ERRO: mount $label em $target não pertence a uma máscara conhecida."
         return 1
     }
     if ! global umount "$target" 2>/dev/null; then
@@ -2060,9 +2194,9 @@ restore_stock()
     resolve_rollback_targets || fail 3 "não foi possível resolver os três alvos de rollback sem adivinhação"
     refresh_mount_facts
 
-    [ "$MOUNT_GMS" = "1" ] && [ "$MOUNT_GMS_IS_OURS" != "1" ] && foreign="$foreign GMS"
-    [ "$MOUNT_GSF" = "1" ] && [ "$MOUNT_GSF_IS_OURS" != "1" ] && foreign="$foreign GSF"
-    [ "$MOUNT_STORE" = "1" ] && [ "$MOUNT_STORE_IS_OURS" != "1" ] && foreign="$foreign Store"
+    [ "$MOUNT_GMS" = "1" ] && [ "$MOUNT_GMS_IS_KNOWN" != "1" ] && foreign="$foreign GMS"
+    [ "$MOUNT_GSF" = "1" ] && [ "$MOUNT_GSF_IS_KNOWN" != "1" ] && foreign="$foreign GSF"
+    [ "$MOUNT_STORE" = "1" ] && [ "$MOUNT_STORE_IS_KNOWN" != "1" ] && foreign="$foreign Store"
     [ -z "$foreign" ] || fail 4 "mount externo detectado:$foreign — não vou desmontá-lo automaticamente"
 
     journal_state "ROLLBACK_RUNNING" >/dev/null 2>&1 || fail 4 "não foi possível registrar ROLLBACK_RUNNING"
@@ -2079,21 +2213,21 @@ restore_stock()
         if [ "${DEGOOGLE_FAIL_UMOUNT:-0}" = "1" ]; then
             say "ERRO: DEGOOGLE_FAIL_UMOUNT injetado para GMS."
             failed="$failed GMS"
-        elif rollback_unmount "GMS" "$TARGET_GMS" "$MOUNT_GMS_IS_OURS"; then
+        elif rollback_unmount "GMS" "$TARGET_GMS" "$MOUNT_GMS_IS_KNOWN"; then
             journal_state "GMS_UNMOUNTED" || failed="$failed GMS(journal)"
         else
             failed="$failed GMS"
         fi
     fi
     if [ "$MOUNT_GSF" = "1" ]; then
-        if rollback_unmount "GSF" "$TARGET_GSF" "$MOUNT_GSF_IS_OURS"; then
+        if rollback_unmount "GSF" "$TARGET_GSF" "$MOUNT_GSF_IS_KNOWN"; then
             journal_state "GSF_UNMOUNTED" || failed="$failed GSF(journal)"
         else
             failed="$failed GSF"
         fi
     fi
     if [ "$MOUNT_STORE" = "1" ]; then
-        if rollback_unmount "Store" "$TARGET_STORE" "$MOUNT_STORE_IS_OURS"; then
+        if rollback_unmount "Store" "$TARGET_STORE" "$MOUNT_STORE_IS_KNOWN"; then
             journal_state "STORE_UNMOUNTED" || failed="$failed Store(journal)"
         else
             failed="$failed Store"
@@ -2110,21 +2244,11 @@ restore_stock()
     fi
 
     # Só remove os arquivos depois de provar que nenhum target continua
-    # montado. O diretório GSF é intencionalmente vazio.
-    rm -f "$MASK_GMS/$GMS_APK" "$MASK_STORE/$STORE_APK" || {
+    # montado. O diretório GSF é intencionalmente vazio. A limpeza também
+    # remove somente payloads conhecidos do script manual legado.
+    cleanup_known_mask_residue || {
         journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
-        fail 4 "não consegui remover APKs das máscaras após desmontá-las"
-    }
-
-    # O PM pode ainda estar stale até o reboot. Ausência com target stock
-    # existente é um estado recuperável, não uma falha fatal do rollback.
-    pm_enable_or_defer "$STORE_PKG" "$TARGET_STORE" "Play Store" || {
-        journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
-        fail 4 "não consegui preparar a habilitação da Play Store"
-    }
-    pm_enable_or_defer "$GMS_PKG" "$TARGET_GMS" "GMS" || {
-        journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
-        fail 4 "não consegui preparar a habilitação do GMS"
+        fail 4 "não consegui remover os APKs conhecidos das máscaras após desmontá-las"
     }
 
     # Invalida o cache de parse do PackageManager. O reboot ainda é obrigatório
@@ -2150,11 +2274,23 @@ restore_stock()
 
     # Dados órfãos do microG (com consentimento explícito do app).
     if [ "$wipe" = "--wipe-data" ]; then
-        rm -rf "$GMS_DATA_USER0" "$GMS_DATA_USERDE" || fail 4 "não consegui remover dados do microG"
+        remove_microg_data_safely || fail 4 "não consegui remover dados do microG"
         say "  dados do microG removidos de /data."
     else
         say "  dados do microG preservados em /data (use --wipe-data para remover)."
     fi
+
+    # Só notifica o PackageManager depois que os dados antigos desapareceram.
+    # Antes disso, um `pm enable` pode iniciar o GMS stale e fazê-lo recriar os
+    # diretórios enquanto o rollback ainda os remove.
+    pm_enable_or_defer "$STORE_PKG" "$TARGET_STORE" "Play Store" || {
+        journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
+        fail 4 "não consegui preparar a habilitação da Play Store"
+    }
+    pm_enable_or_defer "$GMS_PKG" "$TARGET_GMS" "GMS" || {
+        journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
+        fail 4 "não consegui preparar a habilitação do GMS"
+    }
 
     say ""
     say "RESTORE-STOCK PREPARADO. Reindexamento do Package Manager e reboot são obrigatórios."
@@ -2163,6 +2299,49 @@ restore_stock()
     emit REINDEX_PENDING "1"
     emit REBOOT_REQUIRED "1"
     emit STATE "RESTORE_PREPARED"
+    return 0
+}
+
+cleanup_known_mask_residue()
+{
+    # Nunca remove recursivamente /data/local/tmp. Apenas os APKs e diretórios
+    # criados pelos dois layouts conhecidos são candidatos; arquivos estranhos
+    # ficam preservados para diagnóstico.
+    local p
+    for p in \
+        "$MASK_GMS/$GMS_APK" "$MASK_STORE/$STORE_APK" \
+        "$LEGACY_MASK_GMS/$GMS_APK" "$LEGACY_MASK_STORE/FakeStore.apk"; do
+        rm -f "$p" || return 1
+    done
+    for p in \
+        "$MASK_GMS" "$MASK_GSF" "$MASK_STORE" "$MASK_BASE" \
+        "$LEGACY_MASK_GMS" "$LEGACY_MASK_GSF" "$LEGACY_MASK_STORE" "$LEGACY_MASK_BASE"; do
+        rmdir "$p" 2>/dev/null || true
+    done
+    refresh_residue_facts
+    return 0
+}
+
+cleanup_residue()
+{
+    check_root
+    require_lock
+
+    local foreign=""
+    collect_facts
+    resolve_rollback_targets || fail 3 "não foi possível resolver os alvos de recuperação"
+    refresh_mount_facts
+
+    [ "$MOUNT_GMS" = "1" ] && foreign="$foreign GMS"
+    [ "$MOUNT_GSF" = "1" ] && foreign="$foreign GSF"
+    [ "$MOUNT_STORE" = "1" ] && foreign="$foreign Store"
+    [ -z "$foreign" ] || fail 4 "mount ativo detectado:$foreign — resíduos não serão removidos enquanto houver mount"
+
+    cleanup_known_mask_residue || fail 4 "não consegui limpar os payloads conhecidos das máscaras"
+    say "Resíduos conhecidos das máscaras removidos; backup do microG preservado."
+    emit RESIDUE_CLEANUP "1"
+    emit MASK_RESIDUE_PRESENT "$MASK_RESIDUE_PRESENT"
+    emit STATE "STOCK"
     return 0
 }
 
@@ -2225,46 +2404,83 @@ post_boot_validate()
 soft_reboot()
 {
     check_root
-    local now last attempts
+    local source now last attempts cooldown elapsed remaining previous_state
+    local ksud_output ksud_status power_output power_status
+    source="${DEGOOGLE_REBOOT_SOURCE:-manual}"
+    case "$source" in
+        automatic|manual) ;;
+        *) source="manual" ;;
+    esac
+    cooldown="${DEGOOGLE_REBOOT_COOLDOWN_SECONDS:-3600}"
+    case "$cooldown" in ''|*[!0-9]*) cooldown=3600 ;; esac
     now="$(date +%s 2>/dev/null || echo 0)"
     last=0; attempts=0
-    if [ -f "$RESCUE_STATE_FILE" ]; then
+    previous_state="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+    if [ "$source" = "automatic" ] && [ -f "$RESCUE_STATE_FILE" ]; then
         last="$(sed -n 's/^last=//p' "$RESCUE_STATE_FILE" 2>/dev/null | head -n 1)"
         attempts="$(sed -n 's/^attempts=//p' "$RESCUE_STATE_FILE" 2>/dev/null | head -n 1)"
     fi
     case "$last" in ''|*[!0-9]*) last=0 ;; esac
     case "$attempts" in ''|*[!0-9]*) attempts=0 ;; esac
-    if [ "$attempts" -ge 1 ] && [ $((now - last)) -lt 3600 ]; then
-        fail 3 "Rescue Party guard: já houve soft reboot automático recente; não vou repetir. Faça diagnóstico/rollback."
+    case "$now" in ''|*[!0-9]*) now=0 ;; esac
+    if [ "$source" = "automatic" ] && [ "$attempts" -ge 1 ] &&
+        [ "$last" -gt 0 ] && [ "$now" -ge "$last" ]; then
+        elapsed=$((now - last))
+        if [ "$elapsed" -lt "$cooldown" ]; then
+            remaining=$((cooldown - elapsed))
+            fail_en 6 "Automatic userspace reboot cooldown is active; retry in ${remaining}s."
+        fi
     fi
-    mkdir -p "$TRANSACTION_BASE" 2>/dev/null || fail 3 "não foi possível persistir o contador de soft reboot"
-    {
-        printf 'last=%s\n' "$now"
-        printf 'attempts=%s\n' "$((attempts + 1))"
-    } > "$RESCUE_STATE_FILE" || fail 3 "não foi possível persistir o contador de soft reboot"
-    journal_state "REBOOT_REQUESTED" || fail 4 "não foi possível registrar REBOOT_REQUESTED"
-    say "Solicitando soft reboot (framework)..."
+    journal_state "REBOOT_REQUESTED" || fail_en 4 "Could not record the reboot request."
+    if [ "$source" = "automatic" ]; then
+        mkdir -p "$TRANSACTION_BASE" 2>/dev/null || {
+            [ -n "$previous_state" ] && journal_state "$previous_state" >/dev/null 2>&1 || true
+            fail_en 3 "Could not persist the automatic reboot guard."
+        }
+        {
+            printf 'last=%s\n' "$now"
+            printf 'attempts=%s\n' "$((attempts + 1))"
+        } > "$RESCUE_STATE_FILE" || {
+            [ -n "$previous_state" ] && journal_state "$previous_state" >/dev/null 2>&1 || true
+            fail_en 3 "Could not persist the automatic reboot guard."
+        }
+    fi
+    say "Requesting userspace reboot..."
     # Método 1: ksud soft-reboot (KernelSU) — o mecanismo do KernelSU Manager;
     # emula um reboot de sistema preservando o kernel (root via exploit) e os
     # mounts. É o método comprovado no fluxo do microg-session.sh.
-    if [ -x /data/adb/ksud ]; then
-        if /data/adb/ksud soft-reboot >/dev/null 2>&1; then
-            say "  ksud soft-reboot aceito. O framework será reiniciado."
+    if [ -x "$KSUD_PATH" ]; then
+        ksud_output="$($KSUD_PATH soft-reboot 2>&1)"
+        ksud_status=$?
+        if [ "$ksud_status" -eq 0 ]; then
+            say "KernelSU userspace reboot accepted."
             return 0
         fi
-        say "  ksud soft-reboot falhou; tentando sys.powerctl..."
+        say "KernelSU userspace reboot failed (exit ${ksud_status})."
+        [ -n "$ksud_output" ] && say "KernelSU detail: $ksud_output"
+    else
+        say "KernelSU userspace reboot binary is unavailable."
     fi
     # Método 2: sys.powerctl (AOSP userspace reboot) — pode falhar por SELinux
     # no domínio do shell; vale a tentativa.
-    if setprop sys.powerctl reboot,userspace 2>/dev/null; then
-        say "  sys.powerctl=reboot,userspace aceito. O framework será reiniciado."
+    power_output="$(setprop sys.powerctl reboot,userspace 2>&1)"
+    power_status=$?
+    if [ "$power_status" -eq 0 ]; then
+        say "AOSP userspace reboot accepted."
         return 0
     fi
-    say "  sys.powerctl rejeitado."
+    say "AOSP userspace reboot rejected (exit ${power_status})."
+    [ -n "$power_output" ] && say "AOSP detail: $power_output"
     # IMPORTANTE: aparelhos com root via exploit NUNCA devem usar reboot
     # completo — o kernel reboot perde o root e o microG. Abortamos com
     # instrução segura em vez de sugerir reboot completo.
-    fail 3 "Soft reboot não suportado aqui. Reinicie o framework pelo KernelSU Manager — NUNCA use reboot completo neste aparelho (perde root e microG)."
+    [ "$source" = "automatic" ] && rm -f "$RESCUE_STATE_FILE" 2>/dev/null || true
+    if [ -n "$previous_state" ]; then
+        journal_state "$previous_state" >/dev/null 2>&1 || true
+    else
+        journal_state "FAILED" >/dev/null 2>&1 || true
+    fi
+    fail_en 5 "No supported userspace reboot method succeeded; no reboot was started."
 }
 
 # ===========================================================================
@@ -2329,6 +2545,9 @@ case "${1:-}" in
     cleanup)
         cleanup
         ;;
+    cleanup-residue)
+        cleanup_residue
+        ;;
     backup)
         backup
         ;;
@@ -2360,6 +2579,6 @@ case "${1:-}" in
         self_test
         ;;
     *)
-        fail_usage "probe|dry-run|preflight|prepare <gms> <companion>|finalize|cleanup|backup|restore-backup|restore-stock [--wipe-data]|rollback [--wipe-data]|post-boot-validate|soft-reboot|status|test"
+        fail_usage "probe|dry-run|preflight|prepare <gms> <companion>|finalize|cleanup|cleanup-residue|backup|restore-backup|restore-stock [--wipe-data]|rollback [--wipe-data]|post-boot-validate|soft-reboot|status|test"
         ;;
 esac

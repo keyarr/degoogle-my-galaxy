@@ -82,6 +82,25 @@ class CompatibilityEngineTest {
     }
 
     @Test
+    fun `GSF ausente sob máscara conhecida não invalida estado ativo`() {
+        val decision = CompatibilityEngine.evaluate(
+            facts().copy(
+                gmsPath = "/product/priv-app/GmsCore/GmsCore.apk",
+                gsfPath = null,
+                storePath = "/product/priv-app/Phonesky/Companion.apk",
+                mountGms = true,
+                mountGmsIsOurs = true,
+                mountGsf = true,
+                mountGsfIsOurs = true,
+                mountStore = true,
+                mountStoreIsOurs = true,
+            ),
+        )
+        assertEquals(DeviceCompatibility.SUPPORTED, decision.compatibility)
+        assertTrue(decision.reasons.none { it.startsWith("gsf: expected=") })
+    }
+
+    @Test
     fun `maskable com update ativo é WARN e não UNKNOWN`() {
         val gmsUpdate = "/data/app/~~gms/com.google.android.gms-1/base.apk"
         val matrix = CapabilityEngine.evaluate(

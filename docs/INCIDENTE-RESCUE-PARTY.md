@@ -67,6 +67,13 @@ degoogle.sh soft-reboot                  # PM re-parseia os APKs físicos
 Resultado: `DEGOOGLE_STATE=STOCK` com GMS/GSF/Phonesky stock e
 `BACKUP_PRESENT=1` (backup no formato MicroG Session).
 
+O fluxo foi incorporado ao app: depois de instalado, o `BootReceiver` roda o
+probe no `BOOT_COMPLETED` e executa automaticamente `restore-stock --wipe-data`
+quando encontra `RESTORE_PREPARED` ou uma máscara legada conhecida.
+Ele preserva `/data/local/tmp/microg-backup/`, invalida o cache do Package
+Manager e solicita apenas soft reboot. Resíduos conhecidos desmontados são
+limpos separadamente; mounts externos continuam sendo recusados.
+
 ## Lições para o design
 
 1. **O soft reboot é necessário mas não suficiente** para garantir a
