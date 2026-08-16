@@ -1,6 +1,6 @@
 # DeGoogle
 
-DeGoogle é um aplicativo Android com root que transforma o procedimento shell de substituição temporária do Google Play Services / GSF / Play Store por **microG Services + microG Companion** em um processo quase one-click, com validações explícitas, rollback e verificação do estado real do sistema.
+DeGoogle é um aplicativo Android com root que transforma o procedimento shell de substituição temporária do Google Play Services / GSF / Play Store por **microG Services + microG Companion** em um processo praticamente de um clique. Ele prepara um ambiente volátil do microG, executa um soft reboot de userspace e pode fazer backup dos dados do microG para restauração.
 
 > [!WARNING]
 > O DeGoogle altera estado privilegiado do Android e ainda é experimental.
@@ -55,6 +55,7 @@ A V1 atualmente suporta um único perfil:
 
 - **Samsung Galaxy S24 Ultra (SM-S928x)**
 - **Root via KernelSU**
+- **Módulo obrigatório: `fakegapps`** (fornece spoofing de assinatura necessário pelo microG). Certifique-se de que este módulo esteja instalado e ativo antes de ativar o microG.
 - Público principal: aparelhos com root via [Root-My-Galaxy](https://github.com/BuSung-dev/Root-My-Galaxy)
 
 O Root-My-Galaxy depende de um exploit volátil para carregar o KernelSU. Um **reboot completo do kernel perde tanto o root quanto o ambiente temporário do microG**.
@@ -107,7 +108,7 @@ Fluxo observado:
 3. Abrir **microG Settings → Cloud Messaging (GCM)** e confirmar que os apps aparecem registrados.
 4. Criar um backup do microG no DeGoogle depois da confirmação.
 
-Caso o ambiente volátil seja perdido após um reboot completo, a restauração do backup do microG pode preservar os dados registrados do microG e evitar a repetição da configuração inicial no fluxo testado.
+Caso o ambiente volátil seja perdido após um reboot completo, a restauração do backup do microG pode preservar os dados registrados do microG e evitar a repetição da configuração inicial [...]
 
 ## Build
 
@@ -121,7 +122,7 @@ Requisitos:
 Configure o SDK:
 
 ```bash
-printf 'sdk.dir=%s\n' "$HOME/android-sdk" > local.properties
+printf 'sdk.dir=%s\\n' "$HOME/android-sdk" > local.properties
 ```
 
 Compile e execute os testes unitários:
@@ -239,7 +240,7 @@ O stack registrado envolve:
 com.android.server.am.CachedAppOptimizer.compactApp
 ```
 
-A mesma assinatura de crash já existia no aparelho de teste antes do uso do DeGoogle. Em um incidente observado em **15/08/2026**, crashes repetidos do framework escalaram para o mecanismo Android **Rescue Party**, resultando em um reboot completo do kernel.
+A mesma assinatura de crash já existia no aparelho de teste antes do uso do DeGoogle. Em um incidente observado em **15/08/2026**, crashes repetidos do framework escalaram para o mecanismo Android **Rescue Party**, resultando em loop de boot no aparelho de teste. O aparelho permaneceu recuperável e o backup do microG em `/data/local/tmp/microg-backup/` sobreviveu ao incidente.
 
 Boot reason observado:
 
