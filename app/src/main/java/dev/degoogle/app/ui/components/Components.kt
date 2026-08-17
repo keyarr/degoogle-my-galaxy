@@ -85,27 +85,19 @@ fun OperationLog(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            visibleSteps.forEachIndexed { index, step ->
-                val current = inProgress && index == visibleSteps.lastIndex && step.ok == null
+            visibleSteps.forEachIndexed { _, step ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (current) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        StatusIcon(
-                            when (step.ok) {
-                                true -> Status.OK
-                                false -> Status.FAIL
-                                null -> Status.UNKNOWN
-                            },
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
+                    StatusIcon(
+                        when (step.ok) {
+                            true -> Status.OK
+                            false -> Status.FAIL
+                            null -> Status.UNKNOWN
+                        },
+                        modifier = Modifier.size(16.dp),
+                    )
                     Text(
                         text = step.text,
                         style = MaterialTheme.typography.labelSmall,

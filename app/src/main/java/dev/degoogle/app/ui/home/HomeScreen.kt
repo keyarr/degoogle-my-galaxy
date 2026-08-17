@@ -180,14 +180,6 @@ fun HomeScreen(
                     if (ui.operationInProgress) R.string.operation_log_live
                     else R.string.operation_log_last,
                 ),
-                action = {
-                    if (ui.operationInProgress) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                },
             ) {
                 OperationLog(
                     steps = ui.steps,

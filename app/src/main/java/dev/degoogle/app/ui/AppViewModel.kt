@@ -718,44 +718,54 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         // marcos operacionais em recursos do app para que o live log respeite
         // o idioma selecionado e não duplique textos em caixa alta.
         when {
-            normalized.startsWith("PREPARE CONCLUÍDO") ->
+            normalized.startsWith("PREPARE CONCLUÍDO") || normalized.startsWith("PREPARE COMPLETE") ->
                 return app.getString(R.string.op_prepared_success)
-            normalized.startsWith("FINALIZE CONCLUÍDO") ->
+            normalized.startsWith("FINALIZE CONCLUÍDO") || normalized.startsWith("FINALIZE COMPLETE") ->
                 return app.getString(R.string.op_post_boot_success)
-            normalized == "BACKUP CONCLUÍDO." ->
+            normalized == "BACKUP CONCLUÍDO." || normalized == "BACKUP COMPLETE." ->
                 return app.getString(R.string.op_backup_success)
-            normalized == "RESTAURAÇÃO CONCLUÍDA." ->
+            normalized == "RESTAURAÇÃO CONCLUÍDA." || normalized == "RESTORE COMPLETE." ->
                 return app.getString(R.string.op_restore_success)
-            normalized.startsWith("RESTORE-STOCK PREPARADO") ->
+            normalized.startsWith("RESTORE-STOCK PREPARADO") || normalized.startsWith("RESTORE-STOCK PREPARED") ->
                 return app.getString(R.string.op_rollback_prepared)
-            normalized.startsWith("Resíduos conhecidos das máscaras removidos") ->
+            normalized.startsWith("Resíduos conhecidos das máscaras removidos") ||
+                normalized.startsWith("Known mask residue removed") ->
                 return app.getString(R.string.op_auto_recovery_success_log)
-            normalized.startsWith("Solicitando soft reboot") ->
+            normalized.startsWith("Solicitando soft reboot") ||
+                normalized.startsWith("Requesting userspace reboot") ->
                 return app.getString(R.string.op_soft_reboot_requesting_log)
-            normalized.startsWith("Play Store desabilitada") ->
+            normalized.startsWith("Play Store desabilitada") ||
+                normalized.startsWith("Play Store disabled") ->
                 return app.getString(R.string.backend_store_disabled)
-            normalized.startsWith("[1/3] Aplicando máscaras") ->
+            normalized.startsWith("[1/3] Aplicando máscaras") ||
+                normalized.startsWith("[1/3] Applying masks") ->
                 return app.getString(R.string.op_applying_masks)
             normalized.startsWith("[2/3] SELinux") ->
                 return app.getString(R.string.backend_selinux_restorecon)
-            normalized.startsWith("[3/3] Verificação") ->
+            normalized.startsWith("[3/3] Verificação") ||
+                normalized.startsWith("[3/3] Verification") ->
                 return app.getString(R.string.backend_verification)
-            normalized.startsWith("mascarado:") ->
+            normalized.startsWith("mascarado:") ||
+                normalized.startsWith("masked:") ->
                 return app.getString(
                     R.string.backend_masked_target,
                     normalized.substringAfter(':').trim(),
                 )
-            normalized.contains("já mascarado por nós") ->
+            normalized.contains("já mascarado por nós") ||
+                normalized.contains("already masked by us") ->
                 return app.getString(
                     R.string.backend_already_masked,
-                    normalized.substringBefore(" já mascarado por nós").trim(),
+                    normalized.substringBefore(" já mascarado").substringBefore(" already masked").trim(),
                 )
-            normalized.startsWith("contexto GMS ok:") ->
+            normalized.startsWith("contexto GMS ok:") ||
+                normalized.startsWith("GMS context ok:") ||
+                normalized.startsWith("GMS context OK:") ->
                 return app.getString(
                     R.string.backend_gms_context_ok,
                     normalized.substringAfter(':').trim(),
                 )
-            normalized.startsWith("GSF : mascarado (vazio)") ->
+            normalized.startsWith("GSF : mascarado (vazio)") ||
+                normalized.startsWith("GSF : masked (empty)") ->
                 return app.getString(R.string.backend_gsf_masked_empty)
             normalized.startsWith("GMS :") ->
                 return app.getString(

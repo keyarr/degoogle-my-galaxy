@@ -1891,15 +1891,15 @@ backup()
     check_root
     require_lock
 
-    [ "${DEGOOGLE_FAIL_BACKUP:-0}" = "1" ] && fail 1 "DEGOOGLE_FAIL_BACKUP injetado"
+    [ "${DEGOOGLE_FAIL_BACKUP:-0}" = "1" ] && fail_en 1 "DEGOOGLE_FAIL_BACKUP injected"
 
-    say "===== BACKUP DOS DADOS DO microG ====="
+    say "===== MICROG DATA BACKUP ====="
 
     am force-stop "$GMS_PKG" 2>/dev/null || true
 
-    mkdir -p "$BACKUP_BASE" || fail 1 "mkdir $BACKUP_BASE falhou"
+    mkdir -p "$BACKUP_BASE" || fail_en 1 "mkdir $BACKUP_BASE failed"
     if [ ! -d "$GMS_DATA_USER0" ]; then
-        say "  GMS sem dados (nada a copiar)."
+        say "  GMS has no data (nothing to copy)."
         return 0
     fi
 
@@ -1907,15 +1907,15 @@ backup()
     # anterior, e user_de só é copiado se existir.
     rm -rf "$BACKUP_GMS_USER" "$BACKUP_GMS_DE"
 
-    cp -a "$GMS_DATA_USER0" "$BACKUP_GMS_USER" || fail 1 "Falhou ao copiar dados de user0."
+    cp -a "$GMS_DATA_USER0" "$BACKUP_GMS_USER" || fail_en 1 "Failed to copy user0 data."
     if [ -d "$GMS_DATA_USERDE" ]; then
-        cp -a "$GMS_DATA_USERDE" "$BACKUP_GMS_DE" || fail 1 "Falhou ao copiar dados de user_de."
+        cp -a "$GMS_DATA_USERDE" "$BACKUP_GMS_DE" || fail_en 1 "Failed to copy user_de data."
     fi
 
-    say "  uid original: $(stat -c %u "$GMS_DATA_USER0" 2>/dev/null)"
+    say "  original uid: $(stat -c %u "$GMS_DATA_USER0" 2>/dev/null)"
     say "  user0: $(du -sh "$BACKUP_GMS_USER" 2>/dev/null | awk '{print $1}')"
     [ -d "$BACKUP_GMS_DE" ] && say "  user_de: $(du -sh "$BACKUP_GMS_DE" 2>/dev/null | awk '{print $1}')"
-    say "BACKUP CONCLUÍDO."
+    say "BACKUP COMPLETE."
     emit BACKUP_OK "1"
     return 0
 }
@@ -1927,60 +1927,60 @@ restore_backup()
 
     collect_facts
 
-    say "===== RESTAURANDO DADOS DO microG ====="
+    say "===== RESTORING MICROG DATA ====="
 
     [ -d "$BACKUP_GMS_USER" ] || {
-        say "  Backup ausente (nada a restaurar)."
+        say "  Backup absent (nothing to restore)."
         return 0
     }
-    [ "${DEGOOGLE_FAIL_RESTORE:-0}" = "1" ] && fail 1 "DEGOOGLE_FAIL_RESTORE injetado"
+    [ "${DEGOOGLE_FAIL_RESTORE:-0}" = "1" ] && fail_en 1 "DEGOOGLE_FAIL_RESTORE injected"
 
     local gms_now uid ctx
     gms_now="$(pm_path "$GMS_PKG")"
-    path_under_target "$gms_now" "$TARGET_GMS" || fail 3 "GMS não registrado da máscara. Nada foi restaurado."
+    path_under_target "$gms_now" "$TARGET_GMS" || fail_en 3 "GMS not registered from mask. Nothing was restored."
 
     am force-stop "$GMS_PKG" 2>/dev/null || true
 
     # UID atual, como no script original. O backup nunca força o UID antigo.
-    uid="$(gms_uid_current)" || fail 1 "Não consegui derivar o UID atual."
+    uid="$(gms_uid_current)" || fail_en 1 "Could not derive current UID."
     ctx="$(stat -c %C "$GMS_DATA_USER0" 2>/dev/null || true)"
 
     # O layout é o mesmo do microg-session.sh, mas a cópia usa o destino
     # explícito para não criar /data/user/0/gms-user0 por engano.
     rm -rf "$GMS_DATA_USER0"
-    mkdir -p "$GMS_DATA_USER0" || fail 4 "mkdir do destino user0 falhou"
+    mkdir -p "$GMS_DATA_USER0" || fail_en 4 "mkdir destination user0 failed"
     case "$ctx" in
         u:*) ;;
         *) ctx="$(stat -c %C "$GMS_DATA_USER0" 2>/dev/null || true)" ;;
     esac
-    cp -a "$BACKUP_GMS_USER"/. "$GMS_DATA_USER0"/ || fail 4 "Falha ao restaurar user0"
-    chown -R "$uid:$uid" "$GMS_DATA_USER0" || fail 4 "chown user0 falhou"
+    cp -a "$BACKUP_GMS_USER"/. "$GMS_DATA_USER0"/ || fail_en 4 "Failed to restore user0"
+    chown -R "$uid:$uid" "$GMS_DATA_USER0" || fail_en 4 "chown user0 failed"
     case "$ctx" in
-        u:*) chcon -R "$ctx" "$GMS_DATA_USER0" 2>/dev/null || fail 4 "não consegui reproduzir contexto SELinux de user0" ;;
-        *) restorecon -R "$GMS_DATA_USER0" 2>/dev/null || fail 4 "restorecon de user0 falhou" ;;
+        u:*) chcon -R "$ctx" "$GMS_DATA_USER0" 2>/dev/null || fail_en 4 "Could not reproduce SELinux context for user0" ;;
+        *) restorecon -R "$GMS_DATA_USER0" 2>/dev/null || fail_en 4 "restorecon of user0 failed" ;;
     esac
 
     if [ -d "$BACKUP_GMS_DE" ]; then
         ctx="$(stat -c %C "$GMS_DATA_USERDE" 2>/dev/null || true)"
         rm -rf "$GMS_DATA_USERDE"
-        mkdir -p "$GMS_DATA_USERDE" || fail 4 "mkdir do destino user_de falhou"
+        mkdir -p "$GMS_DATA_USERDE" || fail_en 4 "mkdir destination user_de failed"
         case "$ctx" in
             u:*) ;;
             *) ctx="$(stat -c %C "$GMS_DATA_USERDE" 2>/dev/null || true)" ;;
         esac
-        cp -a "$BACKUP_GMS_DE"/. "$GMS_DATA_USERDE"/ || fail 4 "Falha ao restaurar user_de"
-        chown -R "$uid:$uid" "$GMS_DATA_USERDE" || fail 4 "chown user_de falhou"
+        cp -a "$BACKUP_GMS_DE"/. "$GMS_DATA_USERDE"/ || fail_en 4 "Failed to restore user_de"
+        chown -R "$uid:$uid" "$GMS_DATA_USERDE" || fail_en 4 "chown user_de failed"
         case "$ctx" in
-            u:*) chcon -R "$ctx" "$GMS_DATA_USERDE" 2>/dev/null || fail 4 "não consegui reproduzir contexto SELinux de user_de" ;;
-            *) restorecon -R "$GMS_DATA_USERDE" 2>/dev/null || fail 4 "restorecon de user_de falhou" ;;
+            u:*) chcon -R "$ctx" "$GMS_DATA_USERDE" 2>/dev/null || fail_en 4 "Could not reproduce SELinux context for user_de" ;;
+            *) restorecon -R "$GMS_DATA_USERDE" 2>/dev/null || fail_en 4 "restorecon of user_de failed" ;;
         esac
     fi
 
-    [ -d "$GMS_DATA_USER0" ] || fail 4 "restauração não materializou user0"
-    say "  restaurado com uid $uid"
+    [ -d "$GMS_DATA_USER0" ] || fail_en 4 "Restoration did not materialize user0"
+    say "  restored with uid $uid"
     say "  user0: $(du -sh "$GMS_DATA_USER0" 2>/dev/null | awk '{print $1}')"
     [ -d "$GMS_DATA_USERDE" ] && say "  user_de: $(du -sh "$GMS_DATA_USERDE" 2>/dev/null | awk '{print $1}')"
-    say "RESTAURAÇÃO CONCLUÍDA."
+    say "RESTORE COMPLETE."
     emit RESTORE_OK "1"
     return 0
 }

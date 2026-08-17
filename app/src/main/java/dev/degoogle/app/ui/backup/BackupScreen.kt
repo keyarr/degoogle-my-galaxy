@@ -158,14 +158,6 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                     if (ui.operationInProgress) R.string.operation_log_live
                     else R.string.operation_log_last,
                 ),
-                action = {
-                    if (ui.operationInProgress) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                },
             ) {
                 OperationLog(
                     steps = ui.steps,
