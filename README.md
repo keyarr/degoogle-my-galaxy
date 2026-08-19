@@ -9,48 +9,29 @@ DeGoogle is a root Android app that turns the shell procedure for temporarily re
 
 ## Project status
 
-
-The main lifecycle has been validated on a real **SM-S928B** running **Android 16 / One UI 8.5**:
+The main lifecycle is validated on **Samsung Galaxy S24 Ultra (SM-S928B)** running **Android 16 / One UI 8.5** with KernelSU:
 
 ```text
-STOCK
-  ↓
-PREPARED
-  ↓
-soft reboot
-  ↓
-MICROG_ACTIVE
-  ↓
-backup
-  ↓
-MICROG_ACTIVE_BACKED_UP
-  ↓
-Restore Google
-  ↓
-STOCK
+STOCK → PREPARED → (userspace soft reboot) → MICROG_ACTIVE → (backup) → MICROG_ACTIVE_BACKED_UP → (restore) → STOCK
 ```
 
-Test status:
+Validation status:
 
-✅ Shell backend: 79/79 host scenarios
-✅ Android unit tests: 39/39
-✅ Main lifecycle validated on a real device
-✅ microG official certificate & FakeGApps signature validation
-✅ microG backup validated on-device
-✅ Restore-to-stock flow validated
-✅ Complete bilingual localization (English / pt-BR)
-   Additional hardening
+- Shell backend: 94/94 test scenarios passing in host harness
+- Android unit tests: 52/52 passing
+- Lifecycle validated on-device
+- microG official certificate & FakeGApps signature spoofing probe verified
+- microG data backup and restoration validated on-device
+- Restore-to-stock flow validated
+- Localization: English and Brazilian Portuguese (pt-BR)
 
+Material 3 UI screenshots:
 
-The app uses a Material 3 / Material You interface and supports English and Brazilian Portuguese.
+<img width="280" alt="Home - Prepared" src="https://github.com/user-attachments/assets/0c148a0a-8923-486c-8067-8f2148200a57" />
+<img width="280" alt="Diagnostics" src="https://github.com/user-attachments/assets/0f8b068f-bb02-47a6-b0e8-dab120bcaaa8" />
+<img width="280" alt="Backup" src="https://github.com/user-attachments/assets/a6e35626-ddd2-430c-a777-b4d9c601ab12" />
 
-<img width="280"  alt="Screenshot_20260815_213817_DeGoogle" src="https://github.com/user-attachments/assets/0c148a0a-8923-486c-8067-8f2148200a57" />
-<img width="280"  alt="Screenshot_20260815_213815_DeGoogle" src="https://github.com/user-attachments/assets/0f8b068f-bb02-47a6-b0e8-dab120bcaaa8" />
-<img width="280"  alt="Screenshot_20260815_213809_DeGoogle" src="https://github.com/user-attachments/assets/a6e35626-ddd2-430c-a777-b4d9c601ab12" />
-
-
-
-**Português:** see [`README.pt-BR.md`](README.pt-BR.md).
+**Português:** [`README.pt-BR.md`](README.pt-BR.md)
 
 ## Supported device profile
 
@@ -290,69 +271,25 @@ app/
     domain, security, state-machine, parser, and mocked-backend tests
 ```
 
-## Known issues
+## Known caveats & operational notes
 
-A firmware-level `system_server` crash has been observed around userspace soft reboots on the tested Samsung firmware.
+### Firmware crash during soft reboot (Rescue Party)
+A `system_server` crash on `CachedAppOptimizer.compactApp` has been observed around userspace soft reboots on Samsung Android 16 / One UI 8.5 test firmware. Repeated crashes can trigger Android's Rescue Party mechanism, resulting in a full kernel reboot.
 
-The recorded stack involves:
+On devices with volatile exploit root, a full kernel reboot drops root and unmounts the masks. The device remains recoverable and the backup under `/data/local/tmp/microg-backup/` survives. Full incident analysis and evidence: [`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md).
 
-```text
-com.android.server.am.CachedAppOptimizer.compactApp
-```
-
-The same crash signature was present on the test device before DeGoogle usage. In one field incident on **2026-08-15**, repeated framework crashes escalated to Android **Rescue Party**, resulting in a reboot loop on the test device. The device remained recoverable and the microG backup under `/data/local/tmp/microg-backup/` survived the incident.
-
-Observed boot reason:
-
-```text
-reboot,rescueparty
-```
-
-For exploit-based root, a full reboot clears the volatile root environment and the dynamic bind mounts used by the temporary microG setup.
-
-The device itself remained recoverable and the microG backup under:
-
-```text
-/data/local/tmp/microg-backup/
-```
-
-survived the incident.
-
-Full details and evidence:
-
-[`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md)
-
-### Mitigation under evaluation
-
-Disabling Android's cached-app freezer may reduce the frequency of the observed `CachedAppOptimizer` failure:
-
+Experimental mitigation (disables cached-app freezer; changes memory management behavior):
 ```bash
 settings put global cached_apps_freezer 0
 ```
 
-This changes system memory-management behavior and is **not enabled by default**. It should be treated as an experimental mitigation requiring explicit user choice.
+### Third-party stores (Aurora Store)
+Aurora Store may attempt to update microG GmsCore to Google Play Services. Exclude microG packages from auto-updates in Aurora Store.
 
----
-
-Aurora store can update the microg module to the last version of play services, so if you use it, remove the microg from the auto-updates
-
-During a normal reboot, there's a chance of package manager have some problems with the microg, use the restore path on the app and it will be fixed
-
-
-## Roadmap
-
-✅ Initial analysis
-  ✅ Shell backend + host harness
-  ✅ Android state detection, UI, and tests
-  ✅ `STOCK → PREPARED` validated on-device
-  ✅ `PREPARED → MICROG_ACTIVE` validated
-  ✅ microG backup validated on-device
-  ✅ `MICROG_ACTIVE → STOCK` validated
-  ✅ Hybrid capability/known-good/transaction architecture
-     Physical homologation of additional firmware families
-
+### Post-reboot Package Manager sync
+After a full reboot, PackageManager may hold stale cache entries for microG. Use the app's restore flow to clear the package cache and trigger a soft reboot to reindex stock packages.
 
 ## Documentation
 
-- [`docs/ANALISE.md`](docs/ANALISE.md): initial analysis, architecture, bugs, and decisions
-- [`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md): Rescue Party incident report
+- [`docs/ANALISE.md`](docs/ANALISE.md): Architecture, migration from `microg-session.sh`, and security decisions
+- [`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md): Rescue Party incident log, timeline, and recovery verification

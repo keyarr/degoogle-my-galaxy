@@ -9,47 +9,29 @@ DeGoogle é um aplicativo Android com root que transforma o procedimento shell d
 
 ## Status do projeto
 
-**v0.2**
-
-O ciclo principal foi validado em um **SM-S928B** real com **Android 16 / One UI 8.5**:
+O ciclo principal está validado em **Samsung Galaxy S24 Ultra (SM-S928B)** com **Android 16 / One UI 8.5** e KernelSU:
 
 ```text
-STOCK
-  ↓
-PREPARED
-  ↓
-soft reboot
-  ↓
-MICROG_ACTIVE
-  ↓
-backup
-  ↓
-MICROG_ACTIVE_BACKED_UP
-  ↓
-Restaurar Google
-  ↓
-STOCK
+STOCK → PREPARED → (soft reboot de userspace) → MICROG_ACTIVE → (backup) → MICROG_ACTIVE_BACKED_UP → (restauração) → STOCK
 ```
 
 Status dos testes:
 
-- ✅ Backend shell: 79/79 cenários no harness de host
-- ✅ Testes unitários Android: 39/39
-- ✅ Ciclo principal validado em aparelho real
-- ✅ Validação de certificado oficial do microG e signature spoofing FakeGApps
-- ✅ Backup do microG validado no aparelho
-- ✅ Retorno ao estado stock validado
-- ✅ Suporte completo bilíngue e internacionalização (Inglês / Português do Brasil)
-- ⏳ Hardening adicional
-- ⏳ Teste de reinstalação com restauração automática do backup
+- Backend shell: 94/94 cenários no harness de host
+- Testes unitários Android: 52/52
+- Ciclo principal validado no aparelho
+- Validação de certificado oficial do microG e probe de signature spoofing (FakeGApps)
+- Backup e restauração de dados do microG validados no aparelho
+- Retorno ao estado stock validado
+- Suporte bilíngue (Inglês e Português do Brasil)
 
-A interface usa Material 3 / Material You e possui suporte a inglês e português do Brasil.
+Capturas de tela (Material 3):
 
-<img width="280" alt="Screenshot_20260815_213426_DeGoogle" src="https://github.com/user-attachments/assets/5113741f-5378-4504-b864-5530cd1d4ff8" />
-<img width="280"  alt="Screenshot_20260815_213424_DeGoogle" src="https://github.com/user-attachments/assets/5e44c62c-3a4e-4071-a0fa-7b472c734a3e" />
-<img width="280"  alt="Screenshot_20260815_213351_DeGoogle" src="https://github.com/user-attachments/assets/a5f3905b-370d-4a19-8805-238708fdb0e1" />
+<img width="280" alt="Início - Prepared" src="https://github.com/user-attachments/assets/5113741f-5378-4504-b864-5530cd1d4ff8" />
+<img width="280" alt="Diagnóstico" src="https://github.com/user-attachments/assets/5e44c62c-3a4e-4071-a0fa-7b472c734a3e" />
+<img width="280" alt="Backup" src="https://github.com/user-attachments/assets/a5f3905b-370d-4a19-8805-238708fdb0e1" />
 
-**English:** see [`README.md`](README.md).
+**English:** [`README.md`](README.md)
 
 ## Perfil de dispositivo suportado
 
@@ -290,62 +272,25 @@ app/
     testes de domínio, segurança, máquina de estados, parser e backend mockado
 ```
 
-## Problema conhecido no firmware
+## Ressalvas e notas operacionais
 
-Foi observado um crash de `system_server` relacionado ao firmware em torno de soft reboots de userspace no firmware Samsung testado.
+### Falha de firmware durante soft reboot (Rescue Party)
+Foi observado um crash de `system_server` no componente `CachedAppOptimizer.compactApp` em torno de soft reboots no firmware de teste (Samsung Android 16 / One UI 8.5). Crashes repetidos podem acionar o mecanismo Android Rescue Party, provocando reboot completo do kernel.
 
-O stack registrado envolve:
+Em aparelhos com root volátil via exploit, o reboot completo encerra a sessão de root e remove as máscaras. O aparelho permanece recuperável e o backup em `/data/local/tmp/microg-backup/` é preservado. Relatório de incidente completo e evidências: [`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md).
 
-```text
-com.android.server.am.CachedAppOptimizer.compactApp
-```
-
-A mesma assinatura de crash já existia no aparelho de teste antes do uso do DeGoogle. Em um incidente observado em **15/08/2026**, crashes repetidos do framework escalaram para o mecanismo Android **Rescue Party**, resultando em loop de boot no aparelho de teste. O aparelho permaneceu recuperável e o backup do microG em `/data/local/tmp/microg-backup/` sobreviveu ao incidente.
-
-Boot reason observado:
-
-```text
-reboot,rescueparty
-```
-
-Para root baseado em exploit, um reboot completo elimina o ambiente de root volátil e os bind mounts dinâmicos usados pelo ambiente temporário do microG.
-
-O aparelho permaneceu recuperável e o backup do microG em:
-
-```text
-/data/local/tmp/microg-backup/
-```
-
-sobreviveu ao incidente.
-
-Detalhes e evidências:
-
-[`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md)
-
-### Mitigação em avaliação
-
-Desabilitar o freezer de apps em cache do Android pode reduzir a frequência da falha observada no `CachedAppOptimizer`:
-
+Mitigação experimental (desabilita o freezer de apps em cache; altera o gerenciamento de memória):
 ```bash
 settings put global cached_apps_freezer 0
 ```
 
-Essa alteração modifica o comportamento de gerenciamento de memória do sistema e **não é aplicada por padrão**. Deve ser tratada como mitigação experimental e exigir escolha explícita do usuário.
+### Lojas de terceiros (Aurora Store)
+A Aurora Store pode tentar atualizar o microG GmsCore para a versão mais recente do Play Services. Desative as atualizações automáticas para os pacotes do microG na loja.
 
-## Roadmap
-
-- ✅ Análise inicial
-- ✅ Backend shell + harness de host
-- ✅ Detecção de estado Android, UI e testes
-- ✅ `STOCK → PREPARED` validado no aparelho
-- ✅ `PREPARED → MICROG_ACTIVE` validado
-- ✅ Backup do microG validado no aparelho
-- ✅ `MICROG_ACTIVE → STOCK` validado
-- ✅ Arquitetura híbrida de capabilities/known-good/transação
-- ⏳ Homologação física de outras famílias de firmware
-- ⏳ Teste de reinstalação com restauração automática do backup
+### Sincronização do Package Manager após reboot completo
+Após um reboot completo não planejado, o PackageManager pode manter cache do microG. Use o fluxo de restauração do aplicativo para limpar o cache de pacotes e disparar um soft reboot para reindexar os APKs stock.
 
 ## Documentação
 
-- [`docs/ANALISE.md`](docs/ANALISE.md): análise inicial, arquitetura, bugs e decisões
-- [`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md): registro do incidente com Rescue Party
+- [`docs/ANALISE.md`](docs/ANALISE.md): Análise de arquitetura, substituição do `microg-session.sh` e decisões de segurança
+- [`docs/INCIDENTE-RESCUE-PARTY.md`](docs/INCIDENTE-RESCUE-PARTY.md): Registro do incidente de Rescue Party, linha do tempo e validação de recuperação
