@@ -1,23 +1,25 @@
 package dev.degoogle.app.boot
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import dev.degoogle.app.MainActivity
 import dev.degoogle.app.R
 import dev.degoogle.app.data.Prefs
 import dev.degoogle.app.domain.DeviceState
+import dev.degoogle.app.domain.StateDetector
 import dev.degoogle.app.domain.SystemFacts
 import dev.degoogle.app.domain.TransactionJournalStore
 import dev.degoogle.app.domain.TransactionState
-import dev.degoogle.app.recovery.AutoRecoveryCoordinator
-import dev.degoogle.app.recovery.AutoRecoveryStatus
 import dev.degoogle.app.root.BackendInstaller
 import dev.degoogle.app.root.BackendRunner
 import dev.degoogle.app.root.SuRootExecutor
@@ -25,18 +27,15 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Recupera automaticamente um rollback interrompido por reboot completo.
+ * Reconciles state after a full reboot without changing installed packages.
  *
- * O receiver não assume que a operação de microG sobreviveu: primeiro roda o
- * mesmo probe usado pela Activity. Só estados RESTORE_PREPARED ou máscaras
- * legadas conhecidas podem disparar restore-stock; mounts externos continuam
- * bloqueados pelo backend. Se o estado for MICROG_BOOTED, a notificação antiga
- * de conclusão permanece o caminho correto.
+ * Restoring stock is deliberately restricted to the explicit action in the
+ * UI. This receiver may confirm an already restored stock state or notify the
+ * user that an operation is pending; it must never start rollback itself.
  */
 class BootReceiver : BroadcastReceiver() {
 
@@ -73,56 +72,44 @@ class BootReceiver : BroadcastReceiver() {
             operationId = { journal.read()?.operationId },
             onProgress = { line -> Log.i(TAG, line) },
         )
-        val coordinator = AutoRecoveryCoordinator(backend)
-
-        // KernelSU pode voltar alguns segundos depois do BOOT_COMPLETED em
-        // aparelhos com root volátil. Repetimos somente quando o probe ainda
-        // não vê root; uma falha operacional não é repetida silenciosamente.
-        var result = coordinator.runIfNeeded(wipeData = true)
-        var attempt = 1
-        while (attempt < ROOT_RETRY_COUNT && !result.succeeded && !result.facts.rootOk) {
-            delay(ROOT_RETRY_DELAY_MS)
-            result = coordinator.runIfNeeded(wipeData = true)
-            attempt++
+        val probe = backend.probe()
+        if (!probe.raw.succeeded) {
+            if (pending) notifyPending(context)
+            return
         }
 
-        when (result.status) {
-            AutoRecoveryStatus.REBOOT_REQUESTED -> {
-                Log.i(TAG, "Automatic recovery requested a userspace reboot: ${result.message}")
-            }
-            AutoRecoveryStatus.CLEANED -> {
-                Log.i(TAG, "Temporary residues cleaned automatically")
-                confirmStock(journal, result.facts)
+        val state = StateDetector.detect(probe.facts, profile = null)
+        if (state == DeviceState.STOCK) {
+            val stockConfirmed = confirmStock(journal, probe.facts)
+            if (stockConfirmed) {
                 runCatching { prefs.clearPendingOperation() }
+            } else if (pending) {
+                notifyPending(context)
             }
-            AutoRecoveryStatus.NOT_NEEDED -> {
-                if (result.assessment.state == DeviceState.STOCK) {
-                    confirmStock(journal, result.facts)
-                    runCatching { prefs.clearPendingOperation() }
-                } else if (pending) {
-                    notifyPending(context)
-                }
-            }
-            AutoRecoveryStatus.FAILED -> {
-                Log.e(TAG, "Automatic recovery failed: ${result.message}")
-                if (pending || result.facts.rootOk) notifyRecoveryFailed(context)
-            }
+        } else if (pending) {
+            notifyPending(context)
         }
     }
 
-    private fun confirmStock(journal: TransactionJournalStore, facts: SystemFacts) {
-        val current = journal.read() ?: return
-        if (current.state in setOf(
-                TransactionState.RESTORED,
-                TransactionState.COMMITTED,
-                TransactionState.IDLE,
+    private fun confirmStock(journal: TransactionJournalStore, facts: SystemFacts): Boolean {
+        val current = journal.read() ?: return false
+        if (current.state == TransactionState.RESTORED) return true
+        if (current.state !in setOf(
+                TransactionState.ROLLBACK_RUNNING,
+                TransactionState.ROLLBACK_REQUIRED,
+                TransactionState.REBOOT_REQUESTED,
+                TransactionState.PACKAGE_CACHE_INVALIDATED,
+                TransactionState.GMS_UNMOUNTED,
+                TransactionState.GSF_UNMOUNTED,
+                TransactionState.STORE_UNMOUNTED,
+                TransactionState.REINDEX_PENDING,
             )
-        ) return
-        journal.update(
+        ) return false
+        return journal.update(
             operationId = current.operationId,
             fingerprint = facts.fingerprint,
             state = TransactionState.RESTORED,
-            detail = "estado stock confirmado automaticamente após boot",
+            detail = "stock state confirmed after rollback",
         )
     }
 
@@ -134,19 +121,15 @@ class BootReceiver : BroadcastReceiver() {
         )
     }
 
-    private fun notifyRecoveryFailed(context: Context) {
-        notify(
-            context = context,
-            title = context.getString(R.string.notif_recovery_failed_title),
-            text = context.getString(R.string.notif_recovery_failed_text),
-        )
-    }
-
     private fun notify(context: Context, title: String, text: String) {
         val notificationsOn = runCatching {
             kotlinx.coroutines.runBlocking { Prefs(context).notificationsEnabled.first() }
         }.getOrDefault(true)
         if (!notificationsOn) return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
 
         createChannel(context)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -184,7 +167,5 @@ class BootReceiver : BroadcastReceiver() {
         private const val TAG = "DeGoogle.BootRecovery"
         private const val CHANNEL_ID = "degoogle_pending"
         private const val NOTIF_ID = 1
-        private const val ROOT_RETRY_COUNT = 3
-        private const val ROOT_RETRY_DELAY_MS = 5_000L
     }
 }

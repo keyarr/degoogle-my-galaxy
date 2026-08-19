@@ -24,10 +24,6 @@ import dev.degoogle.app.reboot.BackendRebootController
 import dev.degoogle.app.reboot.RebootController
 import dev.degoogle.app.reboot.SoftRebootFailure
 import dev.degoogle.app.reboot.SoftRebootResult
-import dev.degoogle.app.recovery.AutoRecoveryAction
-import dev.degoogle.app.recovery.AutoRecoveryCoordinator
-import dev.degoogle.app.recovery.AutoRecoveryStatus
-import dev.degoogle.app.recovery.RecoveryPolicy
 import dev.degoogle.app.root.BackendInstaller
 import dev.degoogle.app.root.BackendRunner
 import dev.degoogle.app.root.SuRootExecutor
@@ -42,7 +38,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import dev.degoogle.app.R
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * ViewModel central. O estado da UI é sempre derivado do estado REAL do
@@ -84,8 +79,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
     private val backupManager = backend?.let { BackupManager(executor) }
     private val reboot: RebootController? = backend?.let { BackendRebootController(it) }
-    private val automaticRecovery = backend?.let { AutoRecoveryCoordinator(it) }
-    private val automaticRecoveryStarted = AtomicBoolean(false)
 
     private val _ui = MutableStateFlow(UiState.INITIAL)
     val ui: StateFlow<UiState> = _ui.asStateFlow()
@@ -171,87 +164,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             currentProfile = DeviceProfiles.matching(facts.manufacturer, facts.model, facts.androidSdk)
             val state = StateDetector.detect(facts, currentProfile)
             val compatibility = CompatibilityEngine.evaluate(facts, knownGoodDatabase)
-            val recoveryAssessment = RecoveryPolicy.assess(facts, currentProfile)
-
-            // Um reboot completo pode apagar os mounts sem reindexar o PM. O
-            // app não deixa esse estado esperando uma ação manual: o backend
-            // faz rollback idempotente, preserva o backup e solicita somente
-            // soft reboot. O AtomicBoolean impede loop dentro do mesmo
-            // processo; após um novo boot o diagnóstico começa novamente.
-            if (automaticRecovery != null &&
-                recoveryAssessment.action != AutoRecoveryAction.NONE &&
-                automaticRecoveryStarted.compareAndSet(false, true)
-            ) {
-                _ui.update {
-                    it.copy(
-                        refreshing = false,
-                        facts = facts,
-                        state = state,
-                        compatibility = compatibility,
-                        recoveryRequired = true,
-                        operationInProgress = true,
-                        steps = (it.steps + StepLog(
-                            null,
-                            app.getString(R.string.op_auto_recovery_starting_log),
-                        )).takeLast(MAX_OPERATION_LOG_LINES),
-                        error = null,
-                    )
-                }
-
-                val result = automaticRecovery.runIfNeeded(wipeData = true)
-                when (result.status) {
-                    AutoRecoveryStatus.REBOOT_REQUESTED -> {
-                        transactionJournal.update(
-                            operationId = operationIdForCurrentTransaction(),
-                            fingerprint = facts.fingerprint,
-                            state = TransactionState.REBOOT_REQUESTED,
-                            detail = "recuperação automática solicitou soft reboot",
-                        )
-                        _ui.update {
-                            it.copy(
-                                operationInProgress = false,
-                                steps = (it.steps + StepLog(
-                                    true,
-                                    app.getString(R.string.op_auto_recovery_reboot_requested_log),
-                                )).takeLast(MAX_OPERATION_LOG_LINES),
-                            )
-                        }
-                    }
-                    AutoRecoveryStatus.CLEANED -> {
-                        _ui.update {
-                            it.copy(
-                                operationInProgress = false,
-                                steps = (it.steps + StepLog(
-                                    true,
-                                    app.getString(R.string.op_auto_recovery_success_log),
-                                )).takeLast(MAX_OPERATION_LOG_LINES),
-                            )
-                        }
-                        refresh(clearError = true)
-                    }
-                    AutoRecoveryStatus.FAILED -> {
-                        transactionJournal.update(
-                            operationId = operationIdForCurrentTransaction(),
-                            fingerprint = facts.fingerprint,
-                            state = TransactionState.ROLLBACK_REQUIRED,
-                            detail = result.message,
-                        )
-                        _ui.update {
-                            it.copy(
-                                operationInProgress = false,
-                                recoveryRequired = true,
-                                steps = (it.steps + StepLog(
-                                    false,
-                                    app.getString(R.string.op_auto_recovery_failed_log),
-                                )).takeLast(MAX_OPERATION_LOG_LINES),
-                                error = localizedAutoRecoveryFailure(result.stderr),
-                            )
-                        }
-                    }
-                    AutoRecoveryStatus.NOT_NEEDED -> Unit
-                }
-                return@launch
-            }
 
             var journal = transactionJournal.read()
             if (TransactionReconciliation.shouldCommitActiveState(journal, state)) {
@@ -695,19 +607,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun logStep(ok: Boolean?, text: String) = appendOperationLog(ok, text)
-
-    private fun localizedAutoRecoveryFailure(stderr: String): String {
-        val detail = stderr.lineSequence()
-            .map(String::trim)
-            .lastOrNull(String::isNotEmpty)
-            ?.let(::localizeProgressLine)
-            .orEmpty()
-        return if (detail.isBlank()) {
-            app.getString(R.string.op_auto_recovery_failed_log)
-        } else {
-            app.getString(R.string.op_auto_recovery_failed_detail_log, detail)
-        }
-    }
 
     private fun localizeProgressLine(raw: String): String {
         if (raw.isBlank()) return raw
