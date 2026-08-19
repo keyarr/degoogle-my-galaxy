@@ -1,10 +1,10 @@
-# DeGoogle — Fase 1: Análise do `microg-session.sh` e arquitetura proposta
+# Notas técnicas: análise do microg-session.sh e arquitetura do DeGoogle
 
-> Documento de trabalho. Fonte da verdade para as fases seguintes.
+Notas de trabalho e decisões técnicas tomadas durante a substituição do script manual pelo backend e aplicativo DeGoogle.
 
-## 1. Comportamento atual do script
+## 1. O que o microg-session.sh original fazia
 
-O script `microg-session.sh` implementa um ciclo manual de 2-3 fases:
+O `microg-session.sh` implementava um ciclo manual em 2 ou 3 fases:
 
 | Comando | O que faz |
 |---|---|
@@ -283,15 +283,15 @@ experimental somente chega ao shell como uma autorização adicional; não
 desliga o preflight nem as verificações de caminho, namespace, SELinux,
 rollback ou soft reboot.
 
-## 5. Plano incremental (execução)
+## 5. Fases de desenvolvimento e validação
 
-| Fase | Entrega | Critério |
+| Fase | Escopo | Critério de conclusão |
 |---|---|---|
-| 1 | este documento | análise revisada |
-| 2 | `degoogle.sh` | `sh -n` limpo, `test` passa, idempotência documentada |
-| 3 | skeleton Android (RootExecutor, StateDetector, DeviceProfile, Home, Diagnóstico) | testes unitários do detector com executor mockado |
-| 4 | `STOCK → PREPARED` com download+validação | fluxo completo no aparelho alvo |
-| 5 | `PREPARED → MICROG_ACTIVE` (reboot+finalize) | ciclo real |
-| 6 | backup microG→microG | backup/restore no aparelho |
-| 7 | `MICROG_ACTIVE → STOCK` (rollback) | ciclo completo |
-| 8 | hardening: logs, failure injection, recovery, testes de integração | acceptance criteria v1 |
+| 1 | Análise de problemas do script original e mapeamento de riscos | Levantamento completo de bugs e modelo de segurança definido |
+| 2 | Backend `degoogle.sh` | `sh -n` limpo, suite de testes do backend passando, idempotência verificada |
+| 3 | Base Android (`RootExecutor`, `StateDetector`, `DeviceProfile`, UI inicial) | Testes unitários com executor mockado cobrindo transições de estado |
+| 4 | Fluxo `STOCK → PREPARED` com download e validação de APKs | Validação ponta a ponta no aparelho alvo |
+| 5 | Fluxo `PREPARED → MICROG_ACTIVE` (soft reboot + finalize) | Ciclo operacional completo no aparelho |
+| 6 | Backup e restauração microG→microG | Backup de tokens e restauração validados no aparelho |
+| 7 | Fluxo `MICROG_ACTIVE → STOCK` (rollback) | Desmonte, limpeza de cache do PM e retorno a stock validados |
+| 8 | Hardening: recovery automático pós-boot, journal transacional e testes de host | 94 testes de host passando + suite unitária Android verde |
