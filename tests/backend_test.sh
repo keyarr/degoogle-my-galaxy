@@ -655,6 +655,13 @@ DEGOOGLE_REBOOT_SOURCE=automatic DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
 teardown_root
 
 # ---------------------------------------------------------------------------
+echo "== análise estática (shellcheck)"
+if command -v shellcheck >/dev/null 2>&1; then
+    shellcheck -s sh "$SCRIPT" && ok "shellcheck sem apontamentos" || bad "shellcheck detectou problemas"
+else
+    echo "  - shellcheck não encontrado no PATH (pulando)"
+fi
+
 echo
 echo "RESULTADO: $PASS passaram, $FAIL falharam"
 [ "$FAIL" = "0" ]

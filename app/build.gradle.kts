@@ -75,6 +75,16 @@ android {
         compose = true
     }
 
+    // Mantém o script em assets sempre sincronizado com o script canônico na raiz
+    val copyRootScript = tasks.register<Copy>("copyRootScript") {
+        from(rootProject.file("degoogle.sh"))
+        into(layout.projectDirectory.dir("src/main/assets/root"))
+    }
+
+    tasks.named("preBuild") {
+        dependsOn(copyRootScript)
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
