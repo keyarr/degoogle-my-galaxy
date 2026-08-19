@@ -1858,6 +1858,9 @@ finalize()
     grant_ok "$GMS_PKG" android.permission.READ_EXTERNAL_STORAGE
     grant_ok "$GMS_PKG" android.permission.WRITE_EXTERNAL_STORAGE
 
+    # Reabilita a Store (mascarada com Companion) caso tenha sido desabilitada no prepare
+    pm enable --user 0 "$STORE_PKG" >/dev/null 2>&1 || true
+
     say "[background / Doze]"
     cmd deviceidle whitelist +"$GMS_PKG" >/dev/null 2>&1 || true
     cmd deviceidle whitelist +"$STORE_PKG" >/dev/null 2>&1 || true
