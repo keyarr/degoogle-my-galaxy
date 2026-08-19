@@ -82,6 +82,8 @@ class BackendRunner(
     suspend fun rollback(wipeData: Boolean = false): BackendCommandResult =
         runCommand(if (wipeData) listOf("rollback", "--wipe-data") else listOf("rollback"))
 
+    suspend fun unlock(): BackendCommandResult = runCommand(listOf("unlock"), streamProgress = false)
+
     suspend fun status(): BackendCommandResult = runCommand(listOf("status"), streamProgress = false)
 
     private suspend fun runCommand(

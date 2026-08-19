@@ -60,6 +60,7 @@
     <string name="op_companion_error">Não foi possível consultar a release do Companion.</string>
     <string name="op_downloading_gms">Baixando microG Services…</string>
     <string name="op_downloading_companion">Baixando microG Companion…</string>
+    <string name="op_download_progress">%1$s (%2$d%% • %3$s/%4$s • %5$s • ETA: %6$s)</string>
     <string name="op_download_gms_failed">Falha no download do microG Services.</string>
     <string name="op_download_companion_failed">Falha no download do Companion.</string>
     <string name="op_validating_apks">Validando APKs (pacote, versão, assinatura, hash)…</string>
@@ -83,6 +84,9 @@
     <string name="op_removing_updates">Removendo updates do Google e preparando o stock…</string>
     <string name="op_updates_removed">Updates removidos; ambiente stock restaurado.</string>
     <string name="op_updates_remove_failed">Falha ao remover os updates do Google.</string>
+    <string name="op_unlocking">Liberando bloqueio de operação…</string>
+    <string name="op_unlock_success">Bloqueio de operação liberado com sucesso.</string>
+    <string name="op_unlock_failed">Falha ao liberar bloqueio de operação.</string>
     <string name="op_deleting_backup">Excluindo backup local…</string>
     <string name="op_backup_deleted">Backup local excluído.</string>
     <string name="op_delete_backup_failed">Falha ao excluir backup.</string>
@@ -196,6 +200,7 @@
     <string name="home_error_state_title">Estado inconsistente</string>
     <string name="home_badge_warning">Atenção</string>
     <string name="home_error_state_desc">O aparelho está em um estado não esperado. Nenhuma operação foi executada automaticamente.\n\nConsulte a aba de Diagnóstico para ver os detalhes.</string>
+    <string name="home_btn_release_lock">Liberar bloqueio de operação pendente</string>
     <string name="home_btn_remove_update_stock">Remover update e voltar ao stock</string>
     <string name="home_dialog_degoogle_title">DeGoogle?</string>
     <string name="home_dialog_degoogle_text">O aplicativo fará alterações temporárias no ambiente de sistema usando root e bind mounts.\n\nNenhum arquivo da partição /product será alterado fisicamente.\n\nO processo requer um reboot (soft reboot).</string>

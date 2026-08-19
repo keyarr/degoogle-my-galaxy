@@ -450,6 +450,33 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Libera o lock órfão do backend caso tenha restado de uma operação interrompida. */
+    fun unlock() {
+        val b = backend ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _ui.update {
+                it.copy(
+                    operationInProgress = true,
+                    steps = listOf(StepLog(null, app.getString(R.string.op_unlocking))),
+                    error = null,
+                )
+            }
+            val res = b.unlock()
+            val ok = res.succeeded
+            _ui.update {
+                it.copy(
+                    operationInProgress = false,
+                    steps = (it.steps + StepLog(
+                        ok,
+                        if (ok) app.getString(R.string.op_unlock_success) else app.getString(R.string.op_unlock_failed),
+                    )).takeLast(MAX_OPERATION_LOG_LINES),
+                    error = if (ok) null else app.getString(R.string.op_unlock_failed),
+                )
+            }
+            refresh()
+        }
+    }
+
     fun restoreGoogle(wipeData: Boolean = true) {
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -599,9 +626,23 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     private fun appendOperationLog(ok: Boolean?, text: String) {
         val line = localizeProgressLine(text.trim().replace('\u0000', ' '))
             .takeIf { it.isNotBlank() } ?: return
-        _ui.update {
-            it.copy(
-                steps = (it.steps + StepLog(ok, line)).takeLast(MAX_OPERATION_LOG_LINES),
+        _ui.update { current ->
+            val isProgressUpdate = ok == null &&
+                line.contains(" • ") &&
+                current.steps.lastOrNull()?.let { last ->
+                    last.ok == null && (
+                        last.text.startsWith(line.substringBefore('(').trim()) ||
+                        last.text.contains(" • ")
+                    )
+                } == true
+
+            val newSteps = if (isProgressUpdate) {
+                current.steps.dropLast(1) + StepLog(ok, line)
+            } else {
+                current.steps + StepLog(ok, line)
+            }
+            current.copy(
+                steps = newSteps.takeLast(MAX_OPERATION_LOG_LINES),
             )
         }
     }

@@ -113,14 +113,39 @@ class ReleaseRepository(
 
     // ------------------------------------------------------------------ v2
 
-    /** Baixa o APK de uma release para [targetFile]. */
-    fun download(release: Release, targetFile: java.io.File): Boolean = runCatching {
+    /** Baixa o APK de uma release para [targetFile], emitindo callbacks periódicos com o progresso em bytes e bytes totais. */
+    fun download(
+        release: Release,
+        targetFile: java.io.File,
+        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit = { _, _ -> },
+    ): Boolean = runCatching {
         val c = http(release.apkUrl)
         c.readTimeout = 120_000
         if (c.responseCode !in 200..299) return false
+        val totalBytes = c.contentLengthLong.takeIf { it > 0 } ?: (c.contentLength.toLong().takeIf { it > 0 } ?: -1L)
+        var bytesRead = 0L
+        var lastEmitMs = 0L
+        val buffer = ByteArray(8 * 1024)
+
         c.inputStream.use { input ->
-            targetFile.outputStream().use { output -> input.copyTo(output) }
+            targetFile.outputStream().use { output ->
+                var read = input.read(buffer)
+                while (read >= 0) {
+                    if (read > 0) {
+                        output.write(buffer, 0, read)
+                        bytesRead += read
+                        val now = System.currentTimeMillis()
+                        if (now - lastEmitMs >= 200) {
+                            lastEmitMs = now
+                            onProgress(bytesRead, totalBytes)
+                        }
+                    }
+                    read = input.read(buffer)
+                }
+                output.flush()
+            }
         }
+        onProgress(bytesRead, if (totalBytes > 0) totalBytes else bytesRead)
         true
     }.getOrDefault(false)
 

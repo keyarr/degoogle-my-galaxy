@@ -60,6 +60,7 @@
     <string name="op_companion_error">Failed to query microG Companion release.</string>
     <string name="op_downloading_gms">Downloading microG Services…</string>
     <string name="op_downloading_companion">Downloading microG Companion…</string>
+    <string name="op_download_progress">%1$s (%2$d%% • %3$s/%4$s • %5$s • ETA: %6$s)</string>
     <string name="op_download_gms_failed">Failed to download microG Services.</string>
     <string name="op_download_companion_failed">Failed to download microG Companion.</string>
     <string name="op_validating_apks">Validating APKs (package, version, signature, hash)…</string>
@@ -83,6 +84,9 @@
     <string name="op_removing_updates">Removing Google updates and preparing stock…</string>
     <string name="op_updates_removed">Updates removed; stock environment restored.</string>
     <string name="op_updates_remove_failed">Failed to remove Google updates.</string>
+    <string name="op_unlocking">Releasing operation lock…</string>
+    <string name="op_unlock_success">Operation lock released successfully.</string>
+    <string name="op_unlock_failed">Failed to release operation lock.</string>
     <string name="op_deleting_backup">Deleting local backup…</string>
     <string name="op_backup_deleted">Local backup deleted.</string>
     <string name="op_delete_backup_failed">Failed to delete backup.</string>
@@ -196,6 +200,7 @@
     <string name="home_error_state_title">Inconsistent state</string>
     <string name="home_badge_warning">Warning</string>
     <string name="home_error_state_desc">The device is in an unexpected state. No operation was performed automatically.\n\nCheck the Diagnostics tab for details.</string>
+    <string name="home_btn_release_lock">Release operation lock</string>
     <string name="home_btn_remove_update_stock">Remove update and return to stock</string>
     <string name="home_dialog_degoogle_title">DeGoogle?</string>
     <string name="home_dialog_degoogle_text">The application will make temporary changes to the system environment using root and bind mounts.\n\nNo files on the /product partition will be physically modified.\n\nThe process requires a soft reboot.</string>

@@ -1,6 +1,7 @@
 package dev.degoogle.app.microg
 
 import android.content.Context
+import android.text.format.Formatter
 import android.util.Log
 import dev.degoogle.app.R
 import dev.degoogle.app.root.BackendRunner
@@ -58,13 +59,16 @@ class MicrogManager(
         val gmsApk = File(downloads, gms.downloadFileName)
         val companionApk = File(downloads, companion.downloadFileName)
 
-        onStep(context.getString(R.string.op_downloading_gms))
-        if (!releases.download(gms, gmsApk)) {
+        val gmsLabel = context.getString(R.string.op_downloading_gms)
+        onStep(gmsLabel)
+        if (!downloadWithProgress(gmsLabel, gms, gmsApk)) {
             gmsApk.delete()
             return PrepareResult(false, gms, companion, context.getString(R.string.op_download_gms_failed))
         }
-        onStep(context.getString(R.string.op_downloading_companion))
-        if (!releases.download(companion, companionApk)) {
+
+        val companionLabel = context.getString(R.string.op_downloading_companion)
+        onStep(companionLabel)
+        if (!downloadWithProgress(companionLabel, companion, companionApk)) {
             gmsApk.delete(); companionApk.delete()
             return PrepareResult(false, gms, companion, context.getString(R.string.op_download_companion_failed))
         }
@@ -207,5 +211,48 @@ class MicrogManager(
         onStep(context.getString(R.string.op_soft_reboot_requesting_log))
         val r = backend.softReboot()
         return r.succeeded
+    }
+
+    private fun downloadWithProgress(baseLabel: String, release: Release, targetFile: File): Boolean {
+        val startMs = System.currentTimeMillis()
+        var lastEmittedPercent = -1
+        return releases.download(release, targetFile) { bytesRead, totalBytes ->
+            val now = System.currentTimeMillis()
+            val elapsedSec = ((now - startMs) / 1000.0).coerceAtLeast(0.1)
+            val speedBytesPerSec = (bytesRead / elapsedSec).toLong()
+
+            val percent = if (totalBytes > 0) ((bytesRead * 100) / totalBytes).toInt().coerceIn(0, 100) else 0
+            val etaStr = if (totalBytes > 0 && speedBytesPerSec > 0) {
+                val remainingBytes = (totalBytes - bytesRead).coerceAtLeast(0)
+                val etaSec = remainingBytes / speedBytesPerSec
+                formatDuration(etaSec)
+            } else {
+                "--:--"
+            }
+
+            val downloadedStr = Formatter.formatShortFileSize(context, bytesRead)
+            val totalStr = if (totalBytes > 0) Formatter.formatShortFileSize(context, totalBytes) else "?"
+            val speedStr = "${Formatter.formatShortFileSize(context, speedBytesPerSec)}/s"
+
+            if (percent != lastEmittedPercent || bytesRead == totalBytes) {
+                lastEmittedPercent = percent
+                val progressText = context.getString(
+                    R.string.op_download_progress,
+                    baseLabel.removeSuffix("…").removeSuffix("..."),
+                    percent,
+                    downloadedStr,
+                    totalStr,
+                    speedStr,
+                    etaStr,
+                )
+                onStep(progressText)
+            }
+        }
+    }
+
+    private fun formatDuration(seconds: Long): String {
+        val m = seconds / 60
+        val s = seconds % 60
+        return "%02d:%02d".format(m, s)
     }
 }

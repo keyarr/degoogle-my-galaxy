@@ -165,12 +165,28 @@ fun HomeScreen(
         }
 
         if (ui.error != null) {
+            val isLockError = ui.error?.contains("lock", ignoreCase = true) == true ||
+                ui.error?.contains("lockdir", ignoreCase = true) == true ||
+                ui.steps.any { it.text.contains("lockdir", ignoreCase = true) }
+
             InfoCard(stringResource(R.string.error_title)) {
                 Text(
                     text = ui.error ?: "",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
+                if (isLockError) {
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = { vm.unlock() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                    ) {
+                        Icon(Icons.Rounded.LockOpen, contentDescription = null)
+                        Spacer(Modifier.size(8.dp))
+                        Text(stringResource(R.string.home_btn_release_lock))
+                    }
+                }
             }
         }
 

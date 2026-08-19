@@ -142,4 +142,20 @@ class BackendRunnerTest {
         assertEquals(6, result.exitCode)
         assertEquals("automatic", fake.environments.single()["DEGOOGLE_REBOOT_SOURCE"])
     }
+
+    @Test
+    fun `unlock executa o comando unlock no backend`() = runTest {
+        val fake = FakeExecutor(
+            ArrayDeque(listOf(RootResult.Ok(0, "Bloqueio removido com sucesso.\n", ""))),
+        )
+        val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
+
+        val result = runner.unlock()
+
+        assertTrue(result.succeeded)
+        assertEquals(
+            listOf("sh", "/data/local/tmp/degoogle.sh", "unlock"),
+            fake.recorded.single(),
+        )
+    }
 }
