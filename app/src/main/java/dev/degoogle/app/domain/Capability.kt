@@ -210,7 +210,29 @@ object CapabilityEngine {
         // O shell pode fornecer provas mais específicas. Elas sempre vencem a
         // inferência local, inclusive quando o status é WARN/UNKNOWN.
         facts.capabilityResults.forEach { (capability, result) -> inferred[capability] = result }
+        // O backend marca update em /data/app como UNKNOWN fora do perfil S24
+        // (preparable exige profile_check). Com hasDataUpdate + active em
+        // /data/app não é ambíguo: é update conhecido que o cleanup revela.
+        // Mantém WARN (bloqueia experimental, sem virar SUPPORTED).
+        requalifyDataUpdate(inferred, Capability.GMS_MASKABLE, facts.gmsPackage, "GMS")
+        requalifyDataUpdate(inferred, Capability.GSF_MASKABLE, facts.gsfPackage, "GSF")
+        requalifyDataUpdate(inferred, Capability.STORE_MASKABLE, facts.storePackage, "Store")
         return CapabilityMatrix(inferred)
+    }
+
+    private fun requalifyDataUpdate(
+        inferred: MutableMap<Capability, CapabilityResult>,
+        capability: Capability,
+        info: SystemPackageInfo?,
+        label: String,
+    ) {
+        if (inferred[capability]?.status != CapabilityStatus.UNKNOWN) return
+        if (info?.hasDataUpdate != true) return
+        if (info.activeCodePath?.startsWith("/data/app/") != true) return
+        inferred[capability] = CapabilityResult.warn(
+            reason = "$label: atualização ativa em /data/app; target stock será revalidado no cleanup",
+            evidence = "active=${info.activeCodePath}; original=${info.originalSystemPath ?: "não exposto pelo PM"}",
+        )
     }
 
     private fun packageFound(info: SystemPackageInfo?, legacyPath: String?, label: String): CapabilityResult =

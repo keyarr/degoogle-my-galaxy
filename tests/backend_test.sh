@@ -654,6 +654,22 @@ DEGOOGLE_REBOOT_SOURCE=automatic DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
 [ ! -e "$BACKUP_BASE/transaction/rescue-party.state" ] && ok "falha real limpou o guard" || bad "falha real deixou cooldown falso"
 teardown_root
 
+echo "== cenário 25: update em modelo desconhecido vira WARN sem liberar preflight"
+setup_root
+FAKE_MODEL="SM-S938B" PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
+PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
+    run_script 0 "dry-run em modelo desconhecido com update" dry-run > "$ROOT/unknown_model_dry_run.out" || true
+grep -q '^DEGOOGLE_CAP_GMS_MASKABLE_STATUS=WARN$' "$ROOT/unknown_model_dry_run.out" && \
+    grep -q '^DEGOOGLE_CAP_STORE_MASKABLE_STATUS=WARN$' "$ROOT/unknown_model_dry_run.out" && \
+    ok "update em modelo desconhecido resulta em WARN" || bad "update em modelo desconhecido não resultou em WARN"
+! grep -q '^DEGOOGLE_CAP_GMS_MASKABLE_STATUS=UNKNOWN$' "$ROOT/unknown_model_dry_run.out" && \
+    ! grep -q '^DEGOOGLE_CAP_STORE_MASKABLE_STATUS=UNKNOWN$' "$ROOT/unknown_model_dry_run.out" && \
+    ok "update conhecido não cai em UNKNOWN" || bad "update conhecido caiu em UNKNOWN"
+FAKE_MODEL="SM-S938B" PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
+PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
+    run_script 3 "preflight bloqueia modelo desconhecido mesmo com WARN" preflight >/dev/null || true
+teardown_root
+
 # ---------------------------------------------------------------------------
 echo "== análise estática (shellcheck)"
 if command -v shellcheck >/dev/null 2>&1; then

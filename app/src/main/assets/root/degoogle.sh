@@ -1086,6 +1086,15 @@ probe_capabilities()
                 "active=$active; target stock=$expected; cleanup remove o update antes da máscara"
             if [ -n "$UPDATE_CLEANUP_INFO" ]; then UPDATE_CLEANUP_INFO="$UPDATE_CLEANUP_INFO; "; fi
             UPDATE_CLEANUP_INFO="$UPDATE_CLEANUP_INFO$p: update em /data/app será removido durante a preparação"
+        elif [ "$update" = "1" ] && printf '%s' "$active" | grep -q '^/data/app/'; then
+            # Update esconde o stock em qualquer modelo; sem profile não dá
+            # para afirmar PASS, mas não é ambíguo: cleanup revela o stock
+            # ou o preflight bloqueia. WARN ainda barra o experimental.
+            cap_set "${p}_MASKABLE" WARN \
+                "active=$active; original=${original:-não exposto pelo PM}" \
+                "$p: atualização ativa em /data/app; target stock será revalidado no cleanup"
+            if [ -n "$UPDATE_CLEANUP_INFO" ]; then UPDATE_CLEANUP_INFO="$UPDATE_CLEANUP_INFO; "; fi
+            UPDATE_CLEANUP_INFO="$UPDATE_CLEANUP_INFO$p: update em /data/app será removido durante a preparação"
         elif [ -z "$original" ]; then
             cap_set "${p}_MASKABLE" UNKNOWN "" "$p: caminho original de sistema ambíguo"
         elif ! is_allowed_system_path "$target"; then

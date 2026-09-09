@@ -159,6 +159,112 @@ class CompatibilityEngineTest {
     }
 
     @Test
+    fun `sem root continua bloqueado`() {
+        val decision = CompatibilityEngine.evaluate(
+            facts(capabilities = emptyMap()).copy(
+                rootOk = false,
+                manufacturer = "",
+                model = "",
+                fingerprint = "",
+            ),
+        )
+        assertEquals(DeviceCompatibility.UNSUPPORTED, decision.compatibility)
+        assertFalse(decision.canExecuteNormally)
+        assertFalse(decision.canExecuteExperimental)
+    }
+
+    @Test
+    fun `S24 com reboot WARN não libera experimental`() {
+        val capabilities = allPassCapabilities().toMutableMap()
+        capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn(
+            "estrategia existe, mas firmware não foi homologado",
+            "KSUD_SOFT_REBOOT",
+        )
+        val decision = CompatibilityEngine.evaluate(
+            facts(
+                fingerprint = "samsung/e3qxxx/e3q:16/BP4A.251205.006/S928BXXS6DZG1:user/release-keys",
+                capabilities = capabilities,
+            ).copy(
+                rebootStrategy = RebootStrategy(RootBackendType.KERNELSU, "KSUD_SOFT_REBOOT", Confidence.LOW, false),
+            ),
+        )
+        assertEquals(KnownGoodMatch.FIRMWARE_FAMILY_MATCH, decision.knownGood.level)
+        assertEquals(DeviceCompatibility.PROBABLY_SUPPORTED, decision.compatibility)
+        assertFalse(decision.canExecuteNormally)
+        assertFalse(decision.canExecuteExperimental)
+    }
+
+    @Test
+    fun `S25 com update não cai em UNKNOWN quando shell diz UNKNOWN`() {
+        val gmsUpdate = "/data/app/~~x/com.google.android.gms-1/base.apk"
+        val storeUpdate = "/data/app/~~y/com.android.vending-1/base.apk"
+        val capabilities = allPassCapabilities().toMutableMap()
+        capabilities[Capability.GMS_MASKABLE] = CapabilityResult.unknown("GMS: caminho original de sistema ambíguo")
+        capabilities[Capability.STORE_MASKABLE] = CapabilityResult.unknown("STORE: caminho original de sistema ambíguo")
+        capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn(
+            "estrategia existe, mas firmware não foi homologado",
+            "KSUD_SOFT_REBOOT",
+        )
+        val decision = CompatibilityEngine.evaluate(
+            facts(
+                fingerprint = "samsung/pa3qxxx/pa3q:16/BP4A.251205.006/S938BXXSBCZG3_OXMBCZG3:user/release-keys",
+                capabilities = capabilities,
+            ).copy(
+                model = "SM-S938B",
+                device = "pa3q",
+                product = "pa3qxxx",
+                gmsPath = gmsUpdate,
+                gmsPackage = SystemPackageInfo(
+                    packageName = "com.google.android.gms",
+                    activeCodePath = gmsUpdate,
+                    originalSystemPath = null,
+                    targetDirectory = "/data/app/~~x/com.google.android.gms-1",
+                    hasDataUpdate = true,
+                ),
+                gsfPath = "/system_ext/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk",
+                gsfPackage = SystemPackageInfo(
+                    packageName = "com.google.android.gsf",
+                    activeCodePath = "/system_ext/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk",
+                    originalSystemPath = "/system_ext/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk",
+                    targetDirectory = "/system_ext/priv-app/GoogleServicesFramework",
+                ),
+                storePath = storeUpdate,
+                storePackage = SystemPackageInfo(
+                    packageName = "com.android.vending",
+                    activeCodePath = storeUpdate,
+                    originalSystemPath = null,
+                    targetDirectory = "/data/app/~~y/com.android.vending-1",
+                    hasDataUpdate = true,
+                ),
+            ),
+        )
+        assertEquals(KnownGoodMatch.NO_MATCH, decision.knownGood.level)
+        assertEquals(CapabilityStatus.WARN, decision.matrix[Capability.GMS_MASKABLE].status)
+        assertEquals(CapabilityStatus.WARN, decision.matrix[Capability.STORE_MASKABLE].status)
+        assertEquals(DeviceCompatibility.PROBABLY_SUPPORTED, decision.compatibility)
+        assertFalse(decision.canExecuteNormally)
+        assertFalse(decision.canExecuteExperimental)
+    }
+
+    @Test
+    fun `target fora da allowlist sem update continua bloqueando`() {
+        val badPath = "/data/local/tmp/foo/base.apk"
+        val matrix = CapabilityEngine.evaluate(
+            facts(capabilities = emptyMap()).copy(
+                gmsPath = badPath,
+                gmsPackage = SystemPackageInfo(
+                    packageName = "com.google.android.gms",
+                    activeCodePath = badPath,
+                    originalSystemPath = null,
+                    targetDirectory = "/data/local/tmp/foo",
+                    hasDataUpdate = false,
+                ),
+            ),
+        )
+        assertEquals(CapabilityStatus.FAIL, matrix[Capability.GMS_MASKABLE].status)
+    }
+
+    @Test
     fun `compatibility report é serializável para diagnóstico`() {
         val facts = facts()
         val decision = CompatibilityEngine.evaluate(facts)
