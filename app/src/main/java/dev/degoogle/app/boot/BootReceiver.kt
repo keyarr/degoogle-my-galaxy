@@ -103,6 +103,7 @@ class BootReceiver : BroadcastReceiver() {
                 TransactionState.GSF_UNMOUNTED,
                 TransactionState.STORE_UNMOUNTED,
                 TransactionState.REINDEX_PENDING,
+                TransactionState.FAILED,
             )
         ) return false
         return journal.update(

@@ -56,7 +56,8 @@ LSPOSED_MARKER="${DEGOOGLE_LSPOSED_MARKER:-/data/adb/modules/zygisk_lsposed/modu
 
 # Paths podem ser sobrescritos por env (usado pelo harness de teste em host;
 # no aparelho valem os defaults do device profile)
-PM_CACHE_DIR="${DEGOOGLE_PM_CACHE:-/data/system/package_cache}"
+PM_SYSTEM_DIR="${DEGOOGLE_PM_SYSTEM_DIR:-/data/system}"
+PM_CACHE_DIR="${DEGOOGLE_PM_CACHE:-$PM_SYSTEM_DIR/package_cache}"
 
 PROFILE_GMS="${DEGOOGLE_PROFILE_GMS:-/product/priv-app/GmsCore}"
 PROFILE_GSF="${DEGOOGLE_PROFILE_GSF:-/system_ext/priv-app/GoogleServicesFramework}"
@@ -259,6 +260,17 @@ require_lock()
         exit 3
     fi
     trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+}
+
+unlock()
+{
+    check_root
+    if [ ! -e "$LOCK_DIR" ]; then
+        say "Nenhum lock DeGoogle pendente."
+        return 0
+    fi
+    rmdir "$LOCK_DIR" 2>/dev/null || fail 3 "o lock não está vazio ou outra operação ainda está em andamento: $LOCK_DIR"
+    say "Lock DeGoogle liberado."
 }
 
 global()
@@ -2131,6 +2143,50 @@ pm_enable_or_defer()
     return 1
 }
 
+package_registry_needs_rebuild()
+{
+    local pkg target apk current
+    for pkg in "$GSF_PKG" "$STORE_PKG"; do
+        case "$pkg" in
+            "$GSF_PKG") target="$TARGET_GSF"; apk="GoogleServicesFramework.apk" ;;
+            "$STORE_PKG") target="$TARGET_STORE"; apk="Phonesky.apk" ;;
+            *) continue ;;
+        esac
+        current="$(pm_path "$pkg")"
+        [ -n "$current" ] && continue
+        global test -f "$target/$apk" 2>/dev/null || continue
+        return 0
+    done
+    return 1
+}
+
+invalidate_package_registry()
+{
+    # O PM usa os arquivos principais e o reserve copy. Mover só o parser
+    # cache deixa o Android livre para reabrir o registro stale no próximo
+    # boot. Guarda tudo em backup para recuperação manual se o firmware fizer
+    # alguma gracinha.
+    local backup_dir name source moved=""
+    backup_dir="$BACKUP_BASE/package-registry-$(date +%s)-$$"
+    global mkdir -p "$backup_dir" 2>/dev/null || return 1
+    for name in packages.xml packages.list packages.xml.reservecopy packages-backup.xml; do
+        source="$PM_SYSTEM_DIR/$name"
+        [ -e "$source" ] || continue
+        if global mv "$source" "$backup_dir/$name" 2>/dev/null; then
+            moved="$moved $name"
+            say "  registro do PM movido: $source"
+        else
+            for name in $moved; do
+                global mv "$backup_dir/$name" "$PM_SYSTEM_DIR/$name" 2>/dev/null || true
+            done
+            return 1
+        fi
+    done
+    [ -n "$moved" ] || return 1
+    say "  registro do PM invalidado; o próximo boot fará scan dos apps de sistema."
+    return 0
+}
+
 microg_data_is_cleared()
 {
     # O PackageManager pode recriar a árvore básica (cache/code_cache) logo
@@ -2197,7 +2253,7 @@ restore_stock()
     check_root
     require_lock
 
-    local wipe="${1:-}" foreign="" failed="" cache_backup
+    local wipe="${1:-}" foreign="" failed="" cache_backup pm_registry_rebuild=0
 
     # Package Manager pode estar sem GSF/Store justamente porque os mounts
     # estão ativos. Resolva os alvos antes de qualquer mutação, usando snapshot
@@ -2282,6 +2338,14 @@ restore_stock()
     else
         say "  cache de parse do PM ausente/vazio — nada a fazer."
     fi
+
+    if package_registry_needs_rebuild; then
+        invalidate_package_registry || {
+            journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
+            fail 4 "o PM perdeu o registro de um app stock, mas não consegui invalidar packages.xml com backup"
+        }
+        pm_registry_rebuild=1
+    fi
     journal_state "PACKAGE_CACHE_INVALIDATED" || fail 4 "cache invalidado, mas journal não pôde ser atualizado"
 
     # Dados órfãos do microG (com consentimento explícito do app).
@@ -2295,14 +2359,18 @@ restore_stock()
     # Só notifica o PackageManager depois que os dados antigos desapareceram.
     # Antes disso, um `pm enable` pode iniciar o GMS stale e fazê-lo recriar os
     # diretórios enquanto o rollback ainda os remove.
-    pm_enable_or_defer "$STORE_PKG" "$TARGET_STORE" "Play Store" || {
-        journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
-        fail 4 "não consegui preparar a habilitação da Play Store"
-    }
-    pm_enable_or_defer "$GMS_PKG" "$TARGET_GMS" "GMS" || {
-        journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
-        fail 4 "não consegui preparar a habilitação do GMS"
-    }
+    if [ "$pm_registry_rebuild" = "1" ]; then
+        say "  registro do PM foi invalidado; não vou regravar enable no estado antigo antes do reboot."
+    else
+        pm_enable_or_defer "$STORE_PKG" "$TARGET_STORE" "Play Store" || {
+            journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
+            fail 4 "não consegui preparar a habilitação da Play Store"
+        }
+        pm_enable_or_defer "$GMS_PKG" "$TARGET_GMS" "GMS" || {
+            journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1 || true
+            fail 4 "não consegui preparar a habilitação do GMS"
+        }
+    fi
 
     say ""
     say "RESTORE-STOCK PREPARADO. Reindexamento do Package Manager e reboot são obrigatórios."
@@ -2584,6 +2652,9 @@ case "${1:-}" in
     post-boot-validate)
         post_boot_validate
         ;;
+    unlock)
+        unlock
+        ;;
     rollback)
         restore_stock "${2:-}"
         ;;
@@ -2591,6 +2662,6 @@ case "${1:-}" in
         self_test
         ;;
     *)
-        fail_usage "probe|dry-run|preflight|prepare <gms> <companion>|finalize|cleanup|cleanup-residue|backup|restore-backup|restore-stock [--wipe-data]|rollback [--wipe-data]|post-boot-validate|soft-reboot|status|test"
+        fail_usage "probe|dry-run|preflight|prepare <gms> <companion>|finalize|cleanup|cleanup-residue|backup|restore-backup|restore-stock [--wipe-data]|rollback [--wipe-data]|post-boot-validate|soft-reboot|unlock|status|test"
         ;;
 esac

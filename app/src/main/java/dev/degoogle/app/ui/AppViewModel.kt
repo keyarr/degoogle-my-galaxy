@@ -196,6 +196,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     TransactionState.GSF_UNMOUNTED,
                     TransactionState.STORE_UNMOUNTED,
                     TransactionState.REINDEX_PENDING,
+                    TransactionState.FAILED,
                 )
             ) {
                 journal?.let {

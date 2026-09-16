@@ -34,6 +34,7 @@
 #  21. FakeGApps/LSPosed detectados sem falso PASS funcional
 #  22. cleanup-residue remove payloads conhecidos e preserva evidência estranha
 #  23. rollback apaga dados antes de notificar/reabilitar o GMS
+#  24. registro stale do Package Manager é invalidado com backup
 # =============================================================================
 
 set -u
@@ -63,11 +64,12 @@ setup_root()
     LOCK_DIR="$ROOT/lock"
     MOUNTINFO="$ROOT/mountinfo"
     FAKEBIN="$ROOT/bin"
+    PM_SYSTEM="$ROOT/pm-system"
     PM_CACHE="$ROOT/pm-cache"
     DATA_USER0="$ROOT/data/user/0/com.google.android.gms"
     DATA_USERDE="$ROOT/data/user_de/0/com.google.android.gms"
 
-    mkdir -p "$PROF_GMS" "$PROF_GSF" "$PROF_STORE" "$FAKEBIN" "$PM_CACHE" "$BACKUP_BASE"
+    mkdir -p "$PROF_GMS" "$PROF_GSF" "$PROF_STORE" "$FAKEBIN" "$PM_SYSTEM" "$PM_CACHE" "$BACKUP_BASE"
     mkdir -p "$DATA_USER0" "$DATA_USERDE"
     printf 'registered-fcm-token\n' > "$DATA_USER0/registration.xml"
     printf 'device-lock\n' > "$DATA_USERDE/device.xml"
@@ -302,6 +304,7 @@ run_script()
         DEGOOGLE_GMS_DATA_USERDE="$DATA_USERDE" \
         DEGOOGLE_LOCK_DIR="$LOCK_DIR" \
         DEGOOGLE_MOUNTINFO="$MOUNTINFO" \
+        DEGOOGLE_PM_SYSTEM_DIR="$PM_SYSTEM" \
         DEGOOGLE_PM_CACHE="$PM_CACHE" \
         DEGOOGLE_EXPERIMENTAL="${DEGOOGLE_EXPERIMENTAL:-}" \
         DEGOOGLE_REBOOT_SOURCE="${DEGOOGLE_REBOOT_SOURCE:-}" \
@@ -623,7 +626,25 @@ grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && \
     ok "rollback ordenado alcançou REINDEX_PENDING" || bad "rollback ordenado não foi concluído"
 teardown_root
 
-echo "== cenário 24: cooldown protege apenas a recuperação automática"
+echo "== cenário 24: registro stale do PM é invalidado com backup"
+setup_root
+printf 'packages\n' > "$PM_SYSTEM/packages.xml"
+printf 'packages.list\n' > "$PM_SYSTEM/packages.list"
+printf 'reserve\n' > "$PM_SYSTEM/packages.xml.reservecopy"
+printf 'backup\n' > "$PM_SYSTEM/packages-backup.xml"
+printf 'stock gsf\n' > "$PROF_GSF/GoogleServicesFramework.apk"
+printf 'stock store\n' > "$PROF_STORE/Phonesky.apk"
+PM_GSF_MISSING=1 PM_STORE_MISSING=1 run_script 0 "restore-stock invalida registro PM quando stock está presente" restore-stock >/dev/null || true
+[ ! -e "$PM_SYSTEM/packages.xml" ] && [ ! -e "$PM_SYSTEM/packages.list" ] && \
+    [ ! -e "$PM_SYSTEM/packages.xml.reservecopy" ] && ok "arquivos stale do PM foram removidos do caminho ativo" || \
+    bad "registro stale do PM permaneceu ativo"
+ls "$BACKUP_BASE"/package-registry-*/* >/dev/null 2>&1 && \
+    ok "registro stale foi preservado no backup" || bad "backup do registro do PM ausente"
+grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && \
+    ok "journal mantém reindexamento pendente" || bad "journal não marca REINDEX_PENDING após rebuild"
+teardown_root
+
+echo "== cenário 25: cooldown protege apenas a recuperação automática"
 setup_root
 cat > "$FAKEBIN/setprop" <<'EOF'
 #!/bin/sh
