@@ -2319,6 +2319,18 @@ restore_stock()
         fail 4 "não consegui remover os APKs conhecidos das máscaras após desmontá-las"
     }
 
+    # Dados órfãos do microG (com consentimento explícito do app). Roda ANTES
+    # de invalidar cache/registro do PM de propósito: remove_microg_data usa
+    # `am` (binder) e, com o registro deletado, o system_server pode estar no
+    # meio de um rescan — a chamada trava, o load explode e o aparelho parece
+    # congelado. Depois da invalidação abaixo, nenhuma chamada ao PM.
+    if [ "$wipe" = "--wipe-data" ]; then
+        remove_microg_data_safely || fail 4 "não consegui remover dados do microG"
+        say "  dados do microG removidos de /data."
+    else
+        say "  dados do microG preservados em /data (use --wipe-data para remover)."
+    fi
+
     # Invalida o cache de parse do PackageManager. O reboot ainda é obrigatório
     # para o Android reindexar system apps cujo codePath não mudou.
     if [ -d "$PM_CACHE_DIR" ] && [ -n "$(ls -A "$PM_CACHE_DIR" 2>/dev/null)" ]; then
@@ -2348,17 +2360,12 @@ restore_stock()
     fi
     journal_state "PACKAGE_CACHE_INVALIDATED" || fail 4 "cache invalidado, mas journal não pôde ser atualizado"
 
-    # Dados órfãos do microG (com consentimento explícito do app).
-    if [ "$wipe" = "--wipe-data" ]; then
-        remove_microg_data_safely || fail 4 "não consegui remover dados do microG"
-        say "  dados do microG removidos de /data."
-    else
-        say "  dados do microG preservados em /data (use --wipe-data para remover)."
-    fi
-
-    # Só notifica o PackageManager depois que os dados antigos desapareceram.
-    # Antes disso, um `pm enable` pode iniciar o GMS stale e fazê-lo recriar os
-    # diretórios enquanto o rollback ainda os remove.
+    # Daqui até o fim, nenhuma chamada binder (`am`/`pm`/`cmd`): com o registro
+    # invalidado o system_server pode estar em rescan e qualquer chamada trava.
+    # Só notifica o PackageManager depois que os dados antigos desapareceram
+    # (já removidos acima).
+    # Antes disso, um `pm enable` podia iniciar o GMS stale e fazê-lo recriar
+    # os diretórios de dados; por isso a remoção roda antes da invalidação.
     if [ "$pm_registry_rebuild" = "1" ]; then
         say "  registro do PM foi invalidado; não vou regravar enable no estado antigo antes do reboot."
     else
