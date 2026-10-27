@@ -2717,8 +2717,8 @@ self_test()
     say "[test] is_apk"
     printf 'PK\003\004fake' > "$tmpdir/ok.apk"
     printf 'notanapk' > "$tmpdir/bad.apk"
-    if is_apk "$tmpdir/ok.apk"; then say "  ok.apk detectado como APK ✓"; else say "  FALHA: ok.apk rejeitado"; ok=1; fi
-    if is_apk "$tmpdir/bad.apk"; then say "  FALHA: bad.apk aceito"; ok=1; else say "  bad.apk rejeitado ✓"; fi
+    if is_apk "$tmpdir/ok.apk"; then say "  ok.apk detectado como APK"; else say "  FALHA: ok.apk rejeitado"; ok=1; fi
+    if is_apk "$tmpdir/bad.apk"; then say "  FALHA: bad.apk aceito"; ok=1; else say "  bad.apk rejeitado"; fi
 
     say "[test] parse de mountinfo"
     cat > "$tmpdir/mountinfo" <<'EOF'
@@ -2728,18 +2728,18 @@ EOF
     local r
     r="$(MOUNTINFO="$tmpdir/mountinfo" mountinfo_root /product/priv-app/GmsCore)"
     if [ "$r" = "/data/local/tmp/degoogle-mask/gms" ]; then
-        say "  mountinfo_root(GmsCore) = $r ✓"
+        say "  mountinfo_root(GmsCore) = $r"
     else
         say "  FALHA: mountinfo_root retornou '$r'"; ok=1
     fi
     if MOUNTINFO="$tmpdir/mountinfo" is_mounted /system; then
-        say "  is_mounted(/system) ✓"
+        say "  is_mounted(/system)"
     else
         say "  FALHA: /system não detectado"; ok=1
     fi
 
     say "[test] usage"
-    if "$0" no-such-cmd >/dev/null 2>&1; then say "  FALHA: comando inexistente retornou 0"; ok=1; else say "  comando inexistente → exit != 0 ✓"; fi
+    if "$0" no-such-cmd >/dev/null 2>&1; then say "  FALHA: comando inexistente retornou 0"; ok=1; else say "  comando inexistente → exit != 0"; fi
 
     rm -rf "$tmpdir"
     if [ "$ok" = "0" ]; then

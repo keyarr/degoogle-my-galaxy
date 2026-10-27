@@ -153,7 +153,7 @@ class CompatibilityEngineTest {
         )
         assertFalse(info.safeTarget)
         val capabilities = allPassCapabilities().toMutableMap()
-        capabilities[Capability.GMS_MASKABLE] = CapabilityResult.fail("target fora das raízes")
+        capabilities[Capability.GMS_MASKABLE] = CapabilityResult.fail("target outside allowed roots")
         val decision = CompatibilityEngine.evaluate(facts(capabilities = capabilities))
         assertEquals(DeviceCompatibility.UNSUPPORTED, decision.compatibility)
     }
@@ -177,7 +177,7 @@ class CompatibilityEngineTest {
     fun `reboot WARN com resto PASS libera experimental via opt-in`() {
         val capabilities = allPassCapabilities().toMutableMap()
         capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn(
-            "estrategia existe, mas firmware não foi homologado",
+            "strategy exists, but firmware is unhomologated",
             "KSUD_SOFT_REBOOT",
         )
         val decision = CompatibilityEngine.evaluate(
@@ -198,7 +198,7 @@ class CompatibilityEngineTest {
     fun `modelo Samsung desconhecido compatível libera experimental`() {
         val capabilities = allPassCapabilities().toMutableMap()
         capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn(
-            "estrategia existe, mas firmware não foi homologado",
+            "strategy exists, but firmware is unhomologated",
             "SYS_POWERCTL_USERSPACE",
         )
         val decision = CompatibilityEngine.evaluate(
@@ -223,10 +223,10 @@ class CompatibilityEngineTest {
         val gmsUpdate = "/data/app/~~x/com.google.android.gms-1/base.apk"
         val storeUpdate = "/data/app/~~y/com.android.vending-1/base.apk"
         val capabilities = allPassCapabilities().toMutableMap()
-        capabilities[Capability.GMS_MASKABLE] = CapabilityResult.unknown("GMS: caminho original de sistema ambíguo")
-        capabilities[Capability.STORE_MASKABLE] = CapabilityResult.unknown("STORE: caminho original de sistema ambíguo")
+        capabilities[Capability.GMS_MASKABLE] = CapabilityResult.unknown("GMS: ambiguous original system path")
+        capabilities[Capability.STORE_MASKABLE] = CapabilityResult.unknown("STORE: ambiguous original system path")
         capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn(
-            "estrategia existe, mas firmware não foi homologado",
+            "strategy exists, but firmware is unhomologated",
             "KSUD_SOFT_REBOOT",
         )
         val decision = CompatibilityEngine.evaluate(

@@ -36,7 +36,7 @@ class ProbeParserTest {
         DEGOOGLE_GMS_PRIVILEGED=1
         DEGOOGLE_GSF_PATH=
         DEGOOGLE_STORE_PATH=/product/priv-app/Phonesky/Companion.apk
-        DEGOOGLE_PREPARATION_INFO=GMS: update em /data/app será removido durante a preparação
+        DEGOOGLE_PREPARATION_INFO=GMS: update in /data/app will be removed during preparation
         DEGOOGLE_STORE_VERSION=0.3.0
         DEGOOGLE_GMS_ACTIVE_CODE_PATH=/product/priv-app/GmsCore/base.apk
         DEGOOGLE_GMS_ORIGINAL_SYSTEM_PATH=/product/priv-app/GmsCore/base.apk
@@ -86,7 +86,7 @@ class ProbeParserTest {
         assertEquals("10123", f.gmsUid)
         assertTrue(f.gmsPrivileged)
         assertEquals(null, f.gsfPath)
-        assertEquals("GMS: update em /data/app será removido durante a preparação", f.preparationInfo)
+        assertEquals("GMS: update in /data/app will be removed during preparation", f.preparationInfo)
         assertTrue(f.mountGms)
         assertTrue(!f.mountGmsIsLegacy)
         assertTrue(f.mountGsf)

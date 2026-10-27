@@ -47,8 +47,8 @@ SCRIPT="$HERE/../degoogle.sh"
 PASS=0
 FAIL=0
 
-ok() { PASS=$((PASS + 1)); echo "  ✓ $*"; }
-bad() { FAIL=$((FAIL + 1)); echo "  ✗ FALHA: $*"; }
+ok() { PASS=$((PASS + 1)); echo "  OK: $*"; }
+bad() { FAIL=$((FAIL + 1)); echo "  FAIL: $*"; }
 
 # ---------------------------------------------------------------------------
 # setup de um cenário: raiz temporária + PATH falso

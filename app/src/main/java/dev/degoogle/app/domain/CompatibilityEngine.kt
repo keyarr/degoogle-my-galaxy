@@ -86,9 +86,9 @@ object CompatibilityEngine {
             CapabilityMatrix.CRITICAL_CAPABILITIES.forEach { capability ->
                 val result = matrix[capability]
                 when (result.status) {
-                    CapabilityStatus.FAIL -> add("${capability.name}: ${result.reason.ifBlank { "falhou" }}")
-                    CapabilityStatus.UNKNOWN -> add("${capability.name}: ${result.reason.ifBlank { "desconhecida" }}")
-                    CapabilityStatus.WARN -> add("${capability.name}: ${result.reason.ifBlank { "aviso" }}")
+                    CapabilityStatus.FAIL -> add("${capability.name}: ${result.reason.ifBlank { "failed" }}")
+                    CapabilityStatus.UNKNOWN -> add("${capability.name}: ${result.reason.ifBlank { "unknown" }}")
+                    CapabilityStatus.WARN -> add("${capability.name}: ${result.reason.ifBlank { "warning" }}")
                     CapabilityStatus.PASS -> Unit
                 }
             }

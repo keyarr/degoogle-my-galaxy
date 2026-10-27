@@ -77,7 +77,7 @@ class BackendRunnerTest {
     fun `exit code 3 vira falha com pré-condição`() = runTest {
         val fake = FakeExecutor(
             ArrayDeque(
-                listOf(RootResult.Ok(3, "", "ERRO: GMS não está em /product/priv-app/GmsCore")),
+                listOf(RootResult.Ok(3, "", "ERROR: GMS is not at /product/priv-app/GmsCore")),
             ),
         )
         val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
@@ -146,7 +146,7 @@ class BackendRunnerTest {
     @Test
     fun `unlock executa o comando unlock no backend`() = runTest {
         val fake = FakeExecutor(
-            ArrayDeque(listOf(RootResult.Ok(0, "Bloqueio removido com sucesso.\n", ""))),
+            ArrayDeque(listOf(RootResult.Ok(0, "Lock released successfully.\n", ""))),
         )
         val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
 
