@@ -17,8 +17,8 @@ STOCK → PREPARED → (userspace soft reboot) → MICROG_ACTIVE → (backup) �
 
 Validation status:
 
-- Shell backend: 94/94 test scenarios passing in host harness
-- Android unit tests: 52/52 passing
+- Shell backend: 110/110 test scenarios passing in host harness
+- Android unit tests: 61/61 passing
 - Lifecycle validated on-device
 - microG official certificate & FakeGApps signature spoofing probe verified
 - microG data backup and restoration validated on-device

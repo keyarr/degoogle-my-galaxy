@@ -657,19 +657,20 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         val line = localizeProgressLine(text.trim().replace('\u0000', ' '))
             .takeIf { it.isNotBlank() } ?: return
         _ui.update { current ->
-            val last = current.steps.lastOrNull()
+            val previous = current.steps.filter { it.text == line }
             // backend stream + onStep + wrapper final costumam emitir o
             // mesmo marco (ex.: "PREPARE CONCLUÍDO" vira op_prepared_success
-            // e o manager/viewmodel repetem). Mesma linha em seguida não
-            // duplica, só refina o status.
-            if (last?.text == line) {
-                if (last.ok == ok) return@update current
+            // e o manager/viewmodel repetem). Qualquer repetição no log da
+            // operação vira uma única linha na posição mais recente.
+            if (previous.isNotEmpty()) {
+                val refinedOk = ok ?: previous.lastOrNull { it.ok != null }?.ok
                 return@update current.copy(
-                    steps = (current.steps.dropLast(1) + StepLog(ok ?: last.ok, line))
+                    steps = (current.steps.filterNot { it.text == line } + StepLog(refinedOk, line))
                         .takeLast(MAX_OPERATION_LOG_LINES),
                 )
             }
 
+            val last = current.steps.lastOrNull()
             val isProgressUpdate = ok == null &&
                 line.contains(" • ") &&
                 last?.let {
@@ -693,15 +694,15 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     fun logStep(ok: Boolean?, text: String) = appendOperationLog(ok, text)
 
     /**
-     * Append que ignora marcos consecutivos idênticos. Os wrappers finais
+     * Append que remove marcos repetidos na operação. Os wrappers finais
      * repetem o que backend stream + onStep já emitiram (ex.: restore com
      * sucesso aparece 3x); aqui vira no máximo uma linha com status refinado.
      */
     private fun List<StepLog>.plusUnlessDuplicate(entry: StepLog): List<StepLog> {
-        val last = lastOrNull()
-        if (last?.text != entry.text) return this + entry
-        if (last.ok == entry.ok) return this
-        return dropLast(1) + entry
+        val previous = filter { it.text == entry.text }
+        val refinedOk = entry.ok ?: previous.lastOrNull { it.ok != null }?.ok
+        return (filterNot { it.text == entry.text } + StepLog(refinedOk, entry.text))
+            .takeLast(MAX_OPERATION_LOG_LINES)
     }
 
     private fun localizeProgressLine(raw: String): String {

@@ -77,6 +77,7 @@ LEGACY_MASK_GSF="$LEGACY_MASK_BASE/gsf"
 LEGACY_MASK_STORE="$LEGACY_MASK_BASE/store"
 GMS_APK="GmsCore.apk"
 STORE_APK="Companion.apk"
+GMS_MAPBOX_LIB=""
 
 # Alvos operacionais descobertos pelo Package Locator. Os PROFILE_* continuam
 # sendo a baseline legacy do S24; estes valores só entram no fluxo quando o
@@ -1686,6 +1687,58 @@ mount_mask()
     say "  mascarado: $target"
 }
 
+provision_gms_native_libs()
+{
+    # O microG lite não instala MultiArchLoader; o Mapbox do WhatsApp procura
+    # libmapbox-gl.so em $TARGET_GMS/lib/<isa>. A lib entra na máscara para o
+    # bind mount entregar o caminho esperado sem alterar /product.
+    local src="$1" apk_abi isa dst unzip_bin
+    GMS_MAPBOX_LIB=""
+    case "${ABI:-}" in
+        arm64-v8a) apk_abi="arm64-v8a"; isa="arm64" ;;
+        armeabi-v7a|armeabi) apk_abi="armeabi-v7a"; isa="arm" ;;
+        x86_64) apk_abi="x86_64"; isa="x86_64" ;;
+        x86) apk_abi="x86"; isa="x86" ;;
+        *)
+            say "  AVISO: ABI '${ABI:-?}' sem mapeamento para libmapbox-gl.so; GPS do WhatsApp pode falhar."
+            return 0
+            ;;
+    esac
+    dst="$MASK_GMS/lib/$isa/libmapbox-gl.so"
+    if [ -s "$dst" ]; then
+        chmod 0444 "$dst" 2>/dev/null || true
+        GMS_MAPBOX_LIB="lib/$isa/libmapbox-gl.so"
+        say "  libmapbox-gl.so já presente na máscara ($isa)."
+        return 0
+    fi
+    mkdir -p "$MASK_GMS/lib/$isa" || {
+        say "  AVISO: não consegui criar $MASK_GMS/lib/$isa; GPS do WhatsApp pode falhar."
+        return 0
+    }
+    unzip_bin="$(command -v unzip 2>/dev/null || true)"
+    if [ -z "$unzip_bin" ]; then
+        rmdir "$MASK_GMS/lib/$isa" "$MASK_GMS/lib" 2>/dev/null || true
+        say "  AVISO: unzip ausente; não consegui extrair libmapbox-gl.so."
+        return 0
+    fi
+    if "$unzip_bin" -p "$src" "lib/$apk_abi/libmapbox-gl.so" > "$dst.tmp" 2>/dev/null && [ -s "$dst.tmp" ]; then
+        if ! mv "$dst.tmp" "$dst"; then
+            rm -f "$dst.tmp"
+            say "  AVISO: não consegui instalar libmapbox-gl.so na máscara."
+            return 0
+        fi
+        chown root:root "$dst" 2>/dev/null || true
+        chmod 0444 "$dst" 2>/dev/null || true
+        GMS_MAPBOX_LIB="lib/$isa/libmapbox-gl.so"
+        say "  libmapbox-gl.so instalada na máscara ($isa)."
+    else
+        rm -f "$dst.tmp"
+        rmdir "$MASK_GMS/lib/$isa" "$MASK_GMS/lib" 2>/dev/null || true
+        say "  AVISO: libmapbox-gl.so ausente no APK; GPS do WhatsApp pode falhar."
+    fi
+    return 0
+}
+
 prepare()
 {
     check_root
@@ -1776,6 +1829,7 @@ prepare()
 
     # 3) Máscaras
     mkdir -p "$MASK_GMS" "$MASK_GSF" "$MASK_STORE" || _prep_fail 1 "mkdir das máscaras falhou"
+    provision_gms_native_libs "$gms_src"
     clone_mask_metadata "$TARGET_GMS" "$MASK_GMS" "$ORIGINAL_GMS_OWNER" "$ORIGINAL_GMS_MODE" "$ORIGINAL_GMS_CONTEXT" "GMS"
     clone_mask_metadata "$TARGET_GSF" "$MASK_GSF" "$ORIGINAL_GSF_OWNER" "$ORIGINAL_GSF_MODE" "$ORIGINAL_GSF_CONTEXT" "GSF"
     clone_mask_metadata "$TARGET_STORE" "$MASK_STORE" "$ORIGINAL_STORE_OWNER" "$ORIGINAL_STORE_MODE" "$ORIGINAL_STORE_CONTEXT" "Store"
@@ -1805,6 +1859,19 @@ prepare()
             _prep_fail 4 "SELINUX_CONTEXT_INVALID: contexto GMS inesperado (${ctx:-<sem contexto>}). Rollback aplicado."
             ;;
     esac
+
+    if [ -n "$GMS_MAPBOX_LIB" ]; then
+        local so_mode so_ctx
+        so_mode="$(global stat -c %a "$TARGET_GMS/$GMS_MAPBOX_LIB" 2>/dev/null)"
+        so_ctx="$(global ls -Zd "$TARGET_GMS/$GMS_MAPBOX_LIB" 2>/dev/null | awk '{print $1}')"
+        [ "$so_mode" = "444" ] || \
+            _prep_fail 4 "GMS_MAPBOX_LIB_MODE_INVALID: modo ${so_mode:-<ausente>} em $GMS_MAPBOX_LIB. Rollback aplicado."
+        case "$so_ctx" in
+            u:object_r:system_file:s0|u:object_r:system_file:s0:*) ;;
+            *) _prep_fail 4 "GMS_MAPBOX_LIB_CONTEXT_INVALID: ${so_ctx:-<sem contexto>} em $GMS_MAPBOX_LIB. Rollback aplicado." ;;
+        esac
+        say "  libmapbox-gl.so ok: modo $so_mode, contexto $so_ctx"
+    fi
 
     # 5) Verificação final dos mounts
     say "[3/3] Verificação"
@@ -2446,10 +2513,22 @@ reindex_stock()
 
 cleanup_known_mask_residue()
 {
-    # Nunca remove recursivamente /data/local/tmp. Apenas os APKs e diretórios
-    # criados pelos dois layouts conhecidos são candidatos; arquivos estranhos
-    # ficam preservados para diagnóstico.
+    # Nunca remove recursivamente /data/local/tmp. Apenas os APKs, a lib do
+    # Mapbox e diretórios criados pelos dois layouts conhecidos são candidatos;
+    # arquivos estranhos ficam preservados para diagnóstico.
     local p
+    for p in \
+        "$MASK_GMS/lib/arm64/libmapbox-gl.so" \
+        "$MASK_GMS/lib/arm/libmapbox-gl.so" \
+        "$MASK_GMS/lib/x86_64/libmapbox-gl.so" \
+        "$MASK_GMS/lib/x86/libmapbox-gl.so"; do
+        rm -f "$p" || return 1
+    done
+    for p in \
+        "$MASK_GMS/lib/arm64" "$MASK_GMS/lib/arm" \
+        "$MASK_GMS/lib/x86_64" "$MASK_GMS/lib/x86" "$MASK_GMS/lib"; do
+        rmdir "$p" 2>/dev/null || true
+    done
     for p in \
         "$MASK_GMS/$GMS_APK" "$MASK_STORE/$STORE_APK" \
         "$LEGACY_MASK_GMS/$GMS_APK" "$LEGACY_MASK_STORE/FakeStore.apk"; do

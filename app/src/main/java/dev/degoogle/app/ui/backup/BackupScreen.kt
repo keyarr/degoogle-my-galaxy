@@ -174,6 +174,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         ) {
             Button(
                 onClick = { vm.createBackup() },
+                enabled = !ui.operationInProgress,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),

@@ -35,7 +35,8 @@
 #  22. cleanup-residue remove payloads conhecidos e preserva evidência estranha
 #  23. restore-stock pre-reboot sem binder; enable no reindex pos-boot
 #  24. registro stale do PM invalidado no reindex pos-boot, com backup
-#  26. update em modelo desconhecido é preparável (cleanup no prepare)
+#   26. update em modelo desconhecido é preparável (cleanup no prepare)
+#   27. prepare copia libmapbox-gl.so do APK para a máscara
 # =============================================================================
 
 set -u
@@ -177,10 +178,7 @@ case "$1" in
     -c)
         case "$2" in
             %u:%g) echo "0:0"; exit 0 ;;
-            %a)
-                if [ -d "$3" ]; then echo "755"; else echo "644"; fi
-                exit 0
-                ;;
+            %a) exec /usr/bin/stat -c %a "$3" ;;
             %u) echo "0"; exit 0 ;;
         esac
         ;;
@@ -601,6 +599,8 @@ mkdir -p "$MASK_BASE/gms" "$MASK_BASE/gsf" "$MASK_BASE/store" \
 cp "$ROOT/gms.apk" "$MASK_BASE/gms/GmsCore.apk"
 cp "$ROOT/companion.apk" "$MASK_BASE/store/Companion.apk"
 cp "$ROOT/gms.apk" "$LEGACY_MASK_BASE/gms/GmsCore.apk"
+mkdir -p "$MASK_BASE/gms/lib/arm64"
+printf 'lib-fake\n' > "$MASK_BASE/gms/lib/arm64/libmapbox-gl.so"
 printf 'evidencia-estranha\n' > "$MASK_BASE/gms/keep-for-diagnostics.txt"
 printf 'backup-intacto\n' > "$BACKUP_BASE/keep.txt"
 run_script 0 "cleanup-residue remove payloads conhecidos" cleanup-residue > "$ROOT/residue_cleanup.out" || true
@@ -608,6 +608,8 @@ run_script 0 "cleanup-residue remove payloads conhecidos" cleanup-residue > "$RO
     [ ! -e "$MASK_BASE/store/Companion.apk" ] && \
     [ ! -e "$LEGACY_MASK_BASE/gms/GmsCore.apk" ] && \
     ok "payloads atuais e legados removidos" || bad "payload conhecido permaneceu"
+[ ! -e "$MASK_BASE/gms/lib" ] && \
+    ok "lib Mapbox removida da máscara" || bad "lib Mapbox permaneceu na máscara"
 [ -f "$MASK_BASE/gms/keep-for-diagnostics.txt" ] && \
     ok "arquivo desconhecido preservado" || bad "arquivo desconhecido foi removido"
 grep -q '^DEGOOGLE_MASK_RESIDUE_PRESENT=1$' "$ROOT/residue_cleanup.out" && \
@@ -692,6 +694,27 @@ grep -q '^DEGOOGLE_CAP_GMS_MASKABLE_STATUS=PASS$' "$ROOT/unknown_model_dry_run.o
 FAKE_MODEL="SM-S938B" PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
 PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
     run_script 0 "preflight aceita modelo desconhecido com update" preflight >/dev/null || true
+teardown_root
+
+echo "== cenário 27: prepare instala libmapbox-gl.so na máscara"
+setup_root
+if command -v zip >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    rm -f "$ROOT/gms.apk"
+    mkdir -p "$ROOT/gms-apk/lib/arm64-v8a"
+    printf '\177ELFfake\n' > "$ROOT/gms-apk/lib/arm64-v8a/libmapbox-gl.so"
+    (cd "$ROOT/gms-apk" && zip -q -r "$ROOT/gms.apk" .)
+    run_script 0 "prepare extrai lib do APK" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" > "$ROOT/mapbox_prepare.out" || true
+    [ -f "$MASK_BASE/gms/lib/arm64/libmapbox-gl.so" ] && \
+        ok "lib presente na máscara" || bad "lib ausente na máscara"
+    [ "$(stat -c %a "$MASK_BASE/gms/lib/arm64/libmapbox-gl.so" 2>/dev/null)" = "444" ] && \
+        ok "lib com modo 0444" || bad "modo da lib inválido"
+    [ -f "$PROF_GMS/lib/arm64/libmapbox-gl.so" ] && \
+        ok "lib visível no alvo mascarado" || bad "lib não apareceu no alvo"
+    grep -q 'libmapbox-gl.so ok' "$ROOT/mapbox_prepare.out" && \
+        ok "prepare validou a lib" || bad "prepare não validou a lib"
+else
+    echo "  - zip/unzip ausentes no PATH (pulando)"
+fi
 teardown_root
 
 # ---------------------------------------------------------------------------

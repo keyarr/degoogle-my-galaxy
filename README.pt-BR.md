@@ -17,8 +17,8 @@ STOCK → PREPARED → (soft reboot de userspace) → MICROG_ACTIVE → (backup)
 
 Status dos testes:
 
-- Backend shell: 94/94 cenários no harness de host
-- Testes unitários Android: 52/52
+- Backend shell: 110/110 cenários no harness de host
+- Testes unitários Android: 61/61
 - Ciclo principal validado no aparelho
 - Validação de certificado oficial do microG e probe de signature spoofing (FakeGApps)
 - Backup e restauração de dados do microG validados no aparelho
