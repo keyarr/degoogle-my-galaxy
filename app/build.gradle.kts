@@ -36,8 +36,8 @@ android {
         applicationId = "dev.degoogle"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.3.12"
+        versionCode = 16
+        versionName = "0.3.13"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
