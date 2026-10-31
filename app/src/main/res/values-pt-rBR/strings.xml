@@ -219,6 +219,8 @@
     <string name="home_experimental_button">Revisar operação experimental</string>
     <string name="home_compatibility_blocked">O motor de compatibilidade bloqueou a execução. Abra Diagnóstico para ver as evidências.</string>
     <string name="home_recovery_required">Uma transação incompleta foi encontrada. Não inicie outra operação; consulte o diagnóstico e restaure o stock se necessário.</string>
+    <string name="home_recovery_rescue_party">A validação pós-boot de segurança falhou porque o sistema detectou uma reinicialização de emergência (Rescue Party). As alterações do microG não foram confirmadas; restaure o Google stock para voltar a um estado seguro.</string>
+    <string name="home_recovery_post_boot_failed">A validação pós-boot de segurança falhou. As alterações do microG não foram confirmadas; restaure o Google stock para voltar a um estado seguro.</string>
     <string name="home_dialog_restore_title">Restaurar Google?</string>
     <string name="home_dialog_restore_text">O microG será removido do ambiente ativo e os componentes Google originais serão revelados novamente.\n\nSeu backup do microG será mantido.</string>
     <string name="home_dialog_setup_title">microG instalado com sucesso</string>

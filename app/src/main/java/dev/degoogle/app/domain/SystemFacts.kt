@@ -61,6 +61,8 @@ data class SystemFacts(
     val rebootStrategy: RebootStrategy? = null,
     /** Aviso operacional quando GMS/Store têm update removível no fluxo. */
     val preparationInfo: String = "",
+    val postBootStatus: String? = null,
+    val postBootReason: String? = null,
 ) {
     companion object {
         val EMPTY = SystemFacts(
@@ -193,6 +195,8 @@ object ProbeParser {
             capabilityResults = capabilityResults,
             rebootStrategy = rebootStrategy,
             preparationInfo = str("PREPARATION_INFO").orEmpty(),
+            postBootStatus = str("POST_BOOT_STATUS"),
+            postBootReason = str("POST_BOOT_REASON"),
         )
     }
 }

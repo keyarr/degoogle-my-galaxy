@@ -22,6 +22,9 @@ class MicrogManager(
     private val onStep: (String) -> Unit = {},
 ) {
 
+    var lastPostBootReason: String? = null
+        private set
+
     companion object {
         private const val TAG = "DeGoogle.MicroG"
     }
@@ -149,9 +152,19 @@ class MicrogManager(
         }
         val postBoot = backend.postBootValidate()
         if (!postBoot.succeeded) {
-            onStep(context.getString(R.string.op_post_boot_failed))
+            val reason = postBoot.facts.postBootReason?.takeIf { it.isNotBlank() }
+                ?: postBoot.stderr.lineSequence().map(String::trim).lastOrNull(String::isNotEmpty)
+            lastPostBootReason = reason
+            onStep(
+                if (reason.isNullOrBlank()) {
+                    context.getString(R.string.op_post_boot_failed)
+                } else {
+                    "${context.getString(R.string.op_post_boot_failed)}: $reason"
+                },
+            )
             return false
         }
+        lastPostBootReason = null
         onStep(context.getString(R.string.op_post_boot_success))
         return true
     }

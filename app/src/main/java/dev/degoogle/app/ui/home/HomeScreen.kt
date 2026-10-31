@@ -46,6 +46,7 @@ import dev.degoogle.app.ui.components.OperationLog
 import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusRow
+import dev.degoogle.app.ui.components.TechnicalBlock
 import dev.degoogle.app.ui.components.TechnicalStatusRow
 
 @Composable
@@ -99,10 +100,14 @@ fun HomeScreen(
         if (ui.recoveryRequired) {
             InfoCard(stringResource(R.string.error_title)) {
                 Text(
-                    text = stringResource(R.string.home_recovery_required),
+                    text = ui.recoveryMessage ?: stringResource(R.string.home_recovery_required),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
+                if (!ui.recoveryDetail.isNullOrBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    TechnicalBlock(text = ui.recoveryDetail)
+                }
                 OutlinedButton(
                     onClick = { vm.restoreGoogle() },
                     enabled = !ui.operationInProgress,
@@ -131,7 +136,7 @@ fun HomeScreen(
             DeviceState.PREPARING -> Unit
         }
 
-        if (ui.error != null) {
+        if (ui.error != null && (!ui.recoveryRequired || (ui.error != ui.recoveryMessage && ui.error != ui.recoveryDetail))) {
             val isLockError = ui.error?.contains("lock", ignoreCase = true) == true ||
                 ui.error?.contains("lockdir", ignoreCase = true) == true ||
                 ui.steps.any { it.text.contains("lockdir", ignoreCase = true) }
@@ -515,7 +520,7 @@ private fun ActiveContent(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Button(
             onClick = { vm.createBackup() },
-            enabled = !ui.operationInProgress,
+            enabled = !ui.operationInProgress && !ui.recoveryRequired,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),

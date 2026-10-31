@@ -2573,6 +2573,7 @@ post_boot_failure()
     if ! journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1; then
         reason="$reason; não foi possível registrar ROLLBACK_REQUIRED"
     fi
+    say "ERRO: $reason"
     emit POST_BOOT_REASON "$reason"
     return 4
 }
@@ -2610,7 +2611,8 @@ post_boot_validate()
     [ "$SELINUX" = "Enforcing" ] || { post_boot_failure "SELinux deixou de estar Enforcing"; return $?; }
 
     journal_state "COMMITTED" || {
-        emit POST_BOOT_STATUS "FAIL"; emit POST_BOOT_REASON "não foi possível registrar COMMITTED"; return 4
+        post_boot_failure "não foi possível registrar COMMITTED"
+        return $?
     }
     rm -f "$RESCUE_STATE_FILE" 2>/dev/null || true
     emit POST_BOOT_STATUS "PASS"

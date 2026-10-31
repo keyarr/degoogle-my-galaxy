@@ -127,4 +127,32 @@ class ProbeParserTest {
         assertTrue(f.rootOk)
         assertEquals(DeviceState.STOCK, f.shellState)
     }
+
+    @Test
+    fun `parse de post-boot-validate com falha por rescue party extrai status e reason`() {
+        val out = """
+            DEGOOGLE_ROOT_OK=1
+            DEGOOGLE_STATE=MICROG_ACTIVE_BACKED_UP
+            DEGOOGLE_POST_BOOT_STATUS=FAIL
+            DEGOOGLE_POST_BOOT_REASON=boot reason indica Rescue Party: reboot,rescueparty
+        """.trimIndent()
+        val f = ProbeParser.parse(out)
+        assertTrue(f.rootOk)
+        assertEquals("FAIL", f.postBootStatus)
+        assertEquals("boot reason indica Rescue Party: reboot,rescueparty", f.postBootReason)
+    }
+
+    @Test
+    fun `parse de post-boot-validate com sucesso extrai status e reason`() {
+        val out = """
+            DEGOOGLE_ROOT_OK=1
+            DEGOOGLE_STATE=MICROG_ACTIVE_BACKED_UP
+            DEGOOGLE_POST_BOOT_STATUS=PASS
+            DEGOOGLE_POST_BOOT_REASON=system_server, boot_completed, packages, priv-app e SELinux validados
+        """.trimIndent()
+        val f = ProbeParser.parse(out)
+        assertTrue(f.rootOk)
+        assertEquals("PASS", f.postBootStatus)
+        assertEquals("system_server, boot_completed, packages, priv-app e SELinux validados", f.postBootReason)
+    }
 }

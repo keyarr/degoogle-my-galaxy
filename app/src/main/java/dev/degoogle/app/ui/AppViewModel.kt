@@ -166,6 +166,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             val compatibility = CompatibilityEngine.evaluate(facts, knownGoodDatabase)
 
             var journal = transactionJournal.read()
+            var validationSucceeded = false
             if (TransactionReconciliation.shouldCommitActiveState(journal, state)) {
                 // O processo pode ter chegado a MICROG_ACTIVE antes de a
                 // Activity conseguir registrar COMMITTED. A validação completa
@@ -183,10 +184,27 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     ) {
                         prefs.clearPendingOperation()
                         journal = transactionJournal.read()
+                        validationSucceeded = true
                     }
+                } else {
+                    val current = journal
+                    val failureDetail = postBoot.facts.postBootReason?.takeIf { it.isNotBlank() }
+                        ?: postBoot.stderr.lineSequence().map(String::trim).lastOrNull(String::isNotEmpty)
+                        ?: "post-boot validation failed (exit ${postBoot.exitCode})"
+                    if (current != null) {
+                        transactionJournal.update(
+                            operationId = current.operationId,
+                            fingerprint = facts.fingerprint,
+                            state = TransactionState.ROLLBACK_REQUIRED,
+                            detail = failureDetail,
+                        )
+                        journal = transactionJournal.read()
+                    }
+                    prefs.clearPendingOperation()
                 }
             }
             val stockConfirmed = state == DeviceState.STOCK
+            var stockRestored = false
             if (stockConfirmed && journal?.state in setOf(
                     TransactionState.ROLLBACK_RUNNING,
                     TransactionState.ROLLBACK_REQUIRED,
@@ -208,6 +226,8 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     )
                 }
                 prefs.clearPendingOperation()
+                journal = transactionJournal.read()
+                stockRestored = true
             }
             // STORE_MASKED/PREPARED é o estado normal entre a preparação e o
             // soft reboot. Uma tentativa de reboot recusada não desfaz as
@@ -216,18 +236,37 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             val recoveryRequired = transactionJournal.requiresRecovery() &&
                 state != DeviceState.PREPARED
 
+            val currentJournal = journal ?: transactionJournal.read()
+            val journalDetail = currentJournal?.detail?.takeIf { it.isNotBlank() }
+            val recoveryDetail = if (recoveryRequired) journalDetail else null
+            val recoveryMessage = if (recoveryRequired) {
+                when {
+                    journalDetail?.contains("rescueparty", ignoreCase = true) == true ||
+                    journalDetail?.contains("Rescue Party", ignoreCase = true) == true ->
+                        app.getString(R.string.home_recovery_rescue_party)
+                    journalDetail?.startsWith("boot reason") == true ||
+                    journalDetail?.contains("post-boot validation", ignoreCase = true) == true ->
+                        app.getString(R.string.home_recovery_post_boot_failed)
+                    else -> null
+                }
+            } else null
+
             // Auxiliar: prompt de configuração na primeira instalação.
             val promptSeen = prefs.setupPromptSeen.firstOrNull() ?: false
             val needsPrompt = state == DeviceState.MICROG_ACTIVE && !facts.backupPresent && !promptSeen
 
             _ui.update {
+                val resolvedError = if (validationSucceeded || stockRestored) null else it.error
                 it.copy(
                     refreshing = false,
                     facts = facts,
                     state = state,
                     compatibility = compatibility,
                     recoveryRequired = recoveryRequired,
+                    recoveryMessage = recoveryMessage,
+                    recoveryDetail = recoveryDetail,
                     needsSetupPrompt = needsPrompt,
+                    error = resolvedError,
                 )
             }
         }
@@ -310,11 +349,16 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             val hasBackup = probe?.raw?.succeeded == true && probe.facts.backupPresent
             val restoreOk = !hasBackup || m.restoreBackup()
             val ok = restoreOk && m.finalize()
+            val detail = if (ok) {
+                "post-boot validation completed"
+            } else {
+                m.lastPostBootReason ?: "finalize or post-boot validation failed"
+            }
             transactionJournal.update(
                 operationId = operationIdForCurrentTransaction(),
                 fingerprint = _ui.value.facts.fingerprint,
                 state = if (ok) TransactionState.COMMITTED else TransactionState.ROLLBACK_REQUIRED,
-                detail = if (ok) "post-boot validation completed" else "finalize or post-boot validation failed",
+                detail = detail,
             )
             _ui.update {
                 it.copy(
@@ -330,7 +374,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     error = when {
                         !restoreOk -> app.getString(R.string.op_restore_backup_failed)
                         !ok -> app.getString(R.string.op_finalize_failed)
-                        else -> it.error
+                        else -> null
                     },
                 )
             }

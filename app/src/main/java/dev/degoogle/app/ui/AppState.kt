@@ -23,6 +23,8 @@ data class UiState(
     val facts: SystemFacts = SystemFacts.EMPTY,
     val compatibility: CompatibilityDecision = CompatibilityDecision.EMPTY,
     val recoveryRequired: Boolean = false,
+    val recoveryMessage: String? = null,
+    val recoveryDetail: String? = null,
     val state: DeviceState = DeviceState.NO_ROOT,
     val operationInProgress: Boolean = false,
     val steps: List<StepLog> = emptyList(),

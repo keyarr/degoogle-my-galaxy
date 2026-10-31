@@ -83,4 +83,97 @@ class TransactionJournalTest {
             ),
         )
     }
+
+    @Test
+    fun `transição para ROLLBACK_REQUIRED preserva operationId e detalhe do erro`() {
+        val dir = Files.createTempDirectory("degoogle-journal-rollback").toFile()
+        try {
+            val store = TransactionJournalStore(dir.resolve("journal"), clock = { 5678L })
+            assertTrue(
+                store.update(
+                    operationId = "op-42",
+                    fingerprint = "fp-galaxy",
+                    state = TransactionState.REBOOT_REQUESTED,
+                    detail = "soft reboot requested",
+                ),
+            )
+            val current = store.read()
+            assertEquals("op-42", current?.operationId)
+            assertEquals(TransactionState.REBOOT_REQUESTED, current?.state)
+
+            // Falha na validação pós-boot (ex.: rescue party)
+            val failureDetail = "boot reason indica Rescue Party: reboot,rescueparty"
+            assertTrue(
+                store.update(
+                    operationId = current!!.operationId,
+                    fingerprint = current.deviceFingerprint,
+                    state = TransactionState.ROLLBACK_REQUIRED,
+                    detail = failureDetail,
+                ),
+            )
+
+            val updated = store.read()
+            assertEquals("op-42", updated?.operationId)
+            assertEquals("fp-galaxy", updated?.deviceFingerprint)
+            assertEquals(TransactionState.ROLLBACK_REQUIRED, updated?.state)
+            assertEquals(failureDetail, updated?.detail)
+            assertTrue(store.requiresRecovery())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `ROLLBACK_REQUIRED impede shouldCommitActiveState mesmo com MICROG_ACTIVE_BACKED_UP`() {
+        val journal = TransactionJournal(
+            operationId = "op-rescue",
+            timestamp = 1234L,
+            deviceFingerprint = "fp",
+            state = TransactionState.ROLLBACK_REQUIRED,
+            detail = "boot reason indica Rescue Party: reboot,rescueparty",
+        )
+
+        assertFalse(
+            TransactionReconciliation.shouldCommitActiveState(
+                journal,
+                DeviceState.MICROG_ACTIVE_BACKED_UP,
+            ),
+        )
+        assertFalse(
+            TransactionReconciliation.shouldCommitActiveState(
+                journal,
+                DeviceState.MICROG_ACTIVE,
+            ),
+        )
+    }
+
+    @Test
+    fun `recuperação real para stock permite transicionar de ROLLBACK_REQUIRED para RESTORED`() {
+        val dir = Files.createTempDirectory("degoogle-journal-restore").toFile()
+        try {
+            val store = TransactionJournalStore(dir.resolve("journal"), clock = { 9999L })
+            store.update(
+                operationId = "op-recover",
+                fingerprint = "fp-galaxy",
+                state = TransactionState.ROLLBACK_REQUIRED,
+                detail = "boot reason indica Rescue Party: reboot,rescueparty",
+            )
+            assertTrue(store.requiresRecovery())
+
+            // Simula confirmação de stock após rollback
+            store.update(
+                operationId = "op-recover",
+                fingerprint = "fp-galaxy",
+                state = TransactionState.RESTORED,
+                detail = "stock state confirmed after rollback",
+            )
+
+            val restored = store.read()
+            assertEquals(TransactionState.RESTORED, restored?.state)
+            assertEquals("stock state confirmed after rollback", restored?.detail)
+            assertFalse(store.requiresRecovery())
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

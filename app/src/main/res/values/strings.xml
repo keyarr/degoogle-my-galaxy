@@ -219,6 +219,8 @@
     <string name="home_experimental_button">Review experimental operation</string>
     <string name="home_compatibility_blocked">Compatibility engine blocked execution. Open Diagnostics for evidence.</string>
     <string name="home_recovery_required">An incomplete transaction was found. Do not start another operation; inspect diagnostics and restore stock if necessary.</string>
+    <string name="home_recovery_rescue_party">Post-boot safety validation failed because the system detected an emergency reboot (Rescue Party). microG changes were not confirmed; restore Google stock to return to a safe state.</string>
+    <string name="home_recovery_post_boot_failed">Post-boot safety validation failed. microG changes were not confirmed; restore Google stock to return to a safe state.</string>
     <string name="home_dialog_restore_title">Restore Google?</string>
     <string name="home_dialog_restore_text">microG will be removed from the active environment and original Google components will be revealed again.\n\nYour microG backup will be preserved.</string>
     <string name="home_dialog_setup_title">microG installed successfully</string>

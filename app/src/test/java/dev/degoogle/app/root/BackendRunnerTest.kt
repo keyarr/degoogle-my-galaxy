@@ -158,4 +158,31 @@ class BackendRunnerTest {
             fake.recorded.single(),
         )
     }
+
+    @Test
+    fun `post-boot-validate com falha captura exitCode 4 facts com postBootReason e stderr`() = runTest {
+        val stdout = """
+            DEGOOGLE_ROOT_OK=1
+            DEGOOGLE_STATE=MICROG_ACTIVE_BACKED_UP
+            DEGOOGLE_POST_BOOT_STATUS=FAIL
+            DEGOOGLE_POST_BOOT_REASON=boot reason indica Rescue Party: reboot,rescueparty
+        """.trimIndent()
+        val stderr = "ERRO: boot reason indica Rescue Party: reboot,rescueparty\n"
+        val fake = FakeExecutor(
+            ArrayDeque(listOf(RootResult.Ok(4, stdout, stderr))),
+        )
+        val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
+
+        val result = runner.postBootValidate(streamProgress = false)
+
+        assertEquals(false, result.succeeded)
+        assertEquals(4, result.exitCode)
+        assertEquals("FAIL", result.facts.postBootStatus)
+        assertEquals("boot reason indica Rescue Party: reboot,rescueparty", result.facts.postBootReason)
+        assertEquals(stderr, result.stderr)
+        assertEquals(
+            listOf("sh", "/data/local/tmp/degoogle.sh", "post-boot-validate"),
+            fake.recorded.single(),
+        )
+    }
 }
