@@ -6,18 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.HelpOutline
-import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,7 +19,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -38,20 +30,25 @@ import dev.degoogle.app.ui.StepLog
 
 enum class Status { OK, FAIL, ABSENT, UNKNOWN }
 
-/** Ícone de status estilizado com vetores Material 3 */
+/** Rótulo textual curto para manter o resultado legível sem depender de cor. */
 @Composable
-fun StatusIcon(status: Status, modifier: Modifier = Modifier) {
-    val (icon, tint) = when (status) {
-        Status.OK -> Icons.Rounded.CheckCircle to MaterialTheme.colorScheme.primary
-        Status.FAIL -> Icons.Rounded.Close to MaterialTheme.colorScheme.error
-        Status.ABSENT -> Icons.Rounded.Remove to MaterialTheme.colorScheme.outline
-        Status.UNKNOWN -> Icons.Rounded.HelpOutline to MaterialTheme.colorScheme.outline
-    }
-    Icon(
-        imageVector = icon,
-        contentDescription = status.name,
-        tint = tint,
-        modifier = modifier.size(18.dp),
+private fun StatusText(status: Status) {
+    Text(
+        text = stringResource(
+            when (status) {
+                Status.OK -> R.string.status_ok
+                Status.FAIL -> R.string.status_fail
+                Status.ABSENT -> R.string.status_absent
+                Status.UNKNOWN -> R.string.status_unknown
+            },
+        ),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = when (status) {
+            Status.OK -> MaterialTheme.colorScheme.primary
+            Status.FAIL -> MaterialTheme.colorScheme.error
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
     )
 }
 
@@ -85,30 +82,22 @@ fun OperationLog(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            visibleSteps.forEachIndexed { _, step ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    StatusIcon(
-                        when (step.ok) {
-                            true -> Status.OK
-                            false -> Status.FAIL
-                            null -> Status.UNKNOWN
-                        },
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Text(
-                        text = step.text,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (step.ok == false) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
+            visibleSteps.forEach { step ->
+                val status = when (step.ok) {
+                    true -> stringResource(R.string.status_ok)
+                    false -> stringResource(R.string.status_fail)
+                    null -> null
                 }
+                Text(
+                    text = if (status != null) "$status · ${step.text}" else step.text,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (step.ok == false) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
             }
         }
     }
@@ -121,7 +110,7 @@ fun StatusRow(
     value: String,
     status: Status,
     modifier: Modifier = Modifier,
-    leadingIcon: ImageVector? = null,
+    showStatus: Boolean = true,
 ) {
     Row(
         modifier = modifier
@@ -130,14 +119,6 @@ fun StatusRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (leadingIcon != null) {
-            Icon(
-                imageVector = leadingIcon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
-        }
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
@@ -156,9 +137,7 @@ fun StatusRow(
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1.1f),
         )
-        // O status fica sempre na extremidade direita, independentemente
-        // do tamanho do label ou do valor.
-        StatusIcon(status)
+        if (showStatus) StatusText(status)
     }
 }
 
@@ -173,7 +152,7 @@ fun TechnicalStatusRow(
     value: String,
     status: Status,
     modifier: Modifier = Modifier,
-    leadingIcon: ImageVector? = null,
+    showStatus: Boolean = true,
 ) {
     Column(
         modifier = modifier
@@ -186,21 +165,13 @@ fun TechnicalStatusRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (leadingIcon != null) {
-                Icon(
-                    imageVector = leadingIcon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
-            StatusIcon(status)
+            if (showStatus) StatusText(status)
         }
         Text(
             text = value,
@@ -213,9 +184,7 @@ fun TechnicalStatusRow(
             },
             softWrap = true,
             overflow = TextOverflow.Clip,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = if (leadingIcon != null) 28.dp else 0.dp),
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
@@ -238,20 +207,19 @@ fun InfoCard(
         ),
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            if (action != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.Start,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                if (action != null) {
                     action()
                 }
             }
@@ -264,7 +232,6 @@ fun InfoCard(
 @Composable
 fun StateBadge(
     text: String,
-    icon: ImageVector? = null,
     containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     modifier: Modifier = Modifier,
@@ -275,26 +242,12 @@ fun StateBadge(
         color = containerColor,
         contentColor = contentColor,
     ) {
-        Row(
+        Text(
+            text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (icon != null) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                )
-            }
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

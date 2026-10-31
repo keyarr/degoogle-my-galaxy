@@ -7,35 +7,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Android
-import androidx.compose.material.icons.rounded.Backup
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.Fingerprint
-import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.FolderOff
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Layers
-import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.Store
-import androidx.compose.material.icons.rounded.Tag
-import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -94,10 +74,7 @@ fun DiagnosticsScreen(ui: UiState) {
         InfoCard(
             title = stringResource(R.string.diag_card_system),
             action = {
-                StateBadge(
-                    text = stringResource(ui.state.labelRes),
-                    icon = Icons.Rounded.Verified,
-                )
+                StateBadge(text = stringResource(ui.state.labelRes))
             },
         ) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
@@ -105,41 +82,41 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_root_access),
                     value = if (f.rootOk) f.rootManager.ifBlank { stringResource(R.string.ok) } else stringResource(R.string.no),
                     status = if (f.rootOk) Status.OK else Status.FAIL,
-                    leadingIcon = Icons.Rounded.Shield,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_profile),
                     value = profileId ?: stringResource(R.string.not_supported),
                     status = if (profileMatches) Status.OK else Status.FAIL,
-                    leadingIcon = Icons.Rounded.Verified,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_device),
                     value = "${f.manufacturer} ${f.model}",
                     status = Status.OK,
-                    leadingIcon = Icons.Rounded.Fingerprint,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_android),
                     value = "${f.androidRelease.ifBlank { "?" }} (SDK ${f.androidSdk})",
                     status = Status.OK,
-                    leadingIcon = Icons.Rounded.Android,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_selinux),
                     value = f.selinux,
                     status = Status.UNKNOWN,
-                    leadingIcon = Icons.Rounded.Security,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_abi),
                     value = f.abi,
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
                 TechnicalStatusRow(
                     label = stringResource(R.string.diag_fingerprint),
                     value = f.fingerprint.ifBlank { stringResource(R.string.not_reported) },
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
             }
         }
@@ -162,7 +139,6 @@ fun DiagnosticsScreen(ui: UiState) {
                         "PROBABLY_SUPPORTED" -> Status.UNKNOWN
                         else -> Status.FAIL
                     },
-                    leadingIcon = Icons.Rounded.Shield,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_known_good_match),
@@ -173,7 +149,6 @@ fun DiagnosticsScreen(ui: UiState) {
                         dev.degoogle.app.domain.KnownGoodMatch.NO_MATCH -> stringResource(R.string.match_none)
                     },
                     status = if (ui.compatibility.knownGood.level.name == "EXACT_MATCH") Status.OK else Status.UNKNOWN,
-                    leadingIcon = Icons.Rounded.Verified,
                 )
                 if (f.preparationInfo.isNotBlank()) {
                     Text(
@@ -220,16 +195,19 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_path),
                     value = f.gmsPath ?: stringResource(R.string.absent),
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_version),
                     value = f.gmsVersion ?: stringResource(R.string.not_reported),
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_uid),
                     value = f.gmsUid ?: stringResource(R.string.not_reported),
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_privileged),
@@ -275,6 +253,7 @@ fun DiagnosticsScreen(ui: UiState) {
                         label = stringResource(R.string.diag_package_flags),
                         value = stringResource(R.string.not_reported),
                         status = Status.UNKNOWN,
+                        showStatus = false,
                     )
                 }
             }
@@ -292,21 +271,29 @@ fun DiagnosticsScreen(ui: UiState) {
                         stringResource(R.string.no)
                     },
                     status = if (f.mountGsf || f.gsfPath != null) Status.OK else Status.FAIL,
-                    leadingIcon = Icons.Rounded.Layers,
                 )
                 if (f.gsfPath != null) {
                     TechnicalStatusRow(
                         label = stringResource(R.string.diag_gsf_path),
                         value = f.gsfPath,
                         status = Status.UNKNOWN,
+                        showStatus = false,
                     )
                 }
                 TechnicalStatusRow(
                     label = stringResource(R.string.diag_store_path),
                     value = f.storePath ?: stringResource(R.string.absent),
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
-                if (f.storeVersion != null) StatusRow(stringResource(R.string.diag_store_version), f.storeVersion, Status.UNKNOWN)
+                if (f.storeVersion != null) {
+                    StatusRow(
+                        stringResource(R.string.diag_store_version),
+                        f.storeVersion,
+                        Status.UNKNOWN,
+                        showStatus = false,
+                    )
+                }
             }
         }
 
@@ -316,7 +303,6 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_mount_gms),
                     value = if (f.mountGms) stringResource(R.string.diag_mount_masked_microg) else stringResource(R.string.diag_mount_visible_stock),
                     status = if (f.mountGms) Status.OK else Status.ABSENT,
-                    leadingIcon = if (f.mountGms) Icons.Rounded.Folder else Icons.Rounded.FolderOff,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_mount_gsf),
@@ -332,6 +318,7 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_mount_gms_source),
                     value = f.mountGmsSource ?: stringResource(R.string.not_reported),
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
             }
         }
@@ -342,17 +329,18 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_backup_present),
                     value = if (f.backupPresent) stringResource(R.string.yes) else stringResource(R.string.no),
                     status = if (f.backupPresent) Status.OK else Status.ABSENT,
-                    leadingIcon = Icons.Rounded.Backup,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_export_format),
                     value = stringResource(R.string.backup_structure_value),
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
                 TechnicalStatusRow(
                     label = stringResource(R.string.diag_local_dir),
                     value = stringResource(R.string.backup_storage_path_value),
                     status = Status.UNKNOWN,
+                    showStatus = false,
                 )
             }
         }
@@ -371,11 +359,6 @@ fun DiagnosticsScreen(ui: UiState) {
                     .height(56.dp),
                 shape = RoundedCornerShape(20.dp),
             ) {
-                Icon(
-                    if (copied) Icons.Rounded.CheckCircle else Icons.Rounded.ContentCopy,
-                    contentDescription = null,
-                )
-                Spacer(Modifier.size(8.dp))
                 Text(
                     if (copied) stringResource(R.string.diag_report_copied) else stringResource(R.string.diag_copy_full_report),
                     style = MaterialTheme.typography.titleMedium,
@@ -388,23 +371,12 @@ fun DiagnosticsScreen(ui: UiState) {
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(
+                Text(
+                    text = stringResource(R.string.diag_security_notice),
                     modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Text(
-                        text = stringResource(R.string.diag_security_notice),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
