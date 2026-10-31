@@ -213,6 +213,7 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_privileged),
                     value = if (f.gmsPrivileged) stringResource(R.string.yes) else stringResource(R.string.no),
                     status = if (f.gmsPrivileged) Status.OK else Status.FAIL,
+                    showStatus = false,
                 )
 
                 val flagsList = f.gmsFlags?.split(" ")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
@@ -329,6 +330,7 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_backup_present),
                     value = if (f.backupPresent) stringResource(R.string.yes) else stringResource(R.string.no),
                     status = if (f.backupPresent) Status.OK else Status.ABSENT,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_export_format),
