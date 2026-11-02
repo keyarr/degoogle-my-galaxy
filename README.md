@@ -27,9 +27,11 @@ Validation status:
 
 Material 3 UI screenshots:
 
-<img width="280" alt="Home - Prepared" src="https://github.com/user-attachments/assets/0c148a0a-8923-486c-8067-8f2148200a57" />
-<img width="280" alt="Diagnostics" src="https://github.com/user-attachments/assets/0f8b068f-bb02-47a6-b0e8-dab120bcaaa8" />
-<img width="280" alt="Backup" src="https://github.com/user-attachments/assets/a6e35626-ddd2-430c-a777-b4d9c601ab12" />
+<img width="280" alt="1" src="https://github.com/user-attachments/assets/dd96c321-bbc5-4460-b511-04adad516709" />
+<img width="280" alt="2" src="https://github.com/user-attachments/assets/285fdf0b-8efe-4b31-ae2b-e8c60e75ed82" />
+<img width="280" alt="3" src="https://github.com/user-attachments/assets/7f4bb1fa-395f-4ec1-838c-99a9376fedaf" />
+
+
 
 **Português:** [`README.pt-BR.md`](README.pt-BR.md)
 
