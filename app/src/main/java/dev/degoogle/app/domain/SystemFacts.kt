@@ -63,6 +63,10 @@ data class SystemFacts(
     val preparationInfo: String = "",
     val postBootStatus: String? = null,
     val postBootReason: String? = null,
+    /** `libmapbox-gl.so` disponível na máscara do GMS (Mapbox do WhatsApp). */
+    val gmsMapsLibPresent: Boolean = false,
+    /** Epoch (segundos) da última escrita do backup local, quando existe. */
+    val backupCreatedAt: Long? = null,
 ) {
     companion object {
         val EMPTY = SystemFacts(
@@ -197,6 +201,8 @@ object ProbeParser {
             preparationInfo = str("PREPARATION_INFO").orEmpty(),
             postBootStatus = str("POST_BOOT_STATUS"),
             postBootReason = str("POST_BOOT_REASON"),
+            gmsMapsLibPresent = bool("GMS_MAPS_LIB_PRESENT"),
+            backupCreatedAt = str("BACKUP_CREATED_AT")?.toLongOrNull(),
         )
     }
 }

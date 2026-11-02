@@ -127,4 +127,30 @@ object TransactionReconciliation {
     ): Boolean = journal != null &&
         state in ACTIVE_STATES &&
         journal.state in COMMIT_CANDIDATES
+
+    /**
+     * Um reboot de Rescue Party derruba root e todos os bind mounts, então só
+     * existe estado microG saudável depois disso se o ambiente foi
+     * reconstruído e validado. Quando o único motivo registrado da falha
+     * pós-boot é o Rescue Party E o estado derivado prova a instalação
+     * (GMS priv-app, GSF ausente, finalize concluído), a UI mostra um aviso
+     * dispensável em vez de um erro bloqueante.
+     */
+    fun isRescuePartyOnlyFailure(
+        journal: TransactionJournal?,
+        state: DeviceState,
+        gmsPrivileged: Boolean,
+        gsfAbsent: Boolean,
+        finalizeDone: Boolean,
+    ): Boolean = journal != null &&
+        state in ACTIVE_STATES &&
+        journal.detail.isRescuePartyReason() &&
+        gmsPrivileged &&
+        gsfAbsent &&
+        finalizeDone
+
+    private fun String.isRescuePartyReason(): Boolean =
+        contains("rescueparty", ignoreCase = true) ||
+            contains("rescue_party", ignoreCase = true) ||
+            contains("rescue party", ignoreCase = true)
 }

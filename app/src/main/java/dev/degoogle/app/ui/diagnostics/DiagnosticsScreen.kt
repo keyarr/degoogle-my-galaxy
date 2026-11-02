@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,10 +33,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.degoogle.app.R
 import dev.degoogle.app.domain.CapabilityStatus
+import dev.degoogle.app.domain.DeviceCompatibility
 import dev.degoogle.app.domain.DeviceProfiles
+import dev.degoogle.app.domain.KnownGoodMatch
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
-import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusRow
 import dev.degoogle.app.ui.components.TechnicalStatusRow
@@ -45,9 +47,6 @@ import dev.degoogle.app.ui.components.TechnicalStatusRow
 fun DiagnosticsScreen(ui: UiState) {
     val context = LocalContext.current
     val f = ui.facts
-    val localProfile = DeviceProfiles.matching(f.manufacturer, f.model, f.androidSdk)
-    val profileId = f.profileId.takeIf { f.profileMatch && it.isNotBlank() } ?: localProfile?.id
-    val profileMatches = profileId != null
     var copied by remember { mutableStateOf(false) }
 
     Column(
@@ -64,29 +63,15 @@ fun DiagnosticsScreen(ui: UiState) {
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Text(
-                text = stringResource(R.string.diag_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
-        InfoCard(
-            title = stringResource(R.string.diag_card_system),
-            action = {
-                StateBadge(text = stringResource(ui.state.labelRes))
-            },
-        ) {
+        InfoCard(title = stringResource(R.string.diag_card_system)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 StatusRow(
                     label = stringResource(R.string.diag_root_access),
-                    value = if (f.rootOk) f.rootManager.ifBlank { stringResource(R.string.ok) } else stringResource(R.string.no),
+                    value = if (f.rootOk) f.rootManager.ifBlank { stringResource(R.string.yes) } else stringResource(R.string.no),
                     status = if (f.rootOk) Status.OK else Status.FAIL,
-                )
-                StatusRow(
-                    label = stringResource(R.string.diag_profile),
-                    value = profileId ?: stringResource(R.string.not_supported),
-                    status = if (profileMatches) Status.OK else Status.FAIL,
+                    showStatus = false,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_device),
@@ -125,30 +110,34 @@ fun DiagnosticsScreen(ui: UiState) {
 
         InfoCard(stringResource(R.string.diag_card_compatibility)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
+                val compatStatus = when (ui.compatibility.compatibility) {
+                    DeviceCompatibility.SUPPORTED -> Status.OK
+                    DeviceCompatibility.PROBABLY_SUPPORTED -> Status.UNKNOWN
+                    else -> Status.FAIL
+                }
                 StatusRow(
                     label = stringResource(R.string.diag_compatibility),
                     value = when (ui.compatibility.compatibility) {
-                        dev.degoogle.app.domain.DeviceCompatibility.SUPPORTED -> stringResource(R.string.compat_supported)
-                        dev.degoogle.app.domain.DeviceCompatibility.PROBABLY_SUPPORTED -> stringResource(R.string.compat_probably_supported)
-                        dev.degoogle.app.domain.DeviceCompatibility.REQUIRES_PROFILE -> stringResource(R.string.compat_requires_profile)
-                        dev.degoogle.app.domain.DeviceCompatibility.UNSAFE -> stringResource(R.string.compat_unsafe)
-                        dev.degoogle.app.domain.DeviceCompatibility.UNSUPPORTED -> stringResource(R.string.compat_unsupported)
+                        DeviceCompatibility.SUPPORTED -> stringResource(R.string.compat_supported)
+                        DeviceCompatibility.PROBABLY_SUPPORTED -> stringResource(R.string.compat_probably_supported)
+                        DeviceCompatibility.REQUIRES_PROFILE -> stringResource(R.string.compat_requires_profile)
+                        DeviceCompatibility.UNSAFE -> stringResource(R.string.compat_unsafe)
+                        DeviceCompatibility.UNSUPPORTED -> stringResource(R.string.compat_unsupported)
                     },
-                    status = when (ui.compatibility.compatibility.name) {
-                        "SUPPORTED" -> Status.OK
-                        "PROBABLY_SUPPORTED" -> Status.UNKNOWN
-                        else -> Status.FAIL
-                    },
+                    status = compatStatus,
+                    showStatus = compatStatus != Status.OK,
                 )
+                val matchStatus = if (ui.compatibility.knownGood.level == KnownGoodMatch.EXACT_MATCH) Status.OK else Status.UNKNOWN
                 StatusRow(
                     label = stringResource(R.string.diag_known_good_match),
                     value = when (ui.compatibility.knownGood.level) {
-                        dev.degoogle.app.domain.KnownGoodMatch.EXACT_MATCH -> stringResource(R.string.match_exact)
-                        dev.degoogle.app.domain.KnownGoodMatch.FIRMWARE_FAMILY_MATCH -> stringResource(R.string.match_family)
-                        dev.degoogle.app.domain.KnownGoodMatch.MODEL_ONLY_MATCH -> stringResource(R.string.match_model_only)
-                        dev.degoogle.app.domain.KnownGoodMatch.NO_MATCH -> stringResource(R.string.match_none)
+                        KnownGoodMatch.EXACT_MATCH -> stringResource(R.string.match_exact)
+                        KnownGoodMatch.FIRMWARE_FAMILY_MATCH -> stringResource(R.string.match_family)
+                        KnownGoodMatch.MODEL_ONLY_MATCH -> stringResource(R.string.match_model_only)
+                        KnownGoodMatch.NO_MATCH -> stringResource(R.string.match_none)
                     },
-                    status = if (ui.compatibility.knownGood.level.name == "EXACT_MATCH") Status.OK else Status.UNKNOWN,
+                    status = matchStatus,
+                    showStatus = matchStatus != Status.OK,
                 )
                 if (f.preparationInfo.isNotBlank()) {
                     Text(
@@ -184,6 +173,7 @@ fun DiagnosticsScreen(ui: UiState) {
                         label = capability.name,
                         value = detail,
                         status = status,
+                        showStatus = status != Status.OK,
                     )
                 }
             }
@@ -233,10 +223,15 @@ fun DiagnosticsScreen(ui: UiState) {
                             flagsList.forEach { flag ->
                                 AssistChip(
                                     onClick = {},
+                                    // Flags longas (private_flag_*) ficavam com o
+                                    // pill menor que as demais; altura mínima
+                                    // uniforme resolve.
+                                    modifier = Modifier.heightIn(min = 44.dp),
                                     label = {
                                         Text(
                                             text = flag,
                                             style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(vertical = 2.dp),
                                         )
                                     },
                                     colors = AssistChipDefaults.assistChipColors(
@@ -262,6 +257,7 @@ fun DiagnosticsScreen(ui: UiState) {
 
         InfoCard(stringResource(R.string.diag_card_framework)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
+                val gsfStatus = if (f.mountGsf || f.gsfPath != null) Status.OK else Status.FAIL
                 StatusRow(
                     label = stringResource(R.string.diag_gsf_present),
                     value = if (f.mountGsf) {
@@ -271,7 +267,8 @@ fun DiagnosticsScreen(ui: UiState) {
                     } else {
                         stringResource(R.string.no)
                     },
-                    status = if (f.mountGsf || f.gsfPath != null) Status.OK else Status.FAIL,
+                    status = gsfStatus,
+                    showStatus = gsfStatus != Status.OK,
                 )
                 if (f.gsfPath != null) {
                     TechnicalStatusRow(
@@ -304,16 +301,19 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_mount_gms),
                     value = if (f.mountGms) stringResource(R.string.diag_mount_masked_microg) else stringResource(R.string.diag_mount_visible_stock),
                     status = if (f.mountGms) Status.OK else Status.ABSENT,
+                    showStatus = !f.mountGms,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_mount_gsf),
                     value = if (f.mountGsf) stringResource(R.string.diag_mount_masked_empty) else stringResource(R.string.diag_mount_visible_stock),
                     status = if (f.mountGsf) Status.OK else Status.ABSENT,
+                    showStatus = !f.mountGsf,
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_mount_store),
                     value = if (f.mountStore) stringResource(R.string.diag_mount_masked_companion) else stringResource(R.string.diag_mount_visible_stock),
                     status = if (f.mountStore) Status.OK else Status.ABSENT,
+                    showStatus = !f.mountStore,
                 )
                 TechnicalStatusRow(
                     label = stringResource(R.string.diag_mount_gms_source),

@@ -142,6 +142,8 @@ GMS_VERSION_CODE=""
 GMS_UID=""
 GMS_FLAGS=""
 GMS_PRIVILEGED=0
+GMS_MAPS_LIB_PRESENT=0
+GMS_MAPS_LIB_RELPATH=""
 GSF_PATH=""
 STORE_PATH=""
 STORE_VERSION=""
@@ -187,6 +189,7 @@ MOUNT_GSF_IS_KNOWN=0
 MOUNT_STORE_IS_KNOWN=0
 MOUNT_GMS_SOURCE=""
 BACKUP_PRESENT=0
+BACKUP_CREATED_AT=""
 MASK_RESIDUE_PRESENT=0
 FINALIZE_DONE=0
 REBOOT_STRATEGY_BACKEND=""
@@ -1146,10 +1149,24 @@ probe_capabilities()
 # Coleta de fatos (fonte de verdade = estado real do Android)
 # ===========================================================================
 
+# Caminho relativo da lib do Mapbox dentro do GMS, no mesmo isa usado por
+# provision_gms_native_libs. ABI sem mapeamento devolve vazio.
+gms_maps_lib_relpath()
+{
+    case "${ABI:-}" in
+        arm64-v8a) printf 'lib/arm64/libmapbox-gl.so' ;;
+        armeabi-v7a|armeabi) printf 'lib/arm/libmapbox-gl.so' ;;
+        x86_64) printf 'lib/x86_64/libmapbox-gl.so' ;;
+        x86) printf 'lib/x86/libmapbox-gl.so' ;;
+        *) printf '' ;;
+    esac
+}
+
 collect_facts()
 {
     ROOT_OK=0; ROOT_MANAGER=""; GMS_PRIVILEGED=0; FINALIZE_DONE=0
     GMS_PATH=""; GSF_PATH=""; STORE_PATH=""; GMS_FLAGS=""; GMS_UID=""
+    GMS_MAPS_LIB_PRESENT=0; GMS_MAPS_LIB_RELPATH=""
     GMS_VERSION=""; GMS_VERSION_CODE=""; STORE_VERSION=""
     TARGET_GMS=""; TARGET_GSF=""; TARGET_STORE=""
     MANUFACTURER="$(getprop ro.product.manufacturer 2>/dev/null)"
@@ -1197,6 +1214,15 @@ collect_facts()
         case "$GMS_FLAGS" in *PRIVILEGED*) GMS_PRIVILEGED=1 ;; esac
         GMS_UID="$(gms_uid_current 2>/dev/null || true)"
 
+        # Fix do Mapbox do WhatsApp: a libmapbox-gl.so copiada do APK precisa
+        # existir para o mapa carregar. A máscara também conta como evidência,
+        # porque ela sobrevive ao reboot antes de ser montada.
+        GMS_MAPS_LIB_RELPATH="$(gms_maps_lib_relpath)"
+        if [ -n "$GMS_MAPS_LIB_RELPATH" ] && \
+            { [ -s "$TARGET_GMS/$GMS_MAPS_LIB_RELPATH" ] || [ -s "$MASK_GMS/$GMS_MAPS_LIB_RELPATH" ]; }; then
+            GMS_MAPS_LIB_PRESENT=1
+        fi
+
         # Mounts: detecta QUALQUER mount ativo nos paths do perfil e marca se
         # a fonte é a nossa máscara. Fonte desconhecida = estado não gerenciado.
         refresh_mount_facts
@@ -1208,8 +1234,11 @@ collect_facts()
     # A presença de user0 é o indicador usado pelo script original; user_de é
     # opcional porque nem todo firmware cria esse diretório.
     BACKUP_PRESENT=0
+    BACKUP_CREATED_AT=""
     if [ -d "$BACKUP_GMS_USER" ]; then
         BACKUP_PRESENT=1
+        # Epoch da última escrita do backup; a UI formata no locale do aparelho.
+        BACKUP_CREATED_AT="$(stat -c %Y "$BACKUP_GMS_USER" 2>/dev/null || true)"
     fi
 
     refresh_residue_facts
@@ -1287,6 +1316,8 @@ emit_facts()
     emit MOUNT_STORE_IS_LEGACY "$MOUNT_STORE_IS_LEGACY"
     emit MOUNT_GMS_SOURCE "$MOUNT_GMS_SOURCE"
     emit BACKUP_PRESENT "$BACKUP_PRESENT"
+    emit BACKUP_CREATED_AT "$BACKUP_CREATED_AT"
+    emit GMS_MAPS_LIB_PRESENT "$GMS_MAPS_LIB_PRESENT"
     emit MASK_RESIDUE_PRESENT "$MASK_RESIDUE_PRESENT"
     emit FINALIZE_DONE "$FINALIZE_DONE"
     emit REBOOT_STRATEGY_BACKEND "$REBOOT_STRATEGY_BACKEND"

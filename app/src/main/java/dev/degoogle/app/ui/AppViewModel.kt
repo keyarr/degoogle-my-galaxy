@@ -233,11 +233,29 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             // soft reboot. Uma tentativa de reboot recusada não desfaz as
             // máscaras; portanto não pode transformar PREPARED em "transação
             // incompleta" só porque o journal registrou a recusa.
-            val recoveryRequired = transactionJournal.requiresRecovery() &&
-                state != DeviceState.PREPARED
-
             val currentJournal = journal ?: transactionJournal.read()
             val journalDetail = currentJournal?.detail?.takeIf { it.isNotBlank() }
+
+            // Um reboot de Rescue Party derruba root e mounts. Se o estado
+            // derivado ainda prova a instalação do microG, o ambiente foi
+            // reconstruído e validado: mostra um aviso dispensável, não um
+            // erro que pede restauração do stock.
+            val rescuePartyOnlyFailure = TransactionReconciliation.isRescuePartyOnlyFailure(
+                journal = currentJournal,
+                state = state,
+                gmsPrivileged = facts.gmsPrivileged,
+                gsfAbsent = facts.gsfPath.isNullOrEmpty(),
+                finalizeDone = facts.finalizeDone,
+            )
+            val rescuePartyNoticeDismissed = currentJournal?.operationId?.let { operationId ->
+                prefs.dismissedRescuePartyOperation.firstOrNull() == operationId
+            } ?: false
+            val rescuePartyNotice = rescuePartyOnlyFailure && !rescuePartyNoticeDismissed
+
+            val recoveryRequired = transactionJournal.requiresRecovery() &&
+                state != DeviceState.PREPARED &&
+                !rescuePartyOnlyFailure
+
             val recoveryDetail = if (recoveryRequired) journalDetail else null
             val recoveryMessage = if (recoveryRequired) {
                 when {
@@ -265,6 +283,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     recoveryRequired = recoveryRequired,
                     recoveryMessage = recoveryMessage,
                     recoveryDetail = recoveryDetail,
+                    rescuePartyNotice = rescuePartyNotice,
                     needsSetupPrompt = needsPrompt,
                     error = resolvedError,
                 )
@@ -678,6 +697,15 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     fun dismissSetupPrompt() {
         viewModelScope.launch(Dispatchers.IO) { prefs.markSetupPromptSeen() }
         _ui.update { it.copy(needsSetupPrompt = false) }
+    }
+
+    /** Fecha o aviso de Rescue Party; a operação lembrada não o reexibe. */
+    fun dismissRescuePartyNotice() {
+        _ui.update { it.copy(rescuePartyNotice = false) }
+        val operationId = transactionJournal.read()?.operationId ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            prefs.markRescuePartyNoticeDismissed(operationId)
+        }
     }
 
     /** Liga/desliga as notificações de operação pendente (pós-boot). */

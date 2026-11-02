@@ -32,8 +32,9 @@ import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
 import dev.degoogle.app.ui.components.OperationLog
-import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
+import java.text.DateFormat
+import java.util.Date
 import dev.degoogle.app.ui.components.StatusRow
 import dev.degoogle.app.ui.components.TechnicalStatusRow
 
@@ -43,6 +44,10 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showRestoreConfirm by remember { mutableStateOf(false) }
     val f = ui.facts
+    val backupCreatedAt = f.backupCreatedAt?.let { epochSeconds ->
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+            .format(Date(epochSeconds * 1000L))
+    }
 
     Column(
         modifier = Modifier
@@ -58,21 +63,19 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Text(
-                text = stringResource(R.string.backup_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
         InfoCard(
             title = stringResource(R.string.backup_card_snapshot_state),
+            titleFontWeight = FontWeight.Normal,
             action = {
-                StateBadge(
-                    text = if (f.backupPresent) stringResource(R.string.backup_status_badge_saved) else stringResource(R.string.backup_status_badge_pending),
-                    containerColor = if (f.backupPresent) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                    contentColor = if (f.backupPresent) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (backupCreatedAt != null) {
+                    Text(
+                        text = stringResource(R.string.backup_created_at, backupCreatedAt),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             },
         ) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
@@ -81,12 +84,14 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                     value = stringResource(R.string.backup_structure_value),
                     status = Status.UNKNOWN,
                     showStatus = false,
+                    valueFontWeight = FontWeight.Normal,
                 )
                 TechnicalStatusRow(
                     label = stringResource(R.string.backup_storage_path_label),
                     value = stringResource(R.string.backup_storage_path_value),
                     status = Status.UNKNOWN,
                     showStatus = false,
+                    inlineValue = true,
                 )
             }
         }

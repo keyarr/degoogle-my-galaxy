@@ -176,4 +176,45 @@ class TransactionJournalTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `rescue party com microG validado vira aviso e não erro`() {
+        val journal = TransactionJournal(
+            operationId = "op-rescue-ok",
+            timestamp = 1234L,
+            deviceFingerprint = "fp",
+            state = TransactionState.ROLLBACK_REQUIRED,
+            detail = "boot reason indica Rescue Party: reboot,rescueparty",
+        )
+
+        assertTrue(
+            TransactionReconciliation.isRescuePartyOnlyFailure(
+                journal = journal,
+                state = DeviceState.MICROG_ACTIVE_BACKED_UP,
+                gmsPrivileged = true,
+                gsfAbsent = true,
+                finalizeDone = true,
+            ),
+        )
+        // Sem prova de que o microG voltou saudável, continua sendo erro.
+        assertFalse(
+            TransactionReconciliation.isRescuePartyOnlyFailure(
+                journal = journal,
+                state = DeviceState.MICROG_ACTIVE,
+                gmsPrivileged = false,
+                gsfAbsent = true,
+                finalizeDone = true,
+            ),
+        )
+        // Falha que não é do boot (ex.: reboot recusado) nunca vira aviso.
+        assertFalse(
+            TransactionReconciliation.isRescuePartyOnlyFailure(
+                journal = journal.copy(detail = "soft reboot refused"),
+                state = DeviceState.MICROG_ACTIVE,
+                gmsPrivileged = true,
+                gsfAbsent = true,
+                finalizeDone = true,
+            ),
+        )
+    }
 }

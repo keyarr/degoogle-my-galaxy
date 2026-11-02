@@ -3,23 +3,29 @@ package dev.degoogle.app.ui.home
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -32,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -95,6 +102,35 @@ fun HomeScreen(
                 }
             }
             return@Column
+        }
+
+        if (ui.rescuePartyNotice) {
+            InfoCard(
+                title = stringResource(R.string.home_rescue_party_notice_title),
+                action = {
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 8.dp, y = (-4).dp)
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(percent = 50))
+                            .clickable { vm.dismissRescuePartyNotice() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.home_rescue_party_notice_dismiss),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                },
+            ) {
+                Text(
+                    text = stringResource(R.string.home_rescue_party_notice_text),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
         }
 
         if (ui.recoveryRequired) {
@@ -466,18 +502,11 @@ private fun ActiveContent(
     InfoCard(
         title = stringResource(R.string.home_microg_active_title),
         action = {
-            StateBadge(
-                text = if (isBackedUp) stringResource(R.string.home_badge_active_safe) else stringResource(R.string.home_badge_active_no_backup),
-                containerColor = if (isBackedUp) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.tertiaryContainer
-                },
-                contentColor = if (isBackedUp) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onTertiaryContainer
-                },
+            Text(
+                text = stringResource(R.string.home_badge_active),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
             )
         },
     ) {
@@ -514,6 +543,14 @@ private fun ActiveContent(
                     showStatus = false,
                 )
             }
+            // libmapbox-gl.so entregue pela máscara do GMS; sem ela o Mapbox
+            // do WhatsApp falha ao carregar. Ver commit 20755ae.
+            StatusRow(
+                stringResource(R.string.diag_mapbox_lib),
+                if (f.gmsMapsLibPresent) stringResource(R.string.ok) else stringResource(R.string.absent),
+                if (f.gmsMapsLibPresent) Status.OK else Status.ABSENT,
+                showStatus = false,
+            )
         }
     }
 

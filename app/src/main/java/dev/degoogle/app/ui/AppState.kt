@@ -31,6 +31,11 @@ data class UiState(
     val error: String? = null,
     /** true quando a primeira instalação precisa do modal de configuração. */
     val needsSetupPrompt: Boolean = false,
+    /**
+     * Aviso informativo (dispensável): a instalação terminou corretamente,
+     * mas o boot atual veio de um reboot de emergência (Rescue Party).
+     */
+    val rescuePartyNotice: Boolean = false,
     /** Resultado do último soft reboot (para fallback). */
     val softRebootSupported: Boolean = true,
 ) {

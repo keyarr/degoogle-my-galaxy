@@ -200,9 +200,8 @@
     <string name="home_badge_post_reboot">Post-Reboot</string>
     <string name="home_booted_desc">microG was registered as priv-app and stock GSF was removed.\n\nPermissions, AppOps, and Doze bypass will now be finalized.</string>
     <string name="home_complete_setup_btn">Complete configuration</string>
-    <string name="home_microg_active_title">microG Active</string>
-    <string name="home_badge_active_safe">Backup available</string>
-    <string name="home_badge_active_no_backup">Active (No Backup)</string>
+    <string name="home_microg_active_title">microG</string>
+    <string name="home_badge_active">active</string>
     <string name="home_btn_update_token_backup">Update Token Backup</string>
     <string name="home_btn_create_token_backup">Create Token Backup</string>
     <string name="home_btn_restore_google_stock">Restore Google Stock</string>
@@ -221,6 +220,9 @@
     <string name="home_recovery_required">An incomplete transaction was found. Do not start another operation; inspect diagnostics and restore stock if necessary.</string>
     <string name="home_recovery_rescue_party">Post-boot safety validation failed because the system detected an emergency reboot (Rescue Party). microG changes were not confirmed; restore Google stock to return to a safe state.</string>
     <string name="home_recovery_post_boot_failed">Post-boot safety validation failed. microG changes were not confirmed; restore Google stock to return to a safe state.</string>
+    <string name="home_rescue_party_notice_title">Rescue Party reboot</string>
+    <string name="home_rescue_party_notice_text">A Rescue Party reboot occurred, but microG was installed correctly on the system.</string>
+    <string name="home_rescue_party_notice_dismiss">Dismiss notice</string>
     <string name="home_dialog_restore_title">Restore Google?</string>
     <string name="home_dialog_restore_text">microG will be removed from the active environment and original Google components will be revealed again.\n\nYour microG backup will be preserved.</string>
     <string name="home_dialog_setup_title">microG installed successfully</string>
@@ -229,7 +231,6 @@
 
     <!-- Diagnostics Screen -->
     <string name="diag_title">Diagnostics</string>
-    <string name="diag_subtitle">Telemetry and low-level system state</string>
     <string name="diag_card_system">System &amp; Environment</string>
     <string name="diag_card_gms">Google Play Services (GMS)</string>
     <string name="diag_card_framework">Framework &amp; Store</string>
@@ -270,25 +271,24 @@
     <string name="diag_mount_visible_stock">visible (stock)</string>
     <string name="diag_stock_active">stock active</string>
     <string name="diag_stock_removed_masked">removed/masked</string>
-    <string name="diag_registered_ok">registered (ok)</string>
+    <string name="diag_registered_ok">registered</string>
     <string name="diag_play_services">Play Services</string>
     <string name="diag_framework_gsf">Framework (GSF)</string>
     <string name="diag_backup_microg">microG Backup</string>
     <string name="diag_backup_fcm">FCM Backup</string>
     <string name="diag_companion">microG Companion</string>
     <string name="diag_version_microg">microG Version</string>
+    <string name="diag_mapbox_lib">Maps lib (WhatsApp)</string>
     <string name="diag_real_gms">Real GMS</string>
     <string name="diag_real_gsf">Real GSF</string>
     <string name="diag_real_store">Real Play Store</string>
 
     <!-- Backup Screen -->
     <string name="backup_title">Backup &amp; Tokens</string>
-    <string name="backup_subtitle">Preservation of credentials and push notifications (FCM)</string>
     <string name="backup_card_snapshot_state">Local backup</string>
-    <string name="backup_status_badge_saved">Available</string>
-    <string name="backup_status_badge_pending">Not Created</string>
+    <string name="backup_created_at">created at %1$s</string>
     <string name="backup_structure_label">Structure</string>
-    <string name="backup_structure_value">user0 + user_de (MicroG Session)</string>
+    <string name="backup_structure_value">user0 + user_de</string>
     <string name="backup_storage_path_label">Storage Location</string>
     <string name="backup_storage_path_value">/data/local/tmp/microg-backup</string>
     <string name="backup_why_title">Why create a backup?</string>

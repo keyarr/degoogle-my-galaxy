@@ -111,6 +111,7 @@ fun StatusRow(
     status: Status,
     modifier: Modifier = Modifier,
     showStatus: Boolean = true,
+    valueFontWeight: FontWeight = FontWeight.Medium,
 ) {
     Row(
         modifier = modifier
@@ -128,7 +129,7 @@ fun StatusRow(
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            fontWeight = valueFontWeight,
             color = if (status == Status.OK) {
                 MaterialTheme.colorScheme.primary
             } else {
@@ -153,6 +154,7 @@ fun TechnicalStatusRow(
     status: Status,
     modifier: Modifier = Modifier,
     showStatus: Boolean = true,
+    inlineValue: Boolean = false,
 ) {
     Column(
         modifier = modifier
@@ -160,32 +162,56 @@ fun TechnicalStatusRow(
             .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        if (inlineValue) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(0.9f),
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = if (status == Status.OK) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                    softWrap = true,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.weight(1.1f),
+                )
+                if (showStatus) StatusText(status)
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                if (showStatus) StatusText(status)
+            }
             Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+                color = if (status == Status.OK) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                softWrap = true,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.fillMaxWidth(),
             )
-            if (showStatus) StatusText(status)
         }
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = if (status == Status.OK) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            softWrap = true,
-            overflow = TextOverflow.Clip,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -195,6 +221,7 @@ fun InfoCard(
     title: String,
     modifier: Modifier = Modifier,
     action: (@Composable () -> Unit)? = null,
+    titleFontWeight: FontWeight = FontWeight.Bold,
     content: @Composable () -> Unit,
 ) {
     Card(
@@ -215,7 +242,7 @@ fun InfoCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = titleFontWeight,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
                 )
