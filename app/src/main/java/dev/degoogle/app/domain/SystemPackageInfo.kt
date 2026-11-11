@@ -3,7 +3,7 @@ package dev.degoogle.app.domain
 import dev.degoogle.app.root.RootExecutor
 import kotlinx.serialization.Serializable
 
-/** Localização completa de um pacote, sem assumir layout de um firmware. */
+/** Complete package location without assuming a firmware layout. */
 @Serializable
 data class SystemPackageInfo(
     val packageName: String,
@@ -17,7 +17,7 @@ data class SystemPackageInfo(
     val filesystemType: String? = null,
     val resolvedRealPath: String? = null,
 ) {
-    /** O alvo é seguro somente em raízes aprovadas e sem traversal. */
+    /** A target is safe only under approved roots and without path traversal. */
     val safeTarget: Boolean
         get() {
             val target = targetDirectory ?: return false
@@ -33,8 +33,8 @@ data class SystemPackageInfo(
 }
 
 /**
- * Parser e locator pequeno o suficiente para testes por fixture. O locator
- * usa somente argv; não passa packageName por um shell concatenado.
+ * Parser and locator small enough for fixture-based tests. The locator
+ * uses argv only; packageName is never passed through a concatenated shell command.
  */
 class PackageLocator(
     private val executor: RootExecutor,

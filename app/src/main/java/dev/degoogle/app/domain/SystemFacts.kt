@@ -1,10 +1,10 @@
 package dev.degoogle.app.domain
 
 /**
- * Fatos do sistema derivados do `degoogle.sh probe`.
+ * System facts derived from `degoogle.sh probe`.
  *
- * O backend emite `DEGOOGLE_KEY=value` em stdout; o parser extrai os fatos.
- * Campo ausente = null / false conforme o tipo.
+ * The backend emits `DEGOOGLE_KEY=value` on stdout; the parser extracts the facts.
+ * Missing field = null / false, depending on its type.
  */
 data class SystemFacts(
     val rootOk: Boolean,
@@ -40,13 +40,13 @@ data class SystemFacts(
     val mountStoreIsLegacy: Boolean = false,
     val mountGmsSource: String?,
     val backupPresent: Boolean,
-    /** Existem payloads conhecidos nas máscaras atuais ou legadas. */
+    /** Known payloads exist in current or legacy masks. */
     val maskResiduePresent: Boolean = false,
     val finalizeDone: Boolean,
-    /** Estado derivado pelo próprio backend (informativo; o app recalcula). */
+    /** State derived by the backend (informational; the app recalculates it). */
     val shellState: DeviceState?,
-    // Fatos adicionais de discovery. Defaults preservam compatibilidade com
-    // fixtures e callers da primeira versão.
+    // Additional discovery facts. Defaults preserve compatibility with
+    // fixtures and callers from the first version.
     val board: String = "",
     val hardware: String = "",
     val buildId: String = "",
@@ -59,13 +59,13 @@ data class SystemFacts(
     val storePackage: SystemPackageInfo? = null,
     val capabilityResults: Map<Capability, CapabilityResult> = emptyMap(),
     val rebootStrategy: RebootStrategy? = null,
-    /** Aviso operacional quando GMS/Store têm update removível no fluxo. */
+    /** Operational warning when the flow can remove a GMS/Store update. */
     val preparationInfo: String = "",
     val postBootStatus: String? = null,
     val postBootReason: String? = null,
-    /** `libmapbox-gl.so` disponível na máscara do GMS (Mapbox do WhatsApp). */
+    /** `libmapbox-gl.so` available in the GMS mask (used by WhatsApp Mapbox). */
     val gmsMapsLibPresent: Boolean = false,
-    /** Epoch (segundos) da última escrita do backup local, quando existe. */
+    /** Epoch timestamp (seconds) of the last local backup write, if present. */
     val backupCreatedAt: Long? = null,
 ) {
     companion object {
@@ -88,7 +88,7 @@ object ProbeParser {
 
     private val KEY = Regex("^DEGOOGLE_([A-Z0-9_]+)=(.*)$")
 
-    /** Faz o parse da saída stdout do `degoogle.sh probe`. */
+    /** Parses stdout from `degoogle.sh probe`. */
     fun parse(output: String): SystemFacts {
         val map = mutableMapOf<String, String>()
         output.lineSequence().forEach { line ->

@@ -2,7 +2,7 @@ package dev.degoogle.app.domain
 
 import kotlinx.serialization.Serializable
 
-/** Capacidades observáveis usadas pelo motor de compatibilidade. */
+/** Observable capabilities used by the compatibility engine. */
 @Serializable
 enum class Capability {
     ROOT,
@@ -32,7 +32,7 @@ enum class CapabilityStatus {
     UNKNOWN,
 }
 
-/** Resultado de uma verificação, sempre com evidência ou motivo. */
+/** Result of a check, always with evidence or a reason. */
 @Serializable
 data class CapabilityResult(
     val status: CapabilityStatus,
@@ -51,7 +51,7 @@ data class CapabilityResult(
     }
 }
 
-/** Matriz imutável de capabilities; ausência não é interpretada como PASS. */
+/** Immutable capability matrix; missing values are not treated as PASS. */
 data class CapabilityMatrix(
     val results: Map<Capability, CapabilityResult>,
 ) {
@@ -68,7 +68,7 @@ data class CapabilityMatrix(
         results.mapKeys { it.key.name }
 
     companion object {
-        /** Requisitos mínimos para qualquer alteração crítica. */
+        /** Minimum requirements for any critical change. */
         val CRITICAL_CAPABILITIES: Set<Capability> = linkedSetOf(
             Capability.ROOT,
             Capability.GLOBAL_MOUNT_NAMESPACE,
@@ -95,7 +95,7 @@ data class CapabilityMatrix(
     }
 }
 
-/** Backend de root detectado; detecção não implica validação operacional. */
+/** Detected root backend; detection does not imply operational validation. */
 @Serializable
 enum class RootBackendType {
     KERNELSU,
@@ -121,7 +121,7 @@ enum class Confidence {
     UNKNOWN,
 }
 
-/** Deriva a matriz a partir dos fatos emitidos pelo backend. */
+/** Derives the matrix from facts emitted by the backend. */
 object CapabilityEngine {
 
     fun evaluate(facts: SystemFacts): CapabilityMatrix {
@@ -181,7 +181,7 @@ object CapabilityEngine {
             else -> CapabilityResult.fail("GMS lacks PRIVILEGED flag", facts.gmsFlags.orEmpty())
         }
 
-        // Estas capacidades não devem ser deduzidas por semelhança de modelo.
+        // These capabilities must not be inferred from model similarity.
         inferred[Capability.GLOBAL_MOUNT_NAMESPACE] = CapabilityResult.unknown(
             "global namespace not tested by probe",
         )
@@ -204,11 +204,11 @@ object CapabilityEngine {
             "rollback not yet validated by preflight",
         )
 
-        // O shell pode fornecer provas mais específicas. Elas sempre vencem a
-        // inferência local, inclusive quando o status é WARN/UNKNOWN.
+        // The shell may provide more specific evidence. It always takes precedence over
+        // local inference, including when the status is WARN/UNKNOWN.
         facts.capabilityResults.forEach { (capability, result) -> inferred[capability] = result }
-        // Um update sem target stock validado continua bloqueado; o path de
-        // /data/app nunca substitui a evidência do pacote original.
+        // An update without a validated stock target remains blocked; a path under
+        // /data/app never replaces evidence for the original package.
         requalifyDataUpdate(inferred, Capability.GMS_MASKABLE, facts.gmsPackage, "GMS")
         requalifyDataUpdate(inferred, Capability.GSF_MASKABLE, facts.gsfPackage, "GSF")
         requalifyDataUpdate(inferred, Capability.STORE_MASKABLE, facts.storePackage, "Store")

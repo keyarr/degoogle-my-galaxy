@@ -10,15 +10,15 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Valida um APK baixado antes de qualquer cópia root:
- *  1. é um arquivo APK parseável pelo PackageManager;
+ * Validates a downloaded APK before any root copy:
+ *  1. it is an APK file parseable by PackageManager;
  *  2. packageName confere;
- *  3. versionCode/versionName conferem com a release consultada;
- *  4. assinatura (SHA-256 do certificado) confere com a publicada no índice;
- *  5. hash SHA-256 do arquivo inteiro confere;
- *  6. minSdk compatível com o aparelho.
+ *  3. versionCode/versionName match the queried release;
+ *  4. its signature (certificate SHA-256) matches the value published in the index;
+ *  5. the full-file SHA-256 hash matches;
+ *  6. minSdk is compatible with the device.
  *
- * Se qualquer validação falhar, o download deve ser descartado (nunca usado).
+ * If any validation fails, discard the download (never use it).
  */
 class ApkValidator(private val context: Context) {
 
@@ -43,7 +43,7 @@ class ApkValidator(private val context: Context) {
             return ValidationResult.Failed(context.getString(R.string.validator_empty_file))
         }
 
-        // 1) parse pelo PackageManager
+        // 1) parse with PackageManager
         val pm = context.packageManager
         val packageInfoFlags = if (Build.VERSION.SDK_INT >= 28) {
             PackageManager.GET_SIGNING_CERTIFICATES
@@ -59,7 +59,7 @@ class ApkValidator(private val context: Context) {
             return ValidationResult.Failed(context.getString(R.string.validator_unexpected_package, info.packageName))
         }
 
-        // 3) versão (longVersionCode só existe a partir da API 28)
+        // 3) version (longVersionCode is available only from API 28)
         val actualCode = if (Build.VERSION.SDK_INT >= 28) {
             info.longVersionCode
         } else {
@@ -78,7 +78,7 @@ class ApkValidator(private val context: Context) {
             )
         }
 
-        // 4) assinatura
+        // 4) signature
         val signatures = if (Build.VERSION.SDK_INT >= 28) {
             info.signingInfo?.apkContentsSigners
         } else {
@@ -94,7 +94,7 @@ class ApkValidator(private val context: Context) {
             return ValidationResult.Failed(context.getString(R.string.validator_signature_mismatch, certSha))
         }
 
-        // 5) hash do arquivo inteiro
+        // 5) full-file hash
         if (expectedSha256.length != 64 || expectedSha256.any { it !in '0'..'9' && it !in 'a'..'f' && it !in 'A'..'F' }) {
             return ValidationResult.Failed(context.getString(R.string.validator_sha256_missing))
         }

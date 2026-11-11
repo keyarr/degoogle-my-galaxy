@@ -1,6 +1,6 @@
 package dev.degoogle.app.root
 
-/** Resultado de uma execução root. */
+/** Result of a root execution. */
 sealed class RootResult {
     abstract val exitCode: Int
     abstract val stdout: String

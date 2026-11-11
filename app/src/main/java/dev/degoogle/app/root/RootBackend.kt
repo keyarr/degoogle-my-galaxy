@@ -3,14 +3,14 @@ package dev.degoogle.app.root
 import dev.degoogle.app.domain.CapabilityResult
 import dev.degoogle.app.domain.RootBackendType
 
-/** Resultado de uma operação que pode alterar estado. */
+/** Result of an operation that may change state. */
 data class OperationResult(
     val succeeded: Boolean,
     val message: String,
     val exitCode: Int = if (succeeded) 0 else 1,
 )
 
-/** Abstrai o mecanismo de root do fluxo de compatibilidade. */
+/** Abstracts the root mechanism used by the compatibility flow. */
 interface RootBackend {
     val type: RootBackendType
 
@@ -56,8 +56,8 @@ abstract class CommandRootBackend(
 
     override suspend fun canPerformBindMount(): CapabilityResult {
         if (!isAvailable()) return CapabilityResult.fail("root backend not available")
-        // Script constante: não incorpora dados do usuário. O teste é isolado,
-        // reversível e nunca toca nos diretórios de GMS/GSF/Store.
+        // Constant script: does not include user data. The test is isolated,
+        // reversible, and never touches GMS/GSF/Store directories.
         val testScript = """
             base=/data/local/tmp/degoogle-capability-test.${'$'}${'$'};
             cleanup() {

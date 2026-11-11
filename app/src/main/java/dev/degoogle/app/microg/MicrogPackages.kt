@@ -1,9 +1,9 @@
 package dev.degoogle.app.microg
 
 /**
- * Fonte unica de verdade sobre quais modulos compoem o microG.
- * GmsCore + Companion (FakeStore, package com.android.vending) andam juntos:
- * mesma fonte, mesmo download, mesma instalacao via prepare.
+ * Single source of truth for the modules that make up microG.
+ * GmsCore + Companion (FakeStore, package com.android.vending) always go together:
+ * same source, same download, same installation through prepare.
  */
 object MicrogPackages {
     const val GMS = "com.google.android.gms"

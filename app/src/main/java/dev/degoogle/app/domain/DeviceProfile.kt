@@ -1,27 +1,27 @@
 package dev.degoogle.app.domain
 
 /**
- * Perfil de aparelho: caminhos de sistema esperados + restrições.
+ * Device profile: expected system paths and constraints.
  *
- * A v1 suporta um único perfil (Samsung Galaxy S24 Ultra — SM-S928x), o mesmo
- * usado para desenvolver/testar o script original. Nenhum caminho é assumido
- * sem antes ser confirmado via `pm path`.
+ * v1 supports a single profile (Samsung Galaxy S24 Ultra — SM-S928x), the one
+ * used to develop and test the original script. No paths are assumed
+ * without first confirming them with `pm path`.
  */
 data class DeviceProfile(
     val id: String,
     val manufacturer: String,
     val models: Set<String>,
-    /** Caminho do diretório priv-app do Google Play Services stock. */
+    /** Path to the stock Google Play Services priv-app directory. */
     val gmsSystemDir: String,
-    /** Caminho do diretório priv-app do Google Services Framework stock. */
+    /** Path to the stock Google Services Framework priv-app directory. */
     val gsfSystemDir: String,
-    /** Caminho do diretório priv-app da Play Store (Phonesky) stock. */
+    /** Path to the stock Play Store (Phonesky) priv-app directory. */
     val storeSystemDir: String,
-    /** SDK mínimo exigido (null = qualquer). */
+    /** Minimum required SDK (null = any). */
     val minSdk: Int? = null,
-    /** Máscara do nome do APK dentro do diretório GMS. */
+    /** APK name pattern within the GMS directory. */
     val gmsApkName: String = "GmsCore.apk",
-    /** Máscara do nome do APK dentro do diretório da loja. */
+    /** APK name pattern within the store directory. */
     val storeApkName: String = "Companion.apk",
 )
 
@@ -38,7 +38,7 @@ object DeviceProfiles {
         ),
     )
 
-    /** Encontra o primeiro perfil compatível com os fatos coletados. */
+    /** Finds the first profile compatible with the collected facts. */
     fun matching(
         manufacturer: String,
         model: String,
@@ -53,9 +53,9 @@ object DeviceProfiles {
     }
 
     /**
-     * Perfil efêmero p/ Samsung fora da lista homologada: reaproveita os
-     * diretórios descobertos pelo Package Locator em vez de exigir paths do
-     * S24. Null fora de Samsung ou sem nenhum alvo derivável.
+     * Ephemeral profile for Samsung devices outside the approved list: reuses
+     * directories discovered by Package Locator instead of requiring S24 paths.
+     * Returns null for non-Samsung devices or when no target can be derived.
      */
     fun dynamic(facts: SystemFacts): DeviceProfile? {
         if (!facts.manufacturer.equals("samsung", ignoreCase = true)) return null
@@ -75,8 +75,8 @@ object DeviceProfiles {
             ?.let { return it.substringBeforeLast('/') }
         activePath?.takeIf { underAllowedRoots(it) }
             ?.let { return it.substringBeforeLast('/') }
-        // Placeholder que nunca casa com path real: estado que precisar
-        // desse diretório cai em ERROR (fail closed), nunca em STOCK.
+        // Placeholder that never matches a real path: any state requiring this
+        // directory results in ERROR (fail closed), never STOCK.
         return "__unknown__"
     }
 

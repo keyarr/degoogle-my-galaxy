@@ -4,9 +4,9 @@ import dev.degoogle.app.domain.ProbeParser
 import dev.degoogle.app.domain.SystemFacts
 
 /**
- * Executa o backend `degoogle.sh` (instalado no filesDir) com argv seguro.
- * O stdout é tratado como protocolo de máquina; o stderr é preservado para a
- * seção técnica da UI.
+ * Runs the `degoogle.sh` backend (installed in filesDir) with safe argv.
+ * stdout is treated as a machine protocol; stderr is preserved for the
+ * UI technical section.
  */
 class BackendRunner(
     private val executor: RootExecutor,
@@ -16,7 +16,7 @@ class BackendRunner(
     private val onProgress: (String) -> Unit = {},
 ) {
 
-    /** Exit codes do backend. */
+    /** Backend exit codes. */
     object ExitCodes {
         const val OK = 0
         const val GENERAL = 1
@@ -27,7 +27,7 @@ class BackendRunner(
         const val SOFT_REBOOT_COOLDOWN = 6
     }
 
-    /** Serializa `sh <backend> <args>` com argv explícito. */
+    /** Serializes `sh <backend> <args>` with explicit argv. */
     private fun script(vararg args: String): List<String> =
         listOf("sh", backendPath) + args.toList()
 
@@ -41,14 +41,14 @@ class BackendRunner(
         )
     }
 
-    /** Seleciona a implementação sem acoplar o fluxo a KernelSU. */
+    /** Selects the implementation without coupling the flow to KernelSU. */
     fun rootBackendFor(rootManager: String): RootBackend =
         RootBackendFactory.fromName(rootManager, executor)
 
-    /** Probe explícito: não altera GMS, GSF, Store, cache ou dados. */
+    /** Explicit probe: does not modify GMS, GSF, Store, cache, or data. */
     suspend fun dryRun(): BackendCommandResult = runCommand(listOf("dry-run"), streamProgress = false)
 
-    /** Revalida o ambiente imediatamente antes de uma operação destrutiva. */
+    /** Revalidates the environment immediately before a destructive operation. */
     suspend fun preflight(): BackendCommandResult = runCommand(listOf("preflight"))
 
     suspend fun prepare(
@@ -65,7 +65,7 @@ class BackendRunner(
     /** Remove updates de /data/app (GMS/vending) e desabilita a Play Store. */
     suspend fun cleanup(): BackendCommandResult = runCommand(listOf("cleanup"))
 
-    /** Remove apenas payloads de máscaras conhecidas, sem tocar no backup. */
+    /** Removes only known mask payloads, leaving the backup untouched. */
     suspend fun cleanupResidue(): BackendCommandResult = runCommand(listOf("cleanup-residue"))
 
     suspend fun backup(): BackendCommandResult = runCommand(listOf("backup"))
@@ -75,7 +75,7 @@ class BackendRunner(
     suspend fun restoreStock(wipeData: Boolean = true): BackendCommandResult =
         runCommand(if (wipeData) listOf("restore-stock", "--wipe-data") else listOf("restore-stock"))
 
-    /** Pos-boot: invalida cache/registro stale e reabilita Store/GMS. */
+    /** Post-boot: invalidates stale cache/registry and re-enables Store/GMS. */
     suspend fun reindexStock(): BackendCommandResult = runCommand(listOf("reindex-stock"))
 
     suspend fun softReboot(source: RebootSource = RebootSource.MANUAL): BackendCommandResult =

@@ -1,33 +1,32 @@
 #!/system/bin/sh
 
-# Galaxy S24 Ultra - ambiente microG temporário
+# Galaxy S24 Ultra - temporary microG environment
 #
-# Uso:
+# Usage:
 #   su -c '/data/local/tmp/microg-session.sh prep [APK]'
-#   [FAZER SOFT REBOOT]
+#   [PERFORM SOFT REBOOT]
 #   su -c '/data/local/tmp/microg-session.sh install'
 #
-# Outros:
+# Other commands:
 #   su -c '/data/local/tmp/microg-session.sh backup'
 #   su -c '/data/local/tmp/microg-session.sh store install [APK]'
 #   su -c '/data/local/tmp/microg-session.sh store enable'
 #   su -c '/data/local/tmp/microg-session.sh status'
 #   su -c '/data/local/tmp/microg-session.sh restore'
 #
-# APK padrão:
+# Default APK:
 #   /sdcard/Download/microg.apk
 #
-# IMPORTANTE: o microG é copiado para DENTRO da máscara
-# (/product/priv-app/GmsCore via bind mount), então o sistema o
-# registra como priv-app e concede as permissões privileged
-# (ex.: INTERACT_ACROSS_USERS). Instalar via pm install como user
-# app causa crash do SingletonComponentRouterProvider (FLAG_SINGLE_USER)
-# e quebra o FCM/push.
+# IMPORTANT: microG is copied INSIDE the mask
+# (/product/priv-app/GmsCore via bind mount), so the system
+# registers it as a priv-app and grants privileged permissions
+# (for example, INTERACT_ACROSS_USERS). Installing with pm install as a user
+# app causes SingletonComponentRouterProvider to crash (FLAG_SINGLE_USER)
+# and breaks FCM/push.
 #
-# O prep faz backup dos dados do GMS (registros FCM). O install
-# restaura esses dados após o boot, preservando a identidade de
-# registro — sem isso, os apps de mensagem perdem o push a cada
-# ciclo de reinstalação.
+# prep backs up GMS data (FCM registrations). install restores that data after
+# boot, preserving registration identity. Without it, messaging apps lose push
+# notifications after each reinstall.
 
 
 GMS_PKG="com.google.android.gms"
@@ -55,14 +54,14 @@ FAKESTORE_DEFAULT="/sdcard/Download/fakestore.apk"
 die()
 {
     echo
-    echo "ERRO: $*"
+    echo "ERROR: $*"
     exit 1
 }
 
 
 check_root()
 {
-    [ "$(id -u)" = "0" ] || die "Execute este script com su -c."
+    [ "$(id -u)" = "0" ] || die "Run this script with su -c."
 }
 
 
@@ -97,38 +96,38 @@ backup_gms()
     check_root
 
     if [ "${1:-}" != "quiet" ]; then
-        echo "===== BACKUP DOS DADOS DO microG ====="
+        echo "===== BACKING UP microG DATA ====="
         echo
     fi
 
     am force-stop "$GMS_PKG" 2>/dev/null || true
 
     mkdir -p "$BACKUP_BASE" ||
-        die "Não consegui criar $BACKUP_BASE."
+        die "Could not create $BACKUP_BASE."
 
     if [ ! -d /data/user/0/com.google.android.gms ]; then
-        echo "  GMS sem dados (nada a copiar)."
+        echo "  GMS has no data (nothing to copy)."
         return 0
     fi
 
     rm -rf "$BACKUP_GMS_USER" "$BACKUP_GMS_DE"
 
     cp -a /data/user/0/com.google.android.gms "$BACKUP_GMS_USER" ||
-        die "Falhou ao copiar dados de /data/user/0."
+        die "Could not copy data from /data/user/0."
 
     if [ -d /data/user_de/0/com.google.android.gms ]; then
         cp -a /data/user_de/0/com.google.android.gms "$BACKUP_GMS_DE" ||
-            die "Falhou ao copiar dados de /data/user_de/0."
+            die "Could not copy data from /data/user_de/0."
     fi
 
-    echo "  uid original: $(stat -c %u /data/user/0/com.google.android.gms 2>/dev/null)"
+    echo "  original UID: $(stat -c %u /data/user/0/com.google.android.gms 2>/dev/null)"
     du -sh "$BACKUP_GMS_USER" 2>/dev/null | sed 's/^/  /'
     [ -d "$BACKUP_GMS_DE" ] &&
         du -sh "$BACKUP_GMS_DE" 2>/dev/null | sed 's/^/  /'
 
     if [ "${1:-}" != "quiet" ]; then
         echo
-        echo "BACKUP CONCLUÍDO."
+        echo "BACKUP COMPLETE."
     fi
 }
 
@@ -139,23 +138,23 @@ restore_gms()
 
     [ -d "$BACKUP_GMS_USER" ] || return 0
 
-    echo "===== RESTAURANDO DADOS DO microG ====="
+    echo "===== RESTORING microG DATA ====="
     echo
 
     am force-stop "$GMS_PKG" 2>/dev/null || true
 
     NEW_UID="$(stat -c %u /data/user/0/com.google.android.gms 2>/dev/null)"
     [ -n "$NEW_UID" ] || NEW_UID="$(gms_uid)"
-    [ -n "$NEW_UID" ] || die "Não consegui descobrir o uid atual do GMS."
+    [ -n "$NEW_UID" ] || die "Could not determine the current GMS UID."
 
     rm -rf /data/user/0/com.google.android.gms
     cp -a "$BACKUP_GMS_USER" /data/user/0/ ||
-        die "Falha ao restaurar /data/user/0."
+        die "Could not restore /data/user/0."
 
     if [ -d "$BACKUP_GMS_DE" ]; then
         rm -rf /data/user_de/0/com.google.android.gms
         cp -a "$BACKUP_GMS_DE" /data/user_de/0/ ||
-            die "Falha ao restaurar /data/user_de/0."
+            die "Could not restore /data/user_de/0."
     fi
 
     chown -R "$NEW_UID:$NEW_UID" /data/user/0/com.google.android.gms
@@ -167,13 +166,13 @@ restore_gms()
     chcon -R u:object_r:privapp_data_file:s0:c512,c768 \
         /data/user_de/0/com.google.android.gms 2>/dev/null || true
 
-    echo "  Restaurado com uid $NEW_UID:"
+    echo "  Restored with UID $NEW_UID:"
     du -sh /data/user/0/com.google.android.gms 2>/dev/null | sed 's/^/  /'
     [ -d /data/user_de/0/com.google.android.gms ] &&
         du -sh /data/user_de/0/com.google.android.gms 2>/dev/null | sed 's/^/  /'
 
     echo
-    echo "RESTAURAÇÃO CONCLUÍDA."
+    echo "RESTORE COMPLETE."
 }
 
 
@@ -183,37 +182,37 @@ store_install()
 
     SRC="${1:-$FAKESTORE_DEFAULT}"
 
-    echo "===== INSTALAÇÃO FAKESTORE ====="
+    echo "===== FAKESTORE INSTALLATION ====="
     echo
 
     [ -d "$STORE_SYSTEM" ] ||
-        die "Não encontrei $STORE_SYSTEM"
+        die "Could not find $STORE_SYSTEM"
 
     [ -f "$SRC" ] ||
-        die "APK não encontrado: $SRC"
+        die "APK not found: $SRC"
 
     mkdir -p "$MASK_STORE" ||
-        die "Não consegui criar $MASK_STORE."
+        die "Could not create $MASK_STORE."
 
     if ! is_global_mount "$STORE_SYSTEM"; then
 
-        echo "[Fase 1/2] Mascarando a loja stock (vazia)..."
+        echo "[Phase 1/2] Masking the stock store (empty)..."
         echo
-        echo "  O registro do com.android.vending será removido"
-        echo "  no próximo boot (o APK some do sistema)."
+        echo "  The com.android.vending registration will be removed"
+        echo "  on the next boot (the APK will disappear from the system)."
 
         rm -f "$MASK_STORE/FakeStore.apk"
 
         global mount --bind "$MASK_STORE" "$STORE_SYSTEM" ||
-            die "Falhou ao mascarar a loja."
+            die "Could not mask the store."
 
         echo
         echo "=========================================="
-        echo "FASE 1 CONCLUÍDA."
+        echo "PHASE 1 COMPLETE."
         echo
-        echo "Agora faça o SOFT REBOOT."
+        echo "Now perform a SOFT REBOOT."
         echo
-        echo "Depois rode novamente:"
+        echo "Run again:"
         echo
         echo "  su -c '/data/local/tmp/microg-session.sh store install'"
         echo
@@ -223,35 +222,35 @@ store_install()
 
     if [ ! -f "$MASK_STORE/FakeStore.apk" ]; then
 
-        echo "[Fase 2/2] Copiando FakeStore para a máscara..."
+        echo "[Phase 2/2] Copying FakeStore to the mask..."
 
         cp "$SRC" "$MASK_STORE/FakeStore.apk" ||
-            die "Não consegui copiar o APK para a máscara."
+            die "Could not copy the APK to the mask."
 
         chown root:root "$MASK_STORE/FakeStore.apk"
         chmod 0644 "$MASK_STORE/FakeStore.apk"
 
         restorecon -R "$STORE_SYSTEM" 2>/dev/null || true
 
-        echo "Verificação:"
+        echo "Verification:"
         global ls -laZ "$STORE_SYSTEM"
 
         echo
         echo "=========================================="
-        echo "FASE 2 CONCLUÍDA."
+        echo "PHASE 2 COMPLETE."
         echo
-        echo "O com.android.vending será registrado como"
-        echo "priv-app no próximo boot."
+        echo "com.android.vending will be registered as a"
+        echo "priv-app on the next boot."
         echo
-        echo "Agora faça o SOFT REBOOT."
+        echo "Now perform a SOFT REBOOT."
         echo
-        echo "Depois rode:"
+        echo "Run:"
         echo
         echo "  su -c '/data/local/tmp/microg-session.sh store enable'"
         echo
         echo "=========================================="
     else
-        echo "[Fase 2/2] FakeStore já está na máscara."
+        echo "[Phase 2/2] FakeStore is already in the mask."
         echo
         global ls -laZ "$STORE_SYSTEM"
     fi
@@ -262,19 +261,19 @@ store_enable()
 {
     check_root
 
-    echo "===== CONFIGURAÇÃO FAKESTORE ====="
+    echo "===== FAKESTORE CONFIGURATION ====="
     echo
 
     OUT="$(pkg_path "$STORE_PKG")"
 
     if [ -z "$OUT" ]; then
-        die "com.android.vending não está registrado. Rode store install primeiro."
+        die "com.android.vending is not registered. Run store install first."
     fi
 
     echo "$OUT"
 
     echo
-    echo "[habilitando e dando permissões]"
+    echo "[enabling and granting permissions]"
 
     pm enable "$STORE_PKG" 2>/dev/null || true
 
@@ -290,7 +289,7 @@ store_enable()
         sed 's/^/  /'
 
     echo
-    echo "FAKESTORE CONFIGURADA."
+    echo "FAKESTORE CONFIGURED."
 }
 
 
@@ -298,22 +297,22 @@ store_restore()
 {
     check_root
 
-    echo "===== RESTAURANDO LOJA STOCK ====="
+    echo "===== RESTORING STOCK STORE ====="
     echo
 
-    echo "[1/2] Limpando APK da máscara..."
+    echo "[1/2] Removing APK from the mask..."
 
     rm -f "$MASK_STORE/FakeStore.apk" || true
 
     echo
-    echo "[2/2] Revelando a loja stock..."
+    echo "[2/2] Revealing the stock store..."
 
     if is_global_mount "$STORE_SYSTEM"; then
         global umount "$STORE_SYSTEM" || true
     fi
 
     echo
-    echo "Agora faça um SOFT REBOOT."
+        echo "Now perform a SOFT REBOOT."
 }
 
 
@@ -326,7 +325,7 @@ show_pkg()
     OUT="$(pkg_path "$PKG")"
 
     if [ -z "$OUT" ]; then
-        echo "  AUSENTE"
+        echo "  MISSING"
     else
         echo "$OUT" | sed 's/^/  /'
     fi
@@ -337,67 +336,67 @@ status()
 {
     check_root
 
-    echo "===== STATUS microG ====="
+    echo "===== microG STATUS ====="
 
     show_pkg "$GMS_PKG"
     show_pkg "$GSF_PKG"
     show_pkg "$STORE_PKG"
 
     echo
-    echo "[GMS registrado de]"
+    echo "[GMS registered from]"
     dumpsys package "$GMS_PKG" 2>/dev/null |
         grep -m1 "codePath=" |
         sed 's/^/  /'
 
     echo
-    echo "[flags do GMS]"
+    echo "[GMS flags]"
     dumpsys package "$GMS_PKG" 2>/dev/null |
         grep -m1 "pkgFlags=" |
         sed 's/^/  /'
 
     echo
-    echo "[backup de dados]"
+    echo "[data backup]"
     if [ -d "$BACKUP_GMS_USER" ]; then
         du -sh "$BACKUP_GMS_USER" 2>/dev/null | sed 's/^/  /'
     else
-        echo "  ausente (rode: backup)"
+        echo "  missing (run: backup)"
     fi
 
     echo
-    echo "[APK na máscara]"
+    echo "[APK in mask]"
     if [ -f "$MASK_GMS/GmsCore.apk" ]; then
-        echo "  presente"
+        echo "  present"
     else
-        echo "  ausente (o prep vai copiar)"
+        echo "  missing (prep will copy it)"
     fi
 
     echo
-    echo "[mount GMS]"
+    echo "[GMS mount]"
     if is_global_mount "$GMS_SYSTEM"; then
-        echo "  MASCARADO"
+        echo "  MASKED"
     else
-        echo "  visível"
+        echo "  visible"
     fi
 
     echo
-    echo "[mount GSF]"
+    echo "[GSF mount]"
     if is_global_mount "$GSF_SYSTEM"; then
-        echo "  MASCARADO"
+        echo "  MASKED"
     else
-        echo "  visível"
+        echo "  visible"
     fi
 
     echo
-    echo "[versão GMS ativa]"
+    echo "[active GMS version]"
     dumpsys package "$GMS_PKG" 2>/dev/null |
         grep -m1 "versionName=" |
         sed 's/^/  /'
 
     echo
-    echo "[loja]"
+    echo "[store]"
     OUT="$(pkg_path "$STORE_PKG")"
     if [ -z "$OUT" ]; then
-        echo "  AUSENTE"
+        echo "  MISSING"
     else
         echo "$OUT" | sed 's/^/  /'
         dumpsys package "$STORE_PKG" 2>/dev/null |
@@ -406,13 +405,13 @@ status()
     fi
 
     if [ -f "$MASK_STORE/FakeStore.apk" ]; then
-        echo "  FakeStore na máscara: presente"
+        echo "  FakeStore in mask: present"
     fi
 
     if is_global_mount "$STORE_SYSTEM"; then
-        echo "  mount: MASCARADO"
+        echo "  mount: MASKED"
     else
-        echo "  mount: visível"
+        echo "  mount: visible"
     fi
 }
 
@@ -423,22 +422,22 @@ prep()
 
     SRC="${1:-$MICROG_DEFAULT}"
 
-    echo "===== PREPARANDO AMBIENTE microG ====="
+    echo "===== PREPARING microG ENVIRONMENT ====="
     echo
 
     [ -d "$GMS_SYSTEM" ] ||
-        die "Não encontrei $GMS_SYSTEM"
+        die "Could not find $GMS_SYSTEM"
 
     [ -d "$GSF_SYSTEM" ] ||
-        die "Não encontrei $GSF_SYSTEM"
+        die "Could not find $GSF_SYSTEM"
 
     [ -f "$SRC" ] ||
-        die "APK não encontrado: $SRC"
+        die "APK not found: $SRC"
 
-echo "[1/8] Parando Play Store e GMS..."
+echo "[1/8] Stopping Play Store and GMS..."
 
 if is_global_mount "$STORE_SYSTEM"; then
-    echo "  Loja mascarada — não mexo nela."
+    echo "  Store is masked; leaving it unchanged."
 else
     am force-stop "$STORE_PKG" 2>/dev/null || true
     pm disable-user --user 0 "$STORE_PKG" >/dev/null 2>&1 || true
@@ -448,91 +447,91 @@ am force-stop "$GMS_PKG" 2>/dev/null || true
 
 
     echo
-    echo "[2/8] Backup dos dados atuais do GMS (registros FCM)..."
+    echo "[2/8] Backing up current GMS data (FCM registrations)..."
 
     backup_gms quiet
 
 
-    echo "[3/8] Estado atual do GMS:"
+    echo "[3/8] Current GMS state:"
 
     CURRENT="$(pkg_path "$GMS_PKG")"
 
     if [ -n "$CURRENT" ]; then
         echo "$CURRENT"
     else
-        echo "GMS não encontrado."
+        echo "GMS not found."
     fi
 
 
-    # Depois de reboot completo normalmente existe novamente
-    # a atualização oficial em /data/app.
+    # After a full reboot, the official
+    # update in /data/app is usually present again.
     if echo "$CURRENT" | grep -q "/data/app/"; then
 
         echo
-        echo "[4/8] Removendo versão de /data/app para voltar ao GMS base..."
+        echo "[4/8] Removing the /data/app version to return to base GMS..."
 
         pm uninstall "$GMS_PKG" ||
-            die "Não consegui remover a versão de /data/app."
+            die "Could not remove the /data/app version."
 
         sleep 2
 
     else
         echo
-        echo "[4/8] Nenhuma versão /data/app para remover."
+        echo "[4/8] No /data/app version to remove."
     fi
 
 
     echo
-    echo "[5/8] Conferindo GMS base..."
+    echo "[5/8] Checking base GMS..."
 
     BASE="$(pkg_path "$GMS_PKG")"
 
     echo "$BASE"
 
     echo "$BASE" | grep -q "$GMS_SYSTEM" ||
-        die "O GMS não voltou para $GMS_SYSTEM. Não vou continuar."
+        die "GMS did not return to $GMS_SYSTEM. Will not continue."
 
 
     echo
-    echo "[6/8] Criando máscaras e copiando APK do microG..."
+    echo "[6/8] Creating masks and copying the microG APK..."
 
     mkdir -p "$MASK_GMS" "$MASK_GSF" ||
-        die "Não consegui criar diretórios de máscara."
+        die "Could not create mask directories."
 
     cp "$SRC" "$MASK_GMS/GmsCore.apk" ||
-        die "Não consegui copiar o APK para a máscara."
+        die "Could not copy the APK to the mask."
 
     chown root:root "$MASK_GMS/GmsCore.apk"
     chmod 0644 "$MASK_GMS/GmsCore.apk"
 
-    echo "APK na máscara: $MASK_GMS/GmsCore.apk"
+    echo "APK in mask: $MASK_GMS/GmsCore.apk"
 
 
     echo
-    echo "[7/8] Aplicando bind mounts globais..."
+    echo "[7/8] Applying global bind mounts..."
 
     if ! is_global_mount "$GMS_SYSTEM"; then
         global mount --bind "$MASK_GMS" "$GMS_SYSTEM" ||
-            die "Falhou ao mascarar GMS."
+            die "Could not mask GMS."
     else
-        echo "GMS já estava mascarado."
+        echo "GMS was already masked."
     fi
 
     if ! is_global_mount "$GSF_SYSTEM"; then
         global mount --bind "$MASK_GSF" "$GSF_SYSTEM" ||
-            die "Falhou ao mascarar GSF."
+            die "Could not mask GSF."
     else
-        echo "GSF já estava mascarado."
+        echo "GSF was already masked."
     fi
 
 
     echo
-    echo "[8/8] Ajustando SELinux do APK na máscara..."
+    echo "[8/8] Adjusting SELinux for the APK in the mask..."
 
-    # O PM só registra o APK como priv-app se o contexto for system_file.
+    # PM registers the APK as a priv-app only when its context is system_file.
     restorecon -R "$GMS_SYSTEM" 2>/dev/null || true
 
-    echo "Verificação física:"
+    echo "On-disk verification:"
     echo
     echo "--- GMS ---"
     global ls -laZ "$GMS_SYSTEM"
@@ -544,13 +543,13 @@ am force-stop "$GMS_PKG" 2>/dev/null || true
 
     echo
     echo "=========================================="
-    echo "PREPARAÇÃO CONCLUÍDA."
+    echo "PREPARATION COMPLETE."
     echo
-    echo "O microG será registrado como priv-app no próximo boot."
+    echo "microG will be registered as a priv-app on the next boot."
     echo
-    echo "Agora faça o SOFT REBOOT."
+    echo "Now perform a SOFT REBOOT."
     echo
-    echo "Depois execute:"
+    echo "Run:"
     echo
     echo "  su -c '/data/local/tmp/microg-session.sh install'"
     echo
@@ -562,86 +561,86 @@ install_microg()
 {
     check_root
 
-    echo "===== CONFIGURAÇÃO PÓS-BOOT microG ====="
+    echo "===== POST-BOOT microG CONFIGURATION ====="
     echo
 
-    echo "[1/7] Verificando se o GMS está como priv-app..."
+    echo "[1/7] Checking that GMS is a priv-app..."
 
     GMS_NOW="$(pkg_path "$GMS_PKG")"
 
     if echo "$GMS_NOW" | grep -q "/data/app/"; then
         echo "$GMS_NOW"
-        die "GMS está como user app — isso causa crash do \
+        die "GMS is a user app, which causes \
 SingletonComponentRouterProvider (FLAG_SINGLE_USER sem \
-INTERACT_ACROSS_USERS) e quebra o FCM. Rode prep + soft reboot."
+INTERACT_ACROSS_USERS) and breaks FCM. Run prep + soft reboot."
     fi
 
     echo "$GMS_NOW"
 
     echo "$GMS_NOW" | grep -q "$GMS_SYSTEM" ||
-        die "GMS não registrado de $GMS_SYSTEM. O prep não foi concluído?"
+        die "GMS is not registered from $GMS_SYSTEM. Did prep fail?"
 
-    echo "OK: GMS registrado como priv-app."
+    echo "OK: GMS registered as a priv-app."
 
 
     echo
-    echo "[2/7] Verificando se o GSF stock sumiu..."
+    echo "[2/7] Checking that stock GSF is gone..."
 
     GSF_NOW="$(pkg_path "$GSF_PKG")"
 
     if [ -n "$GSF_NOW" ]; then
         echo "$GSF_NOW"
-        die "com.google.android.gsf ainda está registrado. A máscara falhou."
+        die "com.google.android.gsf is still registered. Masking failed."
     fi
 
-    echo "OK: GSF ausente."
+    echo "OK: GSF is missing."
 
 
     echo
-    echo "[3/7] Restaurando dados do GMS (identidade FCM)..."
+    echo "[3/7] Restoring GMS data (FCM identity)..."
 
     restore_gms
 
 
     echo
-    echo "[4/7] Garantindo permissões importantes..."
+    echo "[4/7] Ensuring required permissions..."
 
-    # localização
+    # Location
     pm grant "$GMS_PKG" android.permission.ACCESS_COARSE_LOCATION 2>/dev/null || true
     pm grant "$GMS_PKG" android.permission.ACCESS_FINE_LOCATION 2>/dev/null || true
     pm grant "$GMS_PKG" android.permission.ACCESS_BACKGROUND_LOCATION 2>/dev/null || true
 
-    # telefone / contatos
+    # Phone / contacts
     pm grant "$GMS_PKG" android.permission.READ_PHONE_STATE 2>/dev/null || true
     pm grant "$GMS_PKG" android.permission.READ_CONTACTS 2>/dev/null || true
 
-    # notificações
+    # Notifications
     pm grant "$GMS_PKG" android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 
-    # câmera
+    # Camera
     pm grant "$GMS_PKG" android.permission.CAMERA 2>/dev/null || true
 
-    # armazenamento legado, quando aplicável
+    # Legacy storage, when applicable
     pm grant "$GMS_PKG" android.permission.READ_EXTERNAL_STORAGE 2>/dev/null || true
     pm grant "$GMS_PKG" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null || true
 
 
     echo
-    echo "[5/7] Liberando execução em segundo plano..."
+    echo "[5/7] Allowing background execution..."
 
-    # tirar microG da otimização agressiva de bateria
+    # Exclude microG from aggressive battery optimization
     cmd deviceidle whitelist +"$GMS_PKG" 2>/dev/null || true
 
-    # appops relevantes
+    # Relevant app ops
     cmd appops set "$GMS_PKG" RUN_IN_BACKGROUND allow 2>/dev/null || true
     cmd appops set "$GMS_PKG" RUN_ANY_IN_BACKGROUND allow 2>/dev/null || true
 
-    # localização em background, se existir nesta versão do Android
+    # Background location, if available in this Android version
     cmd appops set "$GMS_PKG" ACCESS_BACKGROUND_LOCATION allow 2>/dev/null || true
 
 
     echo
-    echo "[6/7] Blindando o WhatsApp contra o Doze..."
+    echo "[6/7] Exempting WhatsApp from Doze..."
 
     cmd deviceidle whitelist +com.whatsapp 2>/dev/null || true
     cmd appops set com.whatsapp RUN_IN_BACKGROUND allow 2>/dev/null || true
@@ -649,9 +648,9 @@ INTERACT_ACROSS_USERS) e quebra o FCM. Rode prep + soft reboot."
 
 
     echo
-    echo "[7/7] Conferindo configuração..."
+    echo "[7/7] Checking configuration..."
 
-    echo "Permissões granted:"
+    echo "Granted permissions:"
     dumpsys package "$GMS_PKG" |
         sed -n '/runtime permissions:/,/^\s*$/p' |
         grep -c "granted=true" |
@@ -666,10 +665,10 @@ INTERACT_ACROSS_USERS) e quebra o FCM. Rode prep + soft reboot."
 
     echo
     echo "=========================================="
-    echo "microG PRIV-APP CONFIGURADO."
+    echo "microG PRIV-APP CONFIGURED."
     echo
     echo "Abra:"
-    echo "  microG Settings -> Auto-verificação"
+    echo "  microG Settings -> Self-check"
     echo
     echo "=========================================="
 }
@@ -679,10 +678,10 @@ restore()
 {
     check_root
 
-    echo "===== RESTAURANDO AMBIENTE STOCK ====="
+    echo "===== RESTORING STOCK ENVIRONMENT ====="
     echo
 
-    echo "[1/4] Removendo microG de /data (se houver)..."
+    echo "[1/4] Removing microG from /data (if present)..."
 
     if [ -n "$(pkg_path "$GMS_PKG")" ]; then
         pm uninstall "$GMS_PKG" >/dev/null 2>&1 || true
@@ -690,13 +689,13 @@ restore()
 
 
     echo
-    echo "[2/4] Limpando APK da máscara..."
+    echo "[2/4] Removing APK from the mask..."
 
     rm -f "$MASK_GMS/GmsCore.apk" || true
 
 
     echo
-    echo "[3/4] Revelando GMS stock..."
+    echo "[3/4] Revealing stock GMS..."
 
     if is_global_mount "$GMS_SYSTEM"; then
         global umount "$GMS_SYSTEM" || true
@@ -704,7 +703,7 @@ restore()
 
 
     echo
-    echo "[4/4] Revelando GSF stock..."
+    echo "[4/4] Revealing stock GSF..."
 
     if is_global_mount "$GSF_SYSTEM"; then
         global umount "$GSF_SYSTEM" || true
@@ -712,12 +711,12 @@ restore()
 
 
     echo
-    echo "Agora faça um SOFT REBOOT."
+    echo "Now perform a SOFT REBOOT."
     echo
-    echo "O backup em $BACKUP_BASE foi mantido — um novo prep"
-    echo "o sobrescreve automaticamente."
+    echo "The backup at $BACKUP_BASE was kept; a new prep"
+    echo "will overwrite it automatically."
     echo
-    echo "Depois, se quiser a Play Store novamente:"
+    echo "To re-enable Play Store later:"
     echo
     echo "  su -c 'pm enable com.android.vending'"
 }
@@ -749,7 +748,7 @@ case "${1:-}" in
                 store_restore
                 ;;
             *)
-                echo "Uso:"
+                echo "Usage:"
                 echo
                 echo "  $0 store install [APK]"
                 echo "  $0 store enable"
@@ -768,7 +767,7 @@ case "${1:-}" in
         ;;
 
     *)
-        echo "Uso:"
+        echo "Usage:"
         echo
         echo "  $0 prep [APK]"
         echo "  $0 install"

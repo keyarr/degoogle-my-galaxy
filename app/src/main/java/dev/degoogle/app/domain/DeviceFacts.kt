@@ -2,7 +2,7 @@ package dev.degoogle.app.domain
 
 import kotlinx.serialization.Serializable
 
-/** Fatos de identificação; valores ausentes permanecem nulos. */
+/** Identification facts; missing values remain null. */
 @Serializable
 data class DeviceFacts(
     val manufacturer: String? = null,

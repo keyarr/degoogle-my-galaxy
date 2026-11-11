@@ -4,10 +4,10 @@ import androidx.annotation.StringRes
 import dev.degoogle.app.R
 
 /**
- * Máquina de estados do aparelho.
+ * Device state machine.
  *
- * O estado é SEMPRE derivado do estado real do sistema (fatos coletados pelo
- * backend `probe`). Nunca deve ser persistido como fonte de verdade.
+ * State is ALWAYS derived from actual system state (facts collected by the
+ * backend `probe`). It must never be persisted as the source of truth.
  */
 enum class DeviceState(@StringRes val labelRes: Int) {
     NO_ROOT(R.string.state_no_root),
@@ -23,7 +23,7 @@ enum class DeviceState(@StringRes val labelRes: Int) {
     ERROR(R.string.state_error);
 }
 
-/** Ações que a UI pode oferecer dependendo do estado. */
+/** Actions the UI can offer depending on the state. */
 enum class AppAction(val label: String) {
     DEGOOGLE("DeGoogle"),
     SOFT_REBOOT("Soft Reboot"),

@@ -3,16 +3,16 @@ package dev.degoogle.app.backup
 import dev.degoogle.app.root.RootExecutor
 
 /**
- * Operações auxiliares sobre o backup no formato do MicroG Session.
+ * Utility operations for backups in the MicroG Session format.
  *
- * Criação e restauração são executadas pelo backend shell; esta classe mantém
- * apenas a exclusão explícita solicitada pela UI.
+ * Creation and restoration are handled by the shell backend; this class only handles
+ * explicit deletion requested by the UI.
  */
 class BackupManager(
     private val executor: RootExecutor,
 ) {
 
-    /** Exclui o backup. O app pede confirmação antes de chamar isto. */
+    /** Deletes the backup. The app asks for confirmation before calling this. */
     suspend fun delete(): Boolean {
         val r = executor.execute(
             listOf("rm", "-rf", "/data/local/tmp/microg-backup")

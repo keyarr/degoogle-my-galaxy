@@ -6,8 +6,8 @@ import java.io.File
 import java.security.MessageDigest
 
 /**
- * Copia `assets/root/degoogle.sh` para o filesDir do app e garante que o
- * conteúdo não foi adulterado (compara com o hash do asset a cada execução).
+ * Copies `assets/root/degoogle.sh` to the app filesDir and ensures the
+ * content has not been tampered with (compared against the asset hash on each run).
  */
 class BackendInstaller(private val context: Context) {
 
@@ -17,7 +17,7 @@ class BackendInstaller(private val context: Context) {
         private const val FILE_NAME = "degoogle.sh"
     }
 
-    /** Caminho do backend instalado (ou null se a instalação falhou). */
+    /** Path to the installed backend (or null if installation failed). */
     fun ensureInstalled(): File? = runCatching {
         val target = File(context.filesDir, FILE_NAME)
         val assetBytes = context.assets.open(ASSET).use { it.readBytes() }

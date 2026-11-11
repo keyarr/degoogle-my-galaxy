@@ -39,7 +39,7 @@ data class KnownGoodMatchResult(
     val evidence: List<String> = emptyList(),
 )
 
-/** Banco local, revisável em Git; nenhuma atualização remota é feita aqui. */
+/** Local database, reviewable in Git; no remote updates are performed here. */
 class KnownGoodDatabase private constructor(
     private val document: KnownGoodDatabaseDocument,
 ) {

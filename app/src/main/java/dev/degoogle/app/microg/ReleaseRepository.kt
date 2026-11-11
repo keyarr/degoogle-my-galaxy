@@ -12,7 +12,7 @@ import java.security.MessageDigest
 import java.util.jar.JarFile
 
 /**
- * Release de um pacote microG publicada no repositório F-Droid oficial.
+ * microG package release published in the official F-Droid repository.
  */
 data class Release(
     val packageName: String,
@@ -28,17 +28,17 @@ data class Release(
 }
 
 /**
- * Consulta releases do índice v2 assinado do repo F-Droid oficial do microG.
+ * Fetches releases from the signed v2 index of the official microG F-Droid repo.
  *
- * O certificado do repositório é fixado para que os hashes do índice sejam
- * uma fonte confiável para validar os APKs.
+ * The repository certificate is pinned so index hashes can be used as
+ * a trusted source for APK validation.
  */
 class ReleaseRepository(
     private val baseUrl: String = "https://microg.org/fdroid/repo/",
 ) {
 
     companion object {
-        /** Alguns CDNs rejeitam requests sem User-Agent. */
+        /** Some CDNs reject requests without a User-Agent. */
         private const val USER_AGENT = "DeGoogle/0.1.0 (Android; microg)"
         private const val REPOSITORY_CERT_SHA256 =
             "9bd06727e62796c0130eb6dab39b73157451582cbd138e86c468acc395d14165"
@@ -57,7 +57,7 @@ class ReleaseRepository(
         fetchVerifiedIndexV2()?.let { parseIndexV2(it, packageName) }
 
     /**
-     * Par GmsCore + Companion (FakeStore) do mesmo índice assinado.
+     * GmsCore + Companion (FakeStore) pair from the same signed index.
      */
     data class MicrogReleases(val gms: Release, val companion: Release)
 
@@ -68,7 +68,7 @@ class ReleaseRepository(
         return MicrogReleases(gms, companion)
     }
 
-    /** Baixa o APK de uma release para [targetFile], emitindo callbacks periódicos com o progresso em bytes e bytes totais. */
+    /** Downloads a release APK to [targetFile], periodically reporting progress in bytes and total bytes. */
     fun download(
         release: Release,
         targetFile: java.io.File,

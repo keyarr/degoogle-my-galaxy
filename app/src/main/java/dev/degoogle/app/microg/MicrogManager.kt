@@ -9,9 +9,9 @@ import dev.degoogle.app.root.RootExecutor
 import java.io.File
 
 /**
- * Orquestra o ciclo do microG usando o backend shell. Cada passo é reportado
- * via [onStep] e o fluxo aborta (sem tocar no sistema) se qualquer validação
- * falhar.
+ * Orchestrates the microG flow using the shell backend. Each step is reported
+ * through [onStep], and the flow aborts (without touching the system) if any check
+ * fails.
  */
 class MicrogManager(
     private val context: Context,
@@ -29,7 +29,7 @@ class MicrogManager(
         private const val TAG = "DeGoogle.MicroG"
     }
 
-    /** Rótulo legível: versionName quando confiável (F-Droid), senão versionCode. */
+    /** Readable label: versionName when trusted (F-Droid), otherwise versionCode. */
     private fun label(r: Release): String =
         if (r.sha256.isNotEmpty() && r.versionName.isNotEmpty()) "v${r.versionName}" else "v${r.versionCode}"
 
@@ -43,8 +43,8 @@ class MicrogManager(
     suspend fun prepareNewSession(): PrepareResult {
         Log.i(TAG, "starting prepareNewSession")
         onStep(context.getString(R.string.op_querying_repo))
-        // GmsCore + Companion (FakeStore) sempre da mesma fonte; nunca
-        // mistura GitHub com F-Droid no mesmo par.
+        // GmsCore + Companion (FakeStore) must always come from the same source; never
+        // mix GitHub and F-Droid in the same pair.
         val pair = releases.latestPair()
         val gms = pair?.gms
             ?: return PrepareResult(false, null, null, context.getString(R.string.op_repo_error)).also {

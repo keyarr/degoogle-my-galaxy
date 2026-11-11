@@ -37,15 +37,15 @@ data class TransactionJournal(
     val detail: String = "",
 )
 
-/** Journal atômico no espaço privado do app; escrita idempotente por estado. */
+/** Atomic journal in the app private space; idempotent writes per state. */
 class TransactionJournalStore(
     private val file: File,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
     companion object {
         /**
-         * Mantém o journal Kotlin fora de `files/transaction`, pois esse
-         * diretório é manipulado pelo backend root e pode terminar root:root.
+         * Keeps the Kotlin journal outside `files/transaction` because that
+         * directory is managed by the root backend and may end up owned by root:root.
          */
         fun forAppFiles(filesDir: File): TransactionJournalStore =
             TransactionJournalStore(File(filesDir, "app-transaction/journal.json"))
@@ -101,14 +101,14 @@ class TransactionJournalStore(
     fun clear(): Boolean = runCatching { file.delete() || !file.exists() }.getOrDefault(false)
 }
 
-/** Reconciliação conservadora de uma transação que sobreviveu ao reboot. */
+/** Conservative reconciliation of a transaction that survived a reboot. */
 object TransactionReconciliation {
     private val ACTIVE_STATES = setOf(
         DeviceState.MICROG_ACTIVE,
         DeviceState.MICROG_ACTIVE_BACKED_UP,
     )
 
-    /** Estados que representam uma instalação em andamento, não um rollback falho. */
+    /** States representing an installation in progress, not a failed rollback. */
     private val COMMIT_CANDIDATES = setOf(
         TransactionState.PREFLIGHT_OK,
         TransactionState.BACKUP_STARTED,
@@ -129,12 +129,11 @@ object TransactionReconciliation {
         journal.state in COMMIT_CANDIDATES
 
     /**
-     * Um reboot de Rescue Party derruba root e todos os bind mounts, então só
-     * existe estado microG saudável depois disso se o ambiente foi
-     * reconstruído e validado. Quando o único motivo registrado da falha
-     * pós-boot é o Rescue Party E o estado derivado prova a instalação
-     * (GMS priv-app, GSF ausente, finalize concluído), a UI mostra um aviso
-     * dispensável em vez de um erro bloqueante.
+     * A Rescue Party reboot drops root and all bind mounts, so microG is healthy only
+     * if the environment was rebuilt and validated afterward. When the only recorded
+     * reason for a post-boot failure is Rescue Party, and the derived state confirms
+     * the installation (GMS priv-app, GSF missing, finalize complete), the UI shows
+     * a dismissible warning instead of a blocking error.
      */
     fun isRescuePartyOnlyFailure(
         journal: TransactionJournal?,

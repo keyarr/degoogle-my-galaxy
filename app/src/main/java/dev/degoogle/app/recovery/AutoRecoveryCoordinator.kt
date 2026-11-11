@@ -7,7 +7,7 @@ import dev.degoogle.app.domain.SystemFacts
 import dev.degoogle.app.root.BackendRunner
 import dev.degoogle.app.root.RebootSource
 
-/** Ação que pode ser executada sem intervenção depois de um boot inesperado. */
+/** Action that can run without intervention after an unexpected boot. */
 enum class AutoRecoveryAction {
     NONE,
     CLEAN_RESIDUE,
@@ -21,14 +21,14 @@ data class RecoveryAssessment(
 )
 
 /**
- * Política pura para impedir que um estado ERROR arbitrário vire uma operação
- * destrutiva. Só recuperamos estados que o backend consegue provar:
+ * Pure policy that prevents an arbitrary ERROR state from triggering a
+ * destructive operation. Recover only states the backend can prove:
  *
- * - RESTORE_PREPARED: não há mounts, mas o PM ainda não reenxerga GSF/Store;
- * - ERROR com mount legado conhecido: o script manual antigo deixou uma
- *   máscara exatamente nos alvos homologados;
- * - STOCK com resíduos conhecidos: a recuperação já terminou e só faltam
- *   payloads temporários desmontados.
+ * - RESTORE_PREPARED: no mounts are active, but PM does not see GSF/Store yet;
+ * - ERROR with a known legacy mount: the old manual script left masks at the
+ *   approved targets exactly;
+ * - STOCK with known residue: recovery is complete; only temporary
+ *   unmounted payloads remain.
  */
 object RecoveryPolicy {
     fun assess(facts: SystemFacts, profile: DeviceProfile? = null): RecoveryAssessment {
@@ -75,8 +75,8 @@ data class AutoRecoveryResult(
 }
 
 /**
- * Orquestra a recuperação tanto no arranque quanto quando a Activity é aberta.
- * A operação de restore é idempotente e o backup do microG fica fora do alvo.
+ * Orchestrates recovery at startup and when the Activity opens.
+ * Restore is idempotent, and the microG backup is outside its target.
  */
 class AutoRecoveryCoordinator(
     private val backend: BackendRunner,
@@ -113,11 +113,10 @@ class AutoRecoveryCoordinator(
                 AutoRecoveryResult(
                     status = if (result.succeeded) AutoRecoveryStatus.CLEANED else AutoRecoveryStatus.FAILED,
                     assessment = assessment,
-                    // Comando operacional que falha pode não emitir o
-                    // protocolo completo. Preserve o probe comprovado para
-                    // que o BootReceiver não confunda falha de unmount/cache
-                    // com root ainda indisponível e repita uma operação
-                    // destrutiva sem necessidade.
+                    // A failed operational command may not emit the full protocol.
+                    // Preserve the verified probe so BootReceiver does not mistake
+                    // an unmount/cache failure for unavailable root and repeat a
+                    // destructive operation unnecessarily.
                     facts = facts,
                     message = if (result.succeeded) {
                         "Known temporary residues removed; backup preserved"

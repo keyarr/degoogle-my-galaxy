@@ -8,24 +8,24 @@ import kotlinx.coroutines.withTimeout
 import java.util.concurrent.TimeUnit
 
 /**
- * Executa comandos com root.
+ * Runs commands with root.
  *
- * Segurança: nunca concatenamos strings arbitrárias em shell. Todos os
- * argumentos passam por [ShellQuote.quote] e os comandos são construídos
- * com argv explícito ([ProcessBuilder]).
+ * Security: never concatenate arbitrary strings into a shell command. All
+ * arguments pass through [ShellQuote.quote], and commands are built
+ * with explicit argv ([ProcessBuilder]).
  */
 interface RootExecutor {
     suspend fun execute(command: List<String>): RootResult
 
-    /** Executa com variáveis de ambiente extras (merge sobre o ambiente herdado). */
+    /** Executes with extra environment variables (merged with the inherited environment). */
     suspend fun execute(command: List<String>, env: Map<String, String>): RootResult
 
     /**
-     * Executa encaminhando cada linha de stderr assim que o processo a emite.
+     * Executes a command, forwarding each stderr line as soon as the process emits it.
      *
-     * A implementação padrão preserva compatibilidade com executores de teste
-     * e backends alternativos; o executor real sobrescreve para fazer streaming
-     * de verdade.
+     * The default implementation preserves compatibility with test executors
+     * and alternate backends; the real executor overrides this method to stream
+     * output.
      */
     suspend fun executeStreaming(
         command: List<String>,
@@ -43,7 +43,7 @@ interface RootExecutor {
 }
 
 object ShellQuote {
-    /** Quote POSIX de um único argumento. */
+    /** POSIX quoting for a single argument. */
     fun quote(arg: String): String = "'" + arg.replace("'", "'\\''") + "'"
 }
 
@@ -58,9 +58,9 @@ class SuRootExecutor(
     }
 
     /**
-     * Executa [command] via `su -c`. [command] é o argv do comando a rodar;
-     * ele é serializado de forma segura (quote POSIX por argumento) e o shell
-     * resultante é o único ponto de concatenação — nunca dados do usuário.
+     * Executes [command] via `su -c`. [command] is the argv for the command to run;
+     * it is serialized safely (POSIX-quoting each argument), and the resulting shell
+     * is the only concatenation point; user data is never concatenated.
      */
     override suspend fun execute(command: List<String>): RootResult =
         execute(command, env = emptyMap())
@@ -118,7 +118,7 @@ class SuRootExecutor(
 
 }
 
-/** RootExecutor que roda sem root (para testes unitários e diagnóstico). */
+/** RootExecutor that runs without root (for unit tests and diagnostics). */
 class LocalRootExecutor(
     private val delegate: (List<String>) -> RootResult = { args ->
         runCatching {
@@ -134,6 +134,6 @@ class LocalRootExecutor(
 ) : RootExecutor {
     override suspend fun execute(command: List<String>): RootResult = delegate(command)
     override suspend fun execute(command: List<String>, env: Map<String, String>): RootResult =
-        delegate(command) // testes locais não dependem de env
+        delegate(command) // local tests do not depend on env
     override suspend fun isRootAvailable(): Boolean = execute(listOf("id", "-u")).stdout.trim() == "0"
 }

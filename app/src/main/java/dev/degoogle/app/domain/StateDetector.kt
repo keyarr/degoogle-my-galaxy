@@ -1,30 +1,30 @@
 package dev.degoogle.app.domain
 
 /**
- * StateDetector: converte [SystemFacts] (estado real do Android) em
- * [DeviceState]. Regras idênticas às do `compute_state` do backend shell.
+ * StateDetector: converts [SystemFacts] (actual Android state) into
+ * [DeviceState]. Rules match `compute_state` in the shell backend.
  */
 object StateDetector {
 
     fun detect(facts: SystemFacts, profile: DeviceProfile? = null): DeviceState {
         if (!facts.rootOk) return DeviceState.NO_ROOT
 
-        // PROFILE_MATCH é telemetria legada do backend. A fonte de verdade da
-        // UI é o perfil local, que também valida fabricante, modelo e SDK. Em
-        // um estado pós-procedimento o PackageManager pode ter sido reindexado
-        // por uma versão diferente do backend; não transforme essa flag stale
-        // em UNSUPPORTED quando o perfil local e as provas operacionais batem.
+        // PROFILE_MATCH is legacy backend telemetry. The source of truth for the
+        // UI is the local profile, which also validates manufacturer, model, and SDK. In
+        // a post-operation state, PackageManager may have been reindexed
+        // by another backend version; do not mark the device UNSUPPORTED when
+        // the local profile and operational evidence match.
         val gmsTarget = facts.gmsPackage?.targetDirectory?.takeIf { facts.gmsPackage.safeTarget }
         val gsfTarget = facts.gsfPackage?.targetDirectory?.takeIf { facts.gsfPackage.safeTarget }
         val storeTarget = facts.storePackage?.targetDirectory?.takeIf { facts.storePackage.safeTarget }
 
         if (!facts.mountGms && !facts.mountGsf && !facts.mountStore) {
-            // Nenhum mount ativo: stock ou rollback pendente de reboot.
+            // No active mounts: stock state or rollback pending a reboot.
             //
-            // Uma atualização legítima de um app de sistema aparece em
-            // /data/app. Ela só é aceita quando o Package Locator também
-            // confirmou hasDataUpdate; um path /data/app isolado continua
-            // sendo tratado como estado inesperado.
+            // A legitimate system app update appears in
+            // /data/app. It is accepted only when Package Locator also
+            // confirms hasDataUpdate; a /data/app path alone is still
+            // treated as an unexpected state.
             val gmsIsStock = isStockPackagePath(
                 facts.gmsPath,
                 gmsTarget,
@@ -49,12 +49,12 @@ object StateDetector {
             return if (gsfIsStock && storeIsStock) DeviceState.STOCK else DeviceState.ERROR
         }
 
-        // Existe mount ativo — deve ser completo e por NOSSAS máscaras.
+        // An active mount exists; it must be complete and use OUR masks.
         if (!facts.mountGms || !facts.mountGsf || !facts.mountStore) {
             return DeviceState.ERROR
         }
-        // Mount de fonte desconhecida (ex.: microg-mask do script antigo): o app
-        // não gerencia esse estado e não deve mexer nele.
+        // Mount from an unknown source (for example, the old script microg-mask): the app
+        // does not manage this state and must not modify it.
         if (!facts.mountGmsIsOurs || !facts.mountGsfIsOurs || !facts.mountStoreIsOurs) {
             return DeviceState.ERROR
         }
@@ -63,12 +63,12 @@ object StateDetector {
         if (!gmsFromMask) return DeviceState.ERROR
 
         if (!facts.gsfPath.isNullOrEmpty()) {
-            // Mounts ativos mas GSF ainda registrado ⇒ PM ainda enxerga o stock
-            // (o soft reboot ainda não aconteceu).
+            // Active mounts but GSF is still registered => PM still sees the stock state.
+            // (the soft reboot has not happened yet).
             return DeviceState.PREPARED
         }
 
-        // Pós-boot: GSF sumiu. microG deve ser priv-app de verdade.
+        // Post-boot: GSF is gone. microG must be a real priv-app.
         if (!facts.gmsPrivileged) return DeviceState.ERROR
 
         val storeFromMask = isUnderTarget(facts.storePath, storeTarget)
@@ -79,16 +79,16 @@ object StateDetector {
         return if (facts.backupPresent) {
             DeviceState.MICROG_ACTIVE_BACKED_UP
         } else {
-            // Sem backup: pode ser primeira instalação (NEEDS_SETUP é decidido
-            // pela UI com base no prompt já exibido — dado auxiliar).
+            // No backup: this may be a first install (NEEDS_SETUP is determined
+            // by the UI based on whether the prompt was already shown; auxiliary data).
             DeviceState.MICROG_ACTIVE
         }
     }
 
     /**
-     * Aceita o APK stock no diretório homologado ou uma atualização registrada
-     * pelo Package Locator em /data/app. O segundo caso nunca é inferido só
-     * pelo texto do path.
+     * Accepts the stock APK in the approved directory or an update registered
+     * by Package Locator in /data/app. The latter is never inferred from
+     * the path text alone.
      */
     private fun isStockPackagePath(
         path: String?,
@@ -105,7 +105,7 @@ object StateDetector {
 }
 
 /**
- * Validação de priv-app de verdade — não basta o path estar sob a máscara.
+ * Validate that this is a real priv-app; the path being under the mask is not enough.
  */
 data class PrivAppValidationResult(
     val packageRegistered: Boolean,
@@ -134,9 +134,9 @@ object PrivAppValidator {
         val registered = !facts.gmsPath.isNullOrEmpty()
         val pathUnderMask = facts.gmsPath?.startsWith(profile.gmsSystemDir) == true
         val privileged = facts.gmsPrivileged
-        // INTERACT_ACROSS_USERS: o backend reporta nas flags; aqui tratamos como
-        // satisfeito se privilegiado e o path está sob a máscara (o PM concede
-        // permissões privileged a priv-apps). A checagem dura fica no backend.
+        // INTERACT_ACROSS_USERS: the backend reports this in flags; here we treat it as
+        // satisfied if privileged and the path is under the mask (PM grants
+        // privileged permissions to priv-apps). The backend performs the strict check.
         val requested = facts.gmsFlags.orEmpty().contains("PRIVILEGED")
         val mountOk = facts.mountGms
         return PrivAppValidationResult(
