@@ -20,6 +20,7 @@
     <string name="settings_profile_warning">Experimental mode never overrides FAIL or UNKNOWN. Review the compatibility report before every operation.</string>
     <string name="settings_footer">The known-good database is versioned with the app. An unknown device is never approved by model similarity alone.</string>
     <string name="diag_card_compatibility">Compatibility engine</string>
+    <string name="diag_card_pure_mode">Pure DeGoogle validation</string>
     <string name="diag_compatibility">Classification</string>
     <string name="diag_known_good_match">Known-good match</string>
     <string name="diag_preparation_info">Active GMS/Play Store updates are removable during preparation; the target stock paths are revalidated afterward.</string>
@@ -35,6 +36,8 @@
     <string name="state_stock">Google Stock</string>
     <string name="state_preparing">Preparing</string>
     <string name="state_prepared">Prepared</string>
+    <string name="state_degoogle_prepared">DeGoogle Prepared</string>
+    <string name="state_degoogle_active">DeGoogle Active</string>
     <string name="state_microg_booted">microG Booted</string>
     <string name="state_microg_needs_setup">Setup Required</string>
     <string name="state_microg_active">microG Active</string>
@@ -170,6 +173,7 @@
     <string name="pending">pending</string>
     <string name="not_created">not created</string>
     <string name="not_supported">unsupported</string>
+    <string name="not_applicable">not applicable</string>
     <string name="not_reported">Not reported</string>
     <string name="error_title">Error</string>
     <string name="cancel">Cancel</string>
@@ -193,6 +197,20 @@
     <string name="home_updates_detected_title">Google updates detected</string>
     <string name="home_updates_detected_text">The active GMS/Play Store updates will be removed automatically at the beginning of preparation, returning to the stock APKs. Play Store will be temporarily disabled to prevent an immediate re-update.</string>
     <string name="home_install_microg_btn">Install microG (DeGoogle)</string>
+    <string name="home_choose_mode">Choose mode</string>
+    <string name="home_selected_mode">Selected mode</string>
+    <string name="home_change_mode">Change mode</string>
+    <string name="home_mode_dialog_title">Choose a mode</string>
+    <string name="home_mode_pure_title">DeGoogle only</string>
+    <string name="home_mode_pure_desc">Mask GMS, GSF, and Play Store without installing replacements.</string>
+    <string name="home_mode_microg_title">Replace with microG</string>
+    <string name="home_mode_microg_desc">Install microG and Companion in place of the stock Google components.</string>
+    <string name="home_slide_degoogle">Slide to DeGoogle</string>
+    <string name="home_slide_microg">Slide to install microG</string>
+    <string name="home_pure_prepared_title">DeGoogle preparation complete</string>
+    <string name="home_pure_prepared_desc">Three empty masks are mounted. A validated userspace restart is required before the stock packages are considered removed.</string>
+    <string name="home_pure_active_title">DeGoogle only</string>
+    <string name="home_pure_masks">Empty masks</string>
     <string name="home_prepared_title">Preparation completed</string>
     <string name="home_badge_reboot_required">Reboot Required</string>
     <string name="home_prepared_desc">Masks have been applied to the global mount namespace.\n\nThe device requires a soft reboot for PackageManager to register the new priv-app packages.</string>
@@ -209,6 +227,8 @@
     <string name="home_btn_restore_google_stock">Restore Google Stock</string>
     <string name="home_restore_prepared_title">Rollback ready</string>
     <string name="home_restore_prepared_desc">Masks were removed and the original Google environment will be revealed after a soft reboot.</string>
+    <string name="home_reindex_stock_desc">The userspace restart is verified. Reindex stock packages to finish restoring the original Google environment.</string>
+    <string name="home_reindex_stock_btn">Reindex stock packages</string>
     <string name="home_error_state_title">Inconsistent state</string>
     <string name="home_badge_warning">Warning</string>
     <string name="home_error_state_desc">The device is in an unexpected state. No operation was performed automatically.\n\nCheck the Diagnostics tab for details.</string>
@@ -243,6 +263,10 @@
     <string name="diag_security_notice">The generated report is safe and does not contain tokens, passwords, or personal data.</string>
     <string name="diag_root_access">Root Access</string>
     <string name="diag_state">Derived State</string>
+    <string name="diag_operation_mode">Operation Mode</string>
+    <string name="diag_mode_not_recorded">not recorded</string>
+    <string name="diag_empty_masks">Empty masks</string>
+    <string name="diag_postboot_validation">Post-restart validation</string>
     <string name="diag_profile">Profile</string>
     <string name="diag_device">Device</string>
     <string name="diag_android">Android</string>
@@ -255,6 +279,7 @@
     <string name="diag_version">Version</string>
     <string name="diag_uid">UID</string>
     <string name="diag_privileged">Privileged (priv-app)</string>
+    <string name="diag_microg_checks">microG identity checks</string>
     <string name="diag_package_flags">Package Flags</string>
     <string name="diag_gsf_present">GSF Present</string>
     <string name="diag_gsf_path">GSF Path</string>
@@ -295,6 +320,8 @@
     <string name="backup_storage_path_value">/data/local/tmp/microg-backup</string>
     <string name="backup_why_title">Why create a backup?</string>
     <string name="backup_why_desc">The backup preserves the notification registration data. Update it after confirming that notifications work.</string>
+    <string name="backup_pure_mode_title">microG token actions unavailable</string>
+    <string name="backup_pure_mode_desc">Pure DeGoogle does not use microG token data. Existing backup files are preserved and are not evidence that microG is active.</string>
     <string name="backup_btn_update_snapshot">Update microG Snapshot</string>
     <string name="backup_btn_create_snapshot">Create microG Snapshot</string>
     <string name="backup_btn_restore_data">Restore Backup Data</string>

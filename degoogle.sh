@@ -193,6 +193,18 @@ BACKUP_PRESENT=0
 BACKUP_CREATED_AT=""
 MASK_RESIDUE_PRESENT=0
 FINALIZE_DONE=0
+OPERATION_MODE=""
+MODE_CONFLICT=0
+MASK_GMS_EMPTY=0
+MASK_GSF_EMPTY=0
+MASK_STORE_EMPTY=0
+PURE_MASKS_VALID=0
+POST_BOOT_STATUS=""
+POST_BOOT_REASON=""
+STOCK_REINDEX_PENDING=0
+STOCK_REINDEX_READY=0
+STOCK_CONFIRMED=0
+STOCK_CONFIRMATION_OPERATION_ID=""
 REBOOT_STRATEGY_BACKEND=""
 REBOOT_STRATEGY_METHOD=""
 REBOOT_STRATEGY_CONFIDENCE="UNKNOWN"
@@ -332,6 +344,7 @@ journal_state()
         printf 'operationId=%s\n' "${DEGOOGLE_OPERATION_ID:-unknown}"
         printf 'timestamp=%s\n' "$(date +%s 2>/dev/null || echo 0)"
         printf 'state=%s\n' "$state"
+        [ -n "$OPERATION_MODE" ] && printf 'operationMode=%s\n' "$OPERATION_MODE"
         printf 'model=%s\n' "$MODEL"
         printf 'fingerprint=%s\n' "$FINGERPRINT"
         printf 'targetGms=%s\n' "$TARGET_GMS"
@@ -396,6 +409,7 @@ snapshot_state()
         printf '  "model": "%s",\n' "$MODEL"
         printf '  "selinux": "%s",\n' "$SELINUX"
         printf '  "rootBackend": "%s",\n' "$ROOT_MANAGER"
+        printf '  "operationMode": "%s",\n' "$OPERATION_MODE"
         printf '  "gms": {"activeCodePath":"%s","originalSystemPath":"%s","targetDirectory":"%s","sha256":"%s","owner":"%s","mode":"%s","selinuxContext":"%s"},\n' "$GMS_ACTIVE_CODE_PATH" "$GMS_ORIGINAL_SYSTEM_PATH" "$TARGET_GMS" "$gms_hash" "$ORIGINAL_GMS_OWNER" "$ORIGINAL_GMS_MODE" "$ORIGINAL_GMS_CONTEXT"
         printf '  "gsf": {"activeCodePath":"%s","originalSystemPath":"%s","targetDirectory":"%s","sha256":"%s","owner":"%s","mode":"%s","selinuxContext":"%s"},\n' "$GSF_ACTIVE_CODE_PATH" "$GSF_ORIGINAL_SYSTEM_PATH" "$TARGET_GSF" "$gsf_hash" "$ORIGINAL_GSF_OWNER" "$ORIGINAL_GSF_MODE" "$ORIGINAL_GSF_CONTEXT"
         printf '  "store": {"activeCodePath":"%s","originalSystemPath":"%s","targetDirectory":"%s","sha256":"%s","owner":"%s","mode":"%s","selinuxContext":"%s"},\n' "$STORE_ACTIVE_CODE_PATH" "$STORE_ORIGINAL_SYSTEM_PATH" "$TARGET_STORE" "$store_hash" "$ORIGINAL_STORE_OWNER" "$ORIGINAL_STORE_MODE" "$ORIGINAL_STORE_CONTEXT"
@@ -485,6 +499,21 @@ verify_probe_baseline()
 pm_path()
 {
     pm path "$1" 2>/dev/null | sed -n 's/^package://p' | head -n 1
+}
+
+pm_package_absent()
+{
+    local output status
+    output="$(with_timeout 15 pm path "$1" 2>&1)"
+    status=$?
+    # AOSP returns 1 without output for an absent package; list packages distinguishes that from a PM failure.
+    case "$status" in
+        0) [ -z "$output" ] || return 1 ;;
+        1) [ -z "$output" ] || [ "$output" = "Error: package $1 not found." ] || return 1 ;;
+        *) return 1 ;;
+    esac
+    output="$(with_timeout 15 pm list packages "$1" 2>&1)" || return 1
+    [ -z "$output" ]
 }
 
 pm_paths()
@@ -1128,6 +1157,26 @@ framework_identity()
     printf '%s\n%s\n%s' "$boot_id" "$server_pid" "$server_start"
 }
 
+stock_reindex_ready()
+{
+    local transaction_state old_boot old_pid old_start identity new_boot new_pid new_start
+    transaction_state="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+    case "$transaction_state" in REINDEX_PENDING|REBOOT_REQUESTED) ;; *) return 1 ;; esac
+    [ -f "$REBOOT_BASELINE_FILE" ] || return 1
+    old_boot="$(sed -n 's/^kernelBootId=//p' "$REBOOT_BASELINE_FILE" | head -n 1)"
+    old_pid="$(sed -n 's/^systemServerPid=//p' "$REBOOT_BASELINE_FILE" | head -n 1)"
+    old_start="$(sed -n 's/^systemServerStart=//p' "$REBOOT_BASELINE_FILE" | head -n 1)"
+    identity="$(framework_identity)" || return 1
+    new_boot="$(printf '%s\n' "$identity" | sed -n '1p')"
+    new_pid="$(printf '%s\n' "$identity" | sed -n '2p')"
+    new_start="$(printf '%s\n' "$identity" | sed -n '3p')"
+    [ -n "$old_boot" ] && [ -n "$old_pid" ] && [ -n "$old_start" ] || return 1
+    [ "$new_boot" = "$old_boot" ] && [ "$new_pid:$new_start" != "$old_pid:$old_start" ] || return 1
+    [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ] || return 1
+    case "$(getprop sys.boot.reason 2>/dev/null)" in *rescueparty*|*rescue_party*) return 1 ;; esac
+    return 0
+}
+
 persist_reboot_baseline()
 {
     local identity="$1" tmp
@@ -1213,7 +1262,11 @@ probe_capabilities()
     probe_global_mount_namespace
     probe_bind_mount
     probe_selinux_context
-    probe_signature_spoofing
+    if [ "${DEGOOGLE_MODE:-$OPERATION_MODE}" = "PURE" ]; then
+        cap_set SIGNATURE_SPOOFING UNKNOWN "" "not applicable to pure DeGoogle mode"
+    else
+        probe_signature_spoofing
+    fi
     probe_package_manager_cache
     probe_reboot_strategy
     probe_safe_restore
@@ -1261,7 +1314,9 @@ probe_capabilities()
             cap_set "${p}_MASKABLE" PASS "target=$target; original=$original"
         fi
     done
-    if [ "$MOUNT_GMS_IS_OURS" = "1" ] && [ "$GMS_PRIVILEGED" = "1" ]; then
+    if [ "${DEGOOGLE_MODE:-$OPERATION_MODE}" = "PURE" ]; then
+        cap_set PRIV_APP_COMPATIBLE UNKNOWN "" "not applicable to pure DeGoogle mode"
+    elif [ "$MOUNT_GMS_IS_OURS" = "1" ] && [ "$GMS_PRIVILEGED" = "1" ]; then
         cap_set PRIV_APP_COMPATIBLE PASS "microG is active with the PRIVILEGED flag"
     elif printf '%s' "$GMS_FLAGS" | grep -q PRIVILEGED; then
         cap_set PRIV_APP_COMPATIBLE PASS "GMS flags contain PRIVILEGED"
@@ -1291,11 +1346,14 @@ gms_maps_lib_relpath()
 
 collect_facts()
 {
+    local transaction_state
     ROOT_OK=0; ROOT_MANAGER=""; GMS_PRIVILEGED=0; FINALIZE_DONE=0
     GMS_PATH=""; GSF_PATH=""; STORE_PATH=""; GMS_FLAGS=""; GMS_UID=""
     GMS_MAPS_LIB_PRESENT=0; GMS_MAPS_LIB_RELPATH=""
     GMS_VERSION=""; GMS_VERSION_CODE=""; STORE_VERSION=""
     TARGET_GMS=""; TARGET_GSF=""; TARGET_STORE=""
+    OPERATION_MODE=""; MODE_CONFLICT=0; MASK_GMS_EMPTY=0; MASK_GSF_EMPTY=0; MASK_STORE_EMPTY=0; PURE_MASKS_VALID=0
+    POST_BOOT_STATUS=""; POST_BOOT_REASON=""; STOCK_REINDEX_PENDING=0; STOCK_REINDEX_READY=0; STOCK_CONFIRMED=0; STOCK_CONFIRMATION_OPERATION_ID=""
     MANUFACTURER="$(getprop ro.product.manufacturer 2>/dev/null)"
     MODEL="$(getprop ro.product.model 2>/dev/null)"
     DEVICE="$(getprop ro.product.device 2>/dev/null)"
@@ -1337,6 +1395,12 @@ collect_facts()
                 GMS_ORIGINAL_SYSTEM_PATH="$(snapshot_field gms originalSystemPath)"
                 GSF_ORIGINAL_SYSTEM_PATH="$(snapshot_field gsf originalSystemPath)"
                 STORE_ORIGINAL_SYSTEM_PATH="$(snapshot_field store originalSystemPath)"
+                OPERATION_MODE="$(snapshot_top_field operationMode)"
+                local journal_mode
+                journal_mode="$(sed -n 's/^operationMode=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+                if [ -n "$OPERATION_MODE" ] && [ -n "$journal_mode" ] && [ "$OPERATION_MODE" != "$journal_mode" ]; then
+                    MODE_CONFLICT=1
+                fi
             else
                 TARGET_GMS=""; TARGET_GSF=""; TARGET_STORE=""
             fi
@@ -1362,6 +1426,36 @@ collect_facts()
         # Mounts: detect ANY active mount at profile paths and record whether
         # the source is our mask. An unknown source means an unmanaged state.
         refresh_mount_facts
+
+        transaction_state="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        if [ -n "$TARGET_GMS" ] && [ -n "$TARGET_GSF" ] && [ -n "$TARGET_STORE" ] && \
+            is_safe_target_directory "$TARGET_GMS" && is_safe_target_directory "$TARGET_GSF" && \
+            is_safe_target_directory "$TARGET_STORE" && targets_are_distinct "$TARGET_GMS" "$TARGET_GSF" "$TARGET_STORE" && \
+            [ "$MOUNT_GMS" = "0" ] && [ "$MOUNT_GSF" = "0" ] && [ "$MOUNT_STORE" = "0" ] && \
+            { [ -z "$GMS_PATH" ] || stock_path_valid "$GMS_PATH" "$TARGET_GMS" "$GMS_HAS_DATA_UPDATE"; } && \
+            { [ -z "$GSF_PATH" ] || stock_path_valid "$GSF_PATH" "$TARGET_GSF" "$GSF_HAS_DATA_UPDATE"; } && \
+            { [ -z "$STORE_PATH" ] || stock_path_valid "$STORE_PATH" "$TARGET_STORE" "$STORE_HAS_DATA_UPDATE"; }; then
+            case "$transaction_state" in
+                REINDEX_PENDING|REBOOT_REQUESTED)
+                    STOCK_REINDEX_PENDING=1
+                    stock_reindex_ready && STOCK_REINDEX_READY=1
+                    ;;
+                STOCK_CONFIRMED)
+                    STOCK_CONFIRMED=1
+                    STOCK_CONFIRMATION_OPERATION_ID="$(sed -n 's/^operationId=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+                    ;;
+            esac
+        fi
+
+        if [ -d "$MASK_GMS" ] && [ -z "$(find "$MASK_GMS" -mindepth 1 -print -quit 2>/dev/null)" ]; then MASK_GMS_EMPTY=1; fi
+        if [ -d "$MASK_GSF" ] && [ -z "$(find "$MASK_GSF" -mindepth 1 -print -quit 2>/dev/null)" ]; then MASK_GSF_EMPTY=1; fi
+        if [ -d "$MASK_STORE" ] && [ -z "$(find "$MASK_STORE" -mindepth 1 -print -quit 2>/dev/null)" ]; then MASK_STORE_EMPTY=1; fi
+        if [ "$OPERATION_MODE" = "PURE" ] && \
+            [ "$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" = "COMMITTED" ]; then
+            POST_BOOT_STATUS="PASS"
+            POST_BOOT_REASON="pure masks, restart identity, packages, and SELinux validated"
+        fi
+        if [ "$OPERATION_MODE" = "PURE" ] && verify_pure_masks; then PURE_MASKS_VALID=1; fi
 
         if cmd deviceidle whitelist 2>/dev/null | grep -q "$GMS_PKG"; then FINALIZE_DONE=1; fi
     fi
@@ -1452,6 +1546,18 @@ emit_facts()
     emit MOUNT_STORE_IS_LEGACY "$MOUNT_STORE_IS_LEGACY"
     emit MOUNT_GMS_SOURCE "$MOUNT_GMS_SOURCE"
     emit BACKUP_PRESENT "$BACKUP_PRESENT"
+    emit OPERATION_MODE "$OPERATION_MODE"
+    emit MODE_CONFLICT "$MODE_CONFLICT"
+    emit MASK_GMS_EMPTY "$MASK_GMS_EMPTY"
+    emit MASK_GSF_EMPTY "$MASK_GSF_EMPTY"
+    emit MASK_STORE_EMPTY "$MASK_STORE_EMPTY"
+    emit PURE_MASKS_VALID "$PURE_MASKS_VALID"
+    emit POST_BOOT_STATUS "$POST_BOOT_STATUS"
+    emit POST_BOOT_REASON "$POST_BOOT_REASON"
+    emit STOCK_REINDEX_PENDING "$STOCK_REINDEX_PENDING"
+    emit STOCK_REINDEX_READY "$STOCK_REINDEX_READY"
+    emit STOCK_CONFIRMED "$STOCK_CONFIRMED"
+    emit STOCK_CONFIRMATION_OPERATION_ID "$STOCK_CONFIRMATION_OPERATION_ID"
     emit BACKUP_CREATED_AT "$BACKUP_CREATED_AT"
     emit GMS_MAPS_LIB_PRESENT "$GMS_MAPS_LIB_PRESENT"
     emit MASK_RESIDUE_PRESENT "$MASK_RESIDUE_PRESENT"
@@ -1507,7 +1613,15 @@ compute_state()
         STATE="NO_ROOT"
         return
     fi
+    if [ "$MODE_CONFLICT" = "1" ]; then
+        STATE="ERROR"
+        return
+    fi
     if [ "$MOUNT_GMS" = "0" ] && [ "$MOUNT_GSF" = "0" ] && [ "$MOUNT_STORE" = "0" ]; then
+        if [ "$STOCK_REINDEX_PENDING" = "1" ]; then
+            STATE="RESTORE_PREPARED"
+            return
+        fi
         # No mounts: stock state or rollback pending reboot.
         if ! stock_path_valid "$GMS_PATH" "$GMS_TARGET_DIRECTORY" "$GMS_HAS_DATA_UPDATE"; then
             STATE="ERROR"
@@ -1534,6 +1648,21 @@ compute_state()
     fi
     if [ "$MOUNT_GMS_IS_OURS" != "1" ] || [ "$MOUNT_GSF_IS_OURS" != "1" ] || [ "$MOUNT_STORE_IS_OURS" != "1" ]; then
         STATE="ERROR"
+        return
+    fi
+
+    if [ "$OPERATION_MODE" = "PURE" ]; then
+        if [ "$MASK_GMS_EMPTY" != "1" ] || [ "$MASK_GSF_EMPTY" != "1" ] || [ "$MASK_STORE_EMPTY" != "1" ] || \
+            [ "$PURE_MASKS_VALID" != "1" ]; then
+            STATE="ERROR"
+            return
+        fi
+        if [ -z "$GMS_PATH" ] && [ -z "$GSF_PATH" ] && [ -z "$STORE_PATH" ] && \
+            [ "$POST_BOOT_STATUS" = "PASS" ]; then
+            STATE="DEGOOGLE_ACTIVE"
+        else
+            STATE="DEGOOGLE_PREPARED"
+        fi
         return
     fi
 
@@ -1768,8 +1897,16 @@ dry_run()
 
 preflight()
 {
+    local requested_mode="${DEGOOGLE_MODE:-MICROG}"
+    case "$requested_mode" in PURE|MICROG) ;; *) fail_usage "preflight with DEGOOGLE_MODE=PURE|MICROG" ;; esac
+    DEGOOGLE_MODE="$requested_mode"
     check_root
     collect_facts
+    if [ -n "$OPERATION_MODE" ] && [ "$OPERATION_MODE" != "$requested_mode" ] && \
+        [ "$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" != "STOCK_CONFIRMED" ]; then
+        fail 3 "requested mode $requested_mode conflicts with the recorded $OPERATION_MODE transaction"
+    fi
+    OPERATION_MODE="$requested_mode"
     run_safety_preflight || return $?
     emit_facts
     emit PREFLIGHT_STATUS "PASS"
@@ -1946,22 +2083,55 @@ prepare()
     STORE_WAS_DISABLED=0
     STORE_STATE_CAPTURED=0
 
-    local gms_src="${1:-}" store_src="${2:-}" gms_sha256="${3:-}" store_sha256="${4:-}" transaction_state
-    [ -n "$gms_src" ] && [ -n "$store_src" ] && [ -n "$gms_sha256" ] && [ -n "$store_sha256" ] || \
-        fail_usage "prepare <gms.apk> <companion.apk> <gms-sha256> <companion-sha256>"
+    local requested_mode gms_src store_src gms_sha256 store_sha256 transaction_state existing_mode
+    if [ "${1:-}" = "--mode" ]; then
+        requested_mode="${2:-}"
+        gms_src="${3:-}"; store_src="${4:-}"; gms_sha256="${5:-}"; store_sha256="${6:-}"
+    else
+        requested_mode="${DEGOOGLE_MODE:-MICROG}"
+        gms_src="${1:-}"; store_src="${2:-}"; gms_sha256="${3:-}"; store_sha256="${4:-}"
+    fi
+    case "$requested_mode" in PURE|MICROG) ;; *) fail_usage "prepare --mode PURE|MICROG [gms.apk companion.apk gms-sha256 companion-sha256]" ;; esac
+    if [ -n "${DEGOOGLE_MODE:-}" ] && [ "$DEGOOGLE_MODE" != "$requested_mode" ]; then
+        fail_usage "DEGOOGLE_MODE conflicts with the requested prepare mode"
+    fi
+    DEGOOGLE_MODE="$requested_mode"
+    if [ "$requested_mode" = "MICROG" ]; then
+        [ -n "$gms_src" ] && [ -n "$store_src" ] && [ -n "$gms_sha256" ] && [ -n "$store_sha256" ] || \
+            fail_usage "prepare <gms.apk> <companion.apk> <gms-sha256> <companion-sha256>"
+    else
+        [ -z "$gms_src$store_src$gms_sha256$store_sha256" ] || fail_usage "prepare --mode PURE"
+        [ ! -L "$MASK_BASE" ] || fail 3 "pure mode mask base is a symlink; preserving it"
+        for mask in "$MASK_GMS" "$MASK_GSF" "$MASK_STORE"; do
+            [ ! -L "$mask" ] && { [ ! -d "$mask" ] || [ -z "$(find "$mask" -mindepth 1 -print -quit 2>/dev/null)" ]; } || \
+                fail 3 "pure mode requires all mask source directories to be empty; preserving $mask"
+        done
+    fi
 
     say "===== PREPARE ====="
 
     collect_facts
     transaction_state="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+    existing_mode="$OPERATION_MODE"
     if [ -f "$SNAPSHOT_FILE" ] && [ "$transaction_state" != "STOCK_CONFIRMED" ]; then
         [ "$MOUNT_GMS_IS_OURS" = "1" ] && [ "$MOUNT_GSF_IS_OURS" = "1" ] && [ "$MOUNT_STORE_IS_OURS" = "1" ] || \
             fail 3 "existing transaction has not been confirmed as stock; run recovery before prepare"
+        [ "$existing_mode" = "$requested_mode" ] || fail 3 "existing transaction mode ${existing_mode:-unknown} conflicts with $requested_mode"
+        if [ "$requested_mode" = "PURE" ]; then
+            [ "$MASK_GMS_EMPTY" = "1" ] && [ "$MASK_GSF_EMPTY" = "1" ] && [ "$MASK_STORE_EMPTY" = "1" ] || \
+                fail 3 "existing pure transaction contains unexpected mask payloads"
+            compute_state
+            emit STATE "$STATE"
+            [ "$STATE" = "DEGOOGLE_PREPARED" ] || [ "$STATE" = "DEGOOGLE_ACTIVE" ] || fail 3 "existing pure transaction is inconsistent"
+            say "Existing pure transaction is already mounted; no duplicate mounts were created."
+            return 0
+        fi
     fi
     if [ "$MOUNT_GMS" = "1" ] || [ "$MOUNT_GSF" = "1" ] || [ "$MOUNT_STORE" = "1" ]; then
         [ "$MOUNT_GMS_IS_OURS" = "1" ] && [ "$MOUNT_GSF_IS_OURS" = "1" ] && [ "$MOUNT_STORE_IS_OURS" = "1" ] || \
             fail 3 "partial transaction or external mount detected; run recovery before prepare"
     fi
+    OPERATION_MODE="$requested_mode"
     run_safety_preflight || fail 3 "Safety preflight blocked the operation. No changes were made."
     journal_state "PREFLIGHT_OK" || fail 4 "could not record preflight"
 
@@ -1987,13 +2157,15 @@ prepare()
     # Validate APKs before removing any update or disabling the Store.
     # A download error or invalid file must leave the environment exactly
     # as it was.
-    [ -f "$gms_src" ] || fail 3 "microG APK not found: $gms_src"
-    [ -f "$store_src" ] || fail 3 "Companion APK not found: $store_src"
-    is_apk "$gms_src" || fail 3 "microG is not a valid APK: $gms_src"
-    is_apk "$store_src" || fail 3 "Companion is not a valid APK: $store_src"
-    sha256_matches_file "$gms_src" "$gms_sha256" || fail 3 "microG SHA-256 does not match trusted metadata: $gms_src"
-    sha256_matches_file "$store_src" "$store_sha256" || fail 3 "Companion SHA-256 does not match trusted metadata: $store_src"
-    check_payload_storage "$gms_src" "$store_src" || fail 3 "not enough free space for APKs, snapshot, and masks"
+    if [ "$requested_mode" = "MICROG" ]; then
+        [ -f "$gms_src" ] || fail 3 "microG APK not found: $gms_src"
+        [ -f "$store_src" ] || fail 3 "Companion APK not found: $store_src"
+        is_apk "$gms_src" || fail 3 "microG is not a valid APK: $gms_src"
+        is_apk "$store_src" || fail 3 "Companion is not a valid APK: $store_src"
+        sha256_matches_file "$gms_src" "$gms_sha256" || fail 3 "microG SHA-256 does not match trusted metadata: $gms_src"
+        sha256_matches_file "$store_src" "$store_sha256" || fail 3 "Companion SHA-256 does not match trusted metadata: $store_src"
+        check_payload_storage "$gms_src" "$store_src" || fail 3 "not enough free space for APKs, snapshot, and masks"
+    fi
 
     if pm list packages -d 2>/dev/null | grep -q "$STORE_PKG"; then
         STORE_WAS_DISABLED=1
@@ -2024,25 +2196,40 @@ prepare()
     store_now="$(pm_path "$STORE_PKG")"
     path_under_target "$gms_now" "$TARGET_GMS" || _prep_fail 3 "GMS did not return to its system target after removing the update (current: ${gms_now:-missing})."
     path_under_target "$store_now" "$TARGET_STORE" || _prep_fail 3 "Play Store did not return to its system target after removing the update (current: ${store_now:-missing})."
-    sha256_matches_file "$gms_src" "$gms_sha256" || _prep_fail 3 "microG SHA-256 changed after initial validation."
-    sha256_matches_file "$store_src" "$store_sha256" || _prep_fail 3 "Companion SHA-256 changed after initial validation."
+    if [ "$requested_mode" = "MICROG" ]; then
+        sha256_matches_file "$gms_src" "$gms_sha256" || _prep_fail 3 "microG SHA-256 changed after initial validation."
+        sha256_matches_file "$store_src" "$store_sha256" || _prep_fail 3 "Companion SHA-256 changed after initial validation."
+    else
+        for mask in "$MASK_GMS" "$MASK_GSF" "$MASK_STORE"; do
+            [ ! -L "$mask" ] && { [ ! -d "$mask" ] || [ -z "$(find "$mask" -mindepth 1 -print -quit 2>/dev/null)" ]; } || \
+                _prep_fail 3 "pure mode mask source is no longer empty; preserving $mask"
+        done
+    fi
 
     snapshot_state || _prep_fail 4 "could not create snapshot/journal before making changes"
 
     # 3) Masks
     mkdir -p "$MASK_GMS" "$MASK_GSF" "$MASK_STORE" || _prep_fail 1 "could not create mask directories"
-    provision_gms_native_libs "$gms_src"
+    [ "$requested_mode" = "PURE" ] || provision_gms_native_libs "$gms_src"
     clone_mask_metadata "$TARGET_GMS" "$MASK_GMS" "$ORIGINAL_GMS_OWNER" "$ORIGINAL_GMS_MODE" "$ORIGINAL_GMS_CONTEXT" "GMS"
     clone_mask_metadata "$TARGET_GSF" "$MASK_GSF" "$ORIGINAL_GSF_OWNER" "$ORIGINAL_GSF_MODE" "$ORIGINAL_GSF_CONTEXT" "GSF"
     clone_mask_metadata "$TARGET_STORE" "$MASK_STORE" "$ORIGINAL_STORE_OWNER" "$ORIGINAL_STORE_MODE" "$ORIGINAL_STORE_CONTEXT" "Store"
 
     say "[1/3] Applying masks (global namespace)"
     DEGOOGLE_FAIL_MOUNT="${DEGOOGLE_FAIL_MOUNT_GMS:-0}"
-    mount_mask "$TARGET_GMS" "$MASK_GMS" "$GMS_APK" "$gms_src" "$gms_sha256"
+    if [ "$requested_mode" = "PURE" ]; then
+        mount_mask "$TARGET_GMS" "$MASK_GMS" "" ""
+    else
+        mount_mask "$TARGET_GMS" "$MASK_GMS" "$GMS_APK" "$gms_src" "$gms_sha256"
+    fi
     DEGOOGLE_FAIL_MOUNT="${DEGOOGLE_FAIL_MOUNT_GSF:-0}"
     mount_mask "$TARGET_GSF" "$MASK_GSF" "" ""
     DEGOOGLE_FAIL_MOUNT="${DEGOOGLE_FAIL_MOUNT_STORE:-0}"
-    mount_mask "$TARGET_STORE" "$MASK_STORE" "$STORE_APK" "$store_src" "$store_sha256"
+    if [ "$requested_mode" = "PURE" ]; then
+        mount_mask "$TARGET_STORE" "$MASK_STORE" "" ""
+    else
+        mount_mask "$TARGET_STORE" "$MASK_STORE" "$STORE_APK" "$store_src" "$store_sha256"
+    fi
 
     # 4) SELinux — always in the global namespace; success requires validation
     say "[2/3] SELinux (restorecon in the global namespace)"
@@ -2085,9 +2272,14 @@ prepare()
 
     # 5) Final mount verification
     say "[3/3] Verification"
-    is_masked_by_us "$TARGET_GMS" "$MASK_GMS" "$GMS_APK" || _prep_fail 4 "GMS_MOUNT_INVALID"
+    if [ "$requested_mode" = "PURE" ]; then
+        is_masked_by_us "$TARGET_GMS" "$MASK_GMS" "" || _prep_fail 4 "GMS_MOUNT_INVALID"
+        is_masked_by_us "$TARGET_STORE" "$MASK_STORE" "" || _prep_fail 4 "STORE_MOUNT_INVALID"
+    else
+        is_masked_by_us "$TARGET_GMS" "$MASK_GMS" "$GMS_APK" || _prep_fail 4 "GMS_MOUNT_INVALID"
+        is_masked_by_us "$TARGET_STORE" "$MASK_STORE" "$STORE_APK" || _prep_fail 4 "STORE_MOUNT_INVALID"
+    fi
     is_masked_by_us "$TARGET_GSF" "$MASK_GSF" "" || _prep_fail 4 "GSF_MOUNT_INVALID"
-    is_masked_by_us "$TARGET_STORE" "$MASK_STORE" "$STORE_APK" || _prep_fail 4 "STORE_MOUNT_INVALID"
 
     say "  GMS : $(global ls -laZ "$TARGET_GMS" 2>/dev/null | tail -n +2 | tr '\n' ' ')"
     say "  GSF : masked (empty)"
@@ -2134,6 +2326,7 @@ finalize()
     # The package may be in a different directory in experimental mode; post-boot
     # validation must use the locator from the same transaction.
     collect_facts
+    [ "$OPERATION_MODE" != "PURE" ] || fail 3 "microG finalization is not applicable to a pure DeGoogle transaction"
 
     local gms_now gsf_now store_now flags
 
@@ -2204,6 +2397,11 @@ backup()
 {
     check_root
     require_lock
+    collect_facts
+    if [ "$OPERATION_MODE" = "PURE" ] && \
+        [ "$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" != "STOCK_CONFIRMED" ]; then
+        fail_en 3 "microG token backup is unavailable during a pure DeGoogle transaction"
+    fi
 
     [ "${DEGOOGLE_FAIL_BACKUP:-0}" = "1" ] && fail_en 1 "DEGOOGLE_FAIL_BACKUP injected"
 
@@ -2240,6 +2438,10 @@ restore_backup()
     require_lock
 
     collect_facts
+    if [ "$OPERATION_MODE" = "PURE" ] && \
+        [ "$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" != "STOCK_CONFIRMED" ]; then
+        fail_en 3 "microG token restoration is unavailable during a pure DeGoogle transaction"
+    fi
 
     say "===== RESTORING MICROG DATA ====="
 
@@ -2350,7 +2552,7 @@ snapshot_top_field()
 
 validate_snapshot()
 {
-    local schema operation timestamp fingerprint model component target original active owner mode context hash
+    local schema operation timestamp fingerprint model saved_mode component target original active owner mode context hash
     [ -f "$SNAPSHOT_FILE" ] || return 1
     awk '
         NF { if (first == "") first=$0; last=$0 }
@@ -2364,7 +2566,9 @@ validate_snapshot()
     timestamp="$(snapshot_top_field timestamp)"
     fingerprint="$(snapshot_top_field deviceFingerprint)"
     model="$(snapshot_top_field model)"
+    saved_mode="$(snapshot_top_field operationMode)"
     [ "$schema" = "1" ] && [ -n "$operation" ] && [ -n "$timestamp" ] && [ -n "$fingerprint" ] && [ -n "$model" ] || return 1
+    case "$saved_mode" in ""|PURE|MICROG) ;; *) return 1 ;; esac
     [ "$fingerprint" = "$FINGERPRINT" ] && [ "$model" = "$MODEL" ] || return 1
     for component in gms gsf store; do
         target="$(snapshot_field "$component" targetDirectory)"
@@ -2666,7 +2870,7 @@ restore_stock()
     # packages.xml or call pm/am here: with PM rescanning, the call hangs,
     # the device freezes, and the watchdog reboots it. The stale registry and
     # re-enabling are deferred to post-boot reindex-stock.
-    local wipe="${1:-}" foreign="" failed="" cache_backup
+    local wipe="${1:-}" foreign="" failed="" cache_backup restart_identity
 
     # Package Manager may not see GSF/Store because mounts
     # are active. Resolve targets before any mutation, using the snapshot
@@ -2781,6 +2985,8 @@ restore_stock()
     say ""
     say "RESTORE-STOCK PREPARED. Package Manager reindexing and reboot are required."
     say "The microG backup at $BACKUP_BASE was preserved."
+    restart_identity="$(framework_identity)" || fail 4 "rollback completed, but could not capture the system_server identity before restart"
+    persist_reboot_baseline "$restart_identity" || fail 4 "rollback completed, but could not save restart validation evidence"
     journal_state "REINDEX_PENDING" || fail 4 "rollback completed, but could not record REINDEX_PENDING"
     emit REINDEX_PENDING "1"
     emit REBOOT_REQUIRED "1"
@@ -2798,12 +3004,17 @@ reindex_stock()
     local cache_backup failed=""
     REINDEX_REGISTRATIONS_STALE=0
 
+    stock_reindex_ready || fail 3 "a verified userspace restart after restore-stock is required before reindexing"
+
     collect_facts
     [ ! -e "$PM_CACHE_DIR" ] || [ "$CAP_PACKAGE_MANAGER_CACHE_ACCESS_STATUS" = "PASS" ] || \
         fail 3 "Package Manager cache exists but cannot be inspected or modified"
     resolve_rollback_targets || fail 3 "could not resolve targets without guessing"
     [ -f "$SNAPSHOT_FILE" ] && DEGOOGLE_OPERATION_ID="$(snapshot_top_field operationId)"
     refresh_mount_facts
+
+    [ "$STOCK_REINDEX_PENDING" = "1" ] && [ "$STOCK_REINDEX_READY" = "1" ] || \
+        fail 3 "stock reindex is not pending after a verified userspace restart"
 
     [ "$MOUNT_GMS" = "0" ] || failed="$failed GMS"
     [ "$MOUNT_GSF" = "0" ] || failed="$failed GSF"
@@ -2850,6 +3061,7 @@ reindex_stock()
         return 0
     fi
 
+    write_probe_baseline || fail 4 "stock packages are confirmed, but the probe baseline could not be refreshed"
     journal_state "STOCK_CONFIRMED" || fail 4 "stock packages confirmed, but could not persist the state"
     say "REINDEX-STOCK COMPLETE."
     emit REINDEX_OK "1"
@@ -2924,6 +3136,8 @@ cleanup_residue()
 post_boot_failure()
 {
     local reason="$1"
+    POST_BOOT_STATUS="FAIL"
+    POST_BOOT_REASON="$reason"
     emit POST_BOOT_STATUS "FAIL"
     if ! journal_state "ROLLBACK_REQUIRED" >/dev/null 2>&1; then
         reason="$reason; could not record ROLLBACK_REQUIRED"
@@ -2931,6 +3145,30 @@ post_boot_failure()
     say "ERROR: $reason"
     emit POST_BOOT_REASON "$reason"
     return 4
+}
+
+verify_pure_masks()
+{
+    local component mask target expected_owner expected_mode expected_context actual_owner actual_mode actual_context
+    for component in gms gsf store; do
+        case "$component" in
+            gms) mask="$MASK_GMS"; target="$TARGET_GMS" ;;
+            gsf) mask="$MASK_GSF"; target="$TARGET_GSF" ;;
+            store) mask="$MASK_STORE"; target="$TARGET_STORE" ;;
+        esac
+        is_safe_target_directory "$target" || return 1
+        is_masked_by_us "$target" "$mask" "" || return 1
+        [ -d "$mask" ] && [ -z "$(find "$mask" -mindepth 1 -print -quit 2>/dev/null)" ] || return 1
+        expected_owner="$(snapshot_field "$component" owner)"
+        expected_mode="$(snapshot_field "$component" mode)"
+        expected_context="$(snapshot_field "$component" selinuxContext)"
+        actual_owner="$(global stat -c %u:%g "$mask" 2>/dev/null)"
+        actual_mode="$(global stat -c %a "$mask" 2>/dev/null)"
+        actual_context="$(global ls -Zd "$mask" 2>/dev/null | awk '{print $1}')"
+        [ "$actual_owner" = "$expected_owner" ] && [ "$actual_mode" = "$expected_mode" ] && \
+            [ "$actual_context" = "$expected_context" ] || return 1
+    done
+    return 0
 }
 
 post_boot_validate()
@@ -2973,6 +3211,22 @@ post_boot_validate()
     [ "$MOUNT_GMS_IS_OURS" = "1" ] || { post_boot_failure "GMS mask mount ownership is not verified"; return $?; }
     [ "$MOUNT_GSF_IS_OURS" = "1" ] || { post_boot_failure "GSF mask mount ownership is not verified"; return $?; }
     [ "$MOUNT_STORE_IS_OURS" = "1" ] || { post_boot_failure "Store mask mount ownership is not verified"; return $?; }
+    [ "$SELINUX" = "Enforcing" ] || { post_boot_failure "SELinux is not Enforcing"; return $?; }
+
+    if [ "$OPERATION_MODE" = "PURE" ]; then
+        verify_pure_masks || { post_boot_failure "pure mask ownership, metadata, or emptiness validation failed"; return $?; }
+        pm_package_absent "$GMS_PKG" || { post_boot_failure "GMS is still registered or Package Manager could not confirm absence"; return $?; }
+        pm_package_absent "$GSF_PKG" || { post_boot_failure "GSF is still registered or Package Manager could not confirm absence"; return $?; }
+        pm_package_absent "$STORE_PKG" || { post_boot_failure "Play Store is still registered or Package Manager could not confirm absence"; return $?; }
+        journal_state "COMMITTED" || { post_boot_failure "could not record COMMITTED"; return $?; }
+        rm -f "$RESCUE_STATE_FILE" 2>/dev/null || true
+        POST_BOOT_STATUS="PASS"
+        POST_BOOT_REASON="system_server, boot_completed, empty owned masks, package absence, and SELinux validated"
+        emit POST_BOOT_STATUS "$POST_BOOT_STATUS"
+        emit POST_BOOT_REASON "$POST_BOOT_REASON"
+        return 0
+    fi
+
     [ -z "$(find "$MASK_GSF" -mindepth 1 -print -quit 2>/dev/null)" ] || {
         post_boot_failure "GSF mask is not empty"
         return $?
@@ -2981,15 +3235,16 @@ post_boot_validate()
     [ -z "$GSF_PATH" ] || { post_boot_failure "stock GSF is still active"; return $?; }
     path_under_target "$STORE_PATH" "$TARGET_STORE" || { post_boot_failure "Companion does not resolve to the mask"; return $?; }
     [ "$GMS_PRIVILEGED" = "1" ] || { post_boot_failure "GMS is not PRIVILEGED"; return $?; }
-    [ "$SELINUX" = "Enforcing" ] || { post_boot_failure "SELinux deixou de estar Enforcing"; return $?; }
 
     journal_state "COMMITTED" || {
         post_boot_failure "could not record COMMITTED"
         return $?
     }
     rm -f "$RESCUE_STATE_FILE" 2>/dev/null || true
+    POST_BOOT_STATUS="PASS"
+    POST_BOOT_REASON="system_server, boot_completed, packages, priv-app, and SELinux validated"
     emit POST_BOOT_STATUS "PASS"
-    emit POST_BOOT_REASON "system_server, boot_completed, packages, priv-app, and SELinux validated"
+    emit POST_BOOT_REASON "$POST_BOOT_REASON"
     return 0
 }
 
@@ -3129,7 +3384,8 @@ case "${1:-}" in
         probe
         ;;
     prepare)
-        prepare "${2:-}" "${3:-}" "${4:-}" "${5:-}"
+        shift
+        prepare "$@"
         ;;
     finalize)
         finalize

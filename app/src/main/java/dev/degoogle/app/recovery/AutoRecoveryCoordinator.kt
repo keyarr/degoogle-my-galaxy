@@ -24,7 +24,7 @@ data class RecoveryAssessment(
  * Pure policy that prevents an arbitrary ERROR state from triggering a
  * destructive operation. Recover only states the backend can prove:
  *
- * - RESTORE_PREPARED: no mounts are active, but PM does not see GSF/Store yet;
+ * - RESTORE_PREPARED before a verified restart: no mounts are active, but PM does not see GSF/Store yet;
  * - ERROR with a known legacy mount: the old manual script left masks at the
  *   approved targets exactly;
  * - STOCK with known residue: recovery is complete; only temporary
@@ -36,6 +36,11 @@ object RecoveryPolicy {
         val legacyMount = facts.mountGmsIsLegacy || facts.mountGsfIsLegacy || facts.mountStoreIsLegacy
 
         return when {
+            state == DeviceState.RESTORE_PREPARED && facts.stockReindexReady -> RecoveryAssessment(
+                state = state,
+                action = AutoRecoveryAction.NONE,
+                reason = "stock reindex is ready after the verified userspace restart",
+            )
             state == DeviceState.RESTORE_PREPARED -> RecoveryAssessment(
                 state = state,
                 action = AutoRecoveryAction.RESTORE_STOCK,

@@ -155,4 +155,57 @@ class ProbeParserTest {
         assertEquals("PASS", f.postBootStatus)
         assertEquals("system_server, boot_completed, packages, priv-app e SELinux validados", f.postBootReason)
     }
+
+    @Test
+    fun `parseia modo e evidência de máscara pure`() {
+        val facts = ProbeParser.parse(
+            """
+                DEGOOGLE_OPERATION_MODE=PURE
+                DEGOOGLE_MODE_CONFLICT=0
+                DEGOOGLE_MASK_GMS_EMPTY=1
+                DEGOOGLE_MASK_GSF_EMPTY=1
+                DEGOOGLE_MASK_STORE_EMPTY=1
+                DEGOOGLE_PURE_MASKS_VALID=1
+                DEGOOGLE_POST_BOOT_STATUS=PASS
+            """.trimIndent(),
+        )
+
+        assertEquals(OperationMode.PURE, facts.operationMode)
+        assertFalse(facts.operationModeConflict)
+        assertTrue(facts.maskGmsEmpty && facts.maskGsfEmpty && facts.maskStoreEmpty)
+        assertTrue(facts.pureMasksValid)
+        assertTrue(facts.postBootValidated)
+    }
+
+    @Test
+    fun `parseia reindexação stock pendente e pronta`() {
+        val facts = ProbeParser.parse(
+            """
+                DEGOOGLE_STOCK_REINDEX_PENDING=1
+                DEGOOGLE_STOCK_REINDEX_READY=1
+            """.trimIndent(),
+        )
+
+        assertTrue(facts.stockReindexPending)
+        assertTrue(facts.stockReindexReady)
+    }
+
+    @Test
+    fun `parseia confirmação de restauração stock`() {
+        val facts = ProbeParser.parse(
+            """
+                DEGOOGLE_STOCK_CONFIRMED=1
+                DEGOOGLE_STOCK_CONFIRMATION_OPERATION_ID=op-restore
+            """.trimIndent(),
+        )
+
+        assertTrue(facts.stockRestoreConfirmed)
+        assertEquals("op-restore", facts.stockConfirmationOperationId)
+    }
+
+    @Test
+    fun `modo inválido não é interpretado como pure`() {
+        val facts = ProbeParser.parse("DEGOOGLE_OPERATION_MODE=OTHER")
+        assertEquals(null, facts.operationMode)
+    }
 }

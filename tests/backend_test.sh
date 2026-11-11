@@ -260,6 +260,18 @@ case "$1" in
     list)
         if [ "$2" = "packages" ] && [ "$3" = "-d" ] && [ "${FAKE_PM_GMS_DISABLED:-0}" = "1" ]; then
             echo "package:com.google.android.gms"
+        elif [ "$2" = "packages" ] && [ "$3" = "com.google.android.gms" ]; then
+            [ "${FAKE_PM_LIST_ERROR:-0}" = "1" ] && { echo "Package Manager unavailable" >&2; exit 1; }
+            [ "${PM_GMS_MISSING:-0}" = "1" ] || echo "package:com.google.android.gms"
+        elif [ "$2" = "packages" ] && [ "$3" = "com.google.android.gsf" ]; then
+            [ "${FAKE_PM_LIST_ERROR:-0}" = "1" ] && { echo "Package Manager unavailable" >&2; exit 1; }
+            [ "${PM_GSF_MISSING:-0}" = "1" ] || echo "package:com.google.android.gsf"
+        elif [ "$2" = "packages" ] && [ "$3" = "com.android.vending" ]; then
+            [ "${FAKE_PM_LIST_ERROR:-0}" = "1" ] && { echo "Package Manager unavailable" >&2; exit 1; }
+            [ "${PM_STORE_MISSING:-0}" = "1" ] || echo "package:com.android.vending"
+        elif [ "$2" = "packages" ] && [ "${FAKE_PM_LIST_ERROR:-0}" = "1" ]; then
+            echo "Package Manager unavailable" >&2
+            exit 1
         fi
         exit 0
         ;;
@@ -274,7 +286,9 @@ case "$1" in
             com.android.vending)
                 [ "${PM_STORE_MISSING:-0}" = "1" ] && exit 1
                 echo "package:${PM_STORE_PATH:-$DEGOOGLE_PROFILE_STORE/Phonesky.apk}" ;;
-            com.google.android.gms) echo "package:${PM_GMS_PATH:-$DEGOOGLE_PROFILE_GMS/GmsCore.apk}" ;;
+            com.google.android.gms)
+                [ "${PM_GMS_MISSING:-0}" = "1" ] && exit 1
+                echo "package:${PM_GMS_PATH:-$DEGOOGLE_PROFILE_GMS/GmsCore.apk}" ;;
             *) exit 1 ;;
         esac
         ;;
@@ -376,7 +390,7 @@ run_script()
     local want="$1"; shift
     local desc="$1"; shift
     local out rc
-    if [ "${1:-}" = "prepare" ] && [ "$#" = "3" ]; then
+    if [ "${1:-}" = "prepare" ] && [ "${2:-}" != "--mode" ] && [ "$#" = "3" ]; then
         local gms_sha256 companion_sha256
         gms_sha256="$(sha256sum "$2" | awk '{print $1}')"
         companion_sha256="$(sha256sum "$3" | awk '{print $1}')"
@@ -397,6 +411,7 @@ run_script()
         DEGOOGLE_PM_CACHE="$PM_CACHE" \
         FAKE_MANUFACTURER="${FAKE_MANUFACTURER:-}" \
         DEGOOGLE_REBOOT_SOURCE="${DEGOOGLE_REBOOT_SOURCE:-}" \
+        DEGOOGLE_MODE="${DEGOOGLE_MODE:-}" \
         DEGOOGLE_REBOOT_COOLDOWN_SECONDS="${DEGOOGLE_REBOOT_COOLDOWN_SECONDS:-}" \
         DEGOOGLE_KSUD_PATH="${DEGOOGLE_KSUD_PATH:-}" \
         PM_GMS_PATH="${PM_GMS_PATH:-}" \
@@ -406,11 +421,16 @@ run_script()
         FAKE_SYSTEM_CODE_PATH="${FAKE_SYSTEM_CODE_PATH:-}" \
         FAKE_DATA_CODE_PATH="${FAKE_DATA_CODE_PATH:-}" \
         PM_GSF_MISSING="${PM_GSF_MISSING:-}" \
+        PM_GMS_MISSING="${PM_GMS_MISSING:-}" \
         PM_STORE_MISSING="${PM_STORE_MISSING:-}" \
         FAKE_GMS_UPDATED_SYSTEM_APP="${FAKE_GMS_UPDATED_SYSTEM_APP:-}" \
         FAKE_GMS_PRIVILEGED="${FAKE_GMS_PRIVILEGED:-}" \
+        FAKE_PM_LIST_ERROR="${FAKE_PM_LIST_ERROR:-}" \
         FAKE_BOOT_COMPLETED="${FAKE_BOOT_COMPLETED:-}" \
         FAKE_BOOT_REASON="${FAKE_BOOT_REASON:-}" \
+        DEGOOGLE_TEST_BOOT_ID="${DEGOOGLE_TEST_BOOT_ID:-}" \
+        DEGOOGLE_TEST_SYSTEM_SERVER_PID="${DEGOOGLE_TEST_SYSTEM_SERVER_PID:-}" \
+        DEGOOGLE_TEST_SYSTEM_SERVER_START="${DEGOOGLE_TEST_SYSTEM_SERVER_START:-}" \
         FAKE_SELINUX_MODE="${FAKE_SELINUX_MODE:-}" \
         FAKE_PM_GMS_DISABLED="${FAKE_PM_GMS_DISABLED:-}" \
         PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE="${PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE:-}" \
@@ -457,6 +477,82 @@ setup_root
 run_script 0 "prepare #1" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" >/dev/null || true
 run_script 0 "prepare #2 (já mascarado)" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" >/dev/null || true
 [ "$(mount_count)" = "3" ] && ok "mounts não duplicados após re-execução" || bad "esperava 3 mounts, há $(mount_count)"
+teardown_root
+
+echo "== cenário 2b: pure mode usa três máscaras vazias e rejeita troca de modo"
+setup_root
+mkdir -p "$BACKUP_BASE/gms-user0"
+printf 'preserve-token-backup\n' > "$BACKUP_BASE/gms-user0/registration.xml"
+DEGOOGLE_MODE=PURE run_script 0 "pure prepare sem APKs" prepare --mode PURE >/dev/null || true
+[ "$(mount_count)" = "3" ] && ok "pure mode montou os três targets" || bad "pure mode deixou $(mount_count) mounts"
+[ -z "$(find "$MASK_BASE/gms" "$MASK_BASE/gsf" "$MASK_BASE/store" -mindepth 1 -print -quit 2>/dev/null)" ] && \
+    ok "as três máscaras pure estão vazias" || bad "pure mode deixou payload em uma máscara"
+grep -q '"operationMode": "PURE"' "$BACKUP_BASE/transaction/snapshot.json" && \
+    ok "snapshot registra PURE" || bad "snapshot sem modo PURE"
+[ -f "$BACKUP_BASE/gms-user0/registration.xml" ] && ok "backup microG preexistente preservado" || bad "backup microG foi alterado"
+DEGOOGLE_MODE=PURE run_script 0 "pure prepare repetido não duplica mounts" prepare --mode PURE >/dev/null || true
+[ "$(mount_count)" = "3" ] && ok "repetição manteve exatamente três mounts" || bad "repetição duplicou ou removeu mounts"
+DEGOOGLE_MODE=MICROG run_script 3 "troca para microG sem restaurar stock é recusada" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" >/dev/null || true
+[ "$(mount_count)" = "3" ] && [ -f "$BACKUP_BASE/gms-user0/registration.xml" ] && \
+    ok "modo e backup permaneceram intactos após troca recusada" || bad "troca recusada alterou estado"
+run_script 3 "backup de tokens bloqueado durante pure mode" backup >/dev/null || true
+run_script 3 "restauração de tokens bloqueada durante pure mode" restore-backup >/dev/null || true
+teardown_root
+
+echo "== cenário 2c: pure mode rejeita payload inesperado sem apagá-lo"
+setup_root
+mkdir -p "$MASK_BASE/gms"
+printf 'unexpected\n' > "$MASK_BASE/gms/user-payload"
+DEGOOGLE_MODE=PURE run_script 3 "pure prepare recusa payload preexistente" prepare --mode PURE >/dev/null || true
+[ -f "$MASK_BASE/gms/user-payload" ] && [ "$(mount_count)" = "0" ] && \
+    ok "payload inesperado preservado e nenhuma máscara montada" || bad "payload foi apagado ou houve mount"
+teardown_root
+
+echo "== cenário 2d: pure mode valida restart, ausência de pacotes e restauração"
+setup_root
+mkdir -p "$BACKUP_BASE/gms-user0"
+printf 'preserve-token-backup\n' > "$BACKUP_BASE/gms-user0/registration.xml"
+DEGOOGLE_MODE=PURE run_script 0 "pure prepare" prepare --mode PURE >/dev/null || true
+FAKE_SET_PROP_EXIT=0 run_script 0 "userspace restart request aceito" soft-reboot >/dev/null || true
+PM_GMS_MISSING=1 PM_GSF_MISSING=1 PM_STORE_MISSING=1 FAKE_PM_LIST_ERROR=1 \
+    DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
+    run_script 4 "pure postboot rejects an unavailable Package Manager" post-boot-validate > "$ROOT/pure-pm-error.out" || true
+grep -q 'Package Manager could not confirm absence' "$ROOT/pure-pm-error.out" && \
+    ok "falha de consulta do PM não confirmou pacote ausente" || bad "falha do PM foi tratada como ausência"
+PM_GMS_MISSING=1 PM_GSF_MISSING=1 PM_STORE_MISSING=1 \
+    DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
+    run_script 0 "pure pós-restart valida ausência dos três pacotes" post-boot-validate >/dev/null || true
+PM_GMS_MISSING=1 PM_GSF_MISSING=1 PM_STORE_MISSING=1 \
+    DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
+    run_script 0 "probe reconhece pure ativo validado" probe > "$ROOT/pure-probe.out" || true
+grep -q '^DEGOOGLE_STATE=DEGOOGLE_ACTIVE$' "$ROOT/pure-probe.out" && \
+    grep -q '^DEGOOGLE_OPERATION_MODE=PURE$' "$ROOT/pure-probe.out" && \
+    grep -q '^DEGOOGLE_PURE_MASKS_VALID=1$' "$ROOT/pure-probe.out" && \
+    grep -q '^DEGOOGLE_POST_BOOT_STATUS=PASS$' "$ROOT/pure-probe.out" && \
+    ok "probe só confirma pure ativo com evidência completa" || bad "pure ativo sem as evidências esperadas"
+run_script 0 "restauração stock desmonta pure" restore-stock --wipe-data >/dev/null || true
+[ "$(mount_count)" = "0" ] && [ -f "$BACKUP_BASE/gms-user0/registration.xml" ] && \
+    ok "restore-stock remove mounts e preserva backup" || bad "restauração perdeu mount ou backup"
+FAKE_BOOT_COMPLETED=1 run_script 3 "reindex bloqueia antes do restart do framework" reindex-stock > "$ROOT/early_reindex.out" || true
+grep -q 'verified userspace restart after restore-stock is required' "$ROOT/early_reindex.out" && \
+    ok "reindex pre-restart foi bloqueado" || bad "reindex pre-restart não foi bloqueado"
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 \
+    run_script 0 "probe preserva rollback pendente após restart" probe > "$ROOT/restore_probe.out" || true
+grep -q '^DEGOOGLE_STATE=RESTORE_PREPARED$' "$ROOT/restore_probe.out" && \
+    grep -q '^DEGOOGLE_STOCK_REINDEX_PENDING=1$' "$ROOT/restore_probe.out" && \
+    grep -q '^DEGOOGLE_STOCK_REINDEX_READY=1$' "$ROOT/restore_probe.out" && \
+    ok "probe mantém reindex pendente até confirmação" || bad "probe perdeu o estado de reindex pendente"
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 \
+    run_script 0 "reindex confirma stock restaurado" reindex-stock >/dev/null || true
+grep -q '^state=STOCK_CONFIRMED$' "$BACKUP_BASE/transaction/journal" && \
+    ok "stock confirmado depois do reindex" || bad "stock não foi confirmado"
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 \
+    run_script 0 "probe expõe stock confirmado" probe > "$ROOT/confirmed_stock_probe.out" || true
+grep -q '^DEGOOGLE_STOCK_CONFIRMED=1$' "$ROOT/confirmed_stock_probe.out" && \
+    ok "probe permite reconciliar restauração após recriação do app" || bad "probe não expôs confirmação de stock"
+DEGOOGLE_MODE=MICROG run_script 0 "microG permitido após stock confirmado" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" >/dev/null || true
+grep -q '"operationMode": "MICROG"' "$BACKUP_BASE/transaction/snapshot.json" && \
+    ok "novo snapshot só troca para microG depois do stock" || bad "modo não mudou após restauração confirmada"
 teardown_root
 
 echo "== cenário 3: falha no mount GSF → rollback do GMS"
@@ -600,6 +696,15 @@ run_script 0 "restore-stock aceita somente mount legacy verificado" restore-stoc
     [ ! -e "$LEGACY_MASK_BASE/store/FakeStore.apk" ] && \
     grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && \
     ok "legacy desmontado e limpo com recovery pendente registrado" || bad "legacy verificado não foi recuperado"
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 \
+    run_script 0 "probe reconhece reindex legacy após restart" probe > "$ROOT/legacy_restore_probe.out" || true
+grep -q '^DEGOOGLE_STOCK_REINDEX_PENDING=1$' "$ROOT/legacy_restore_probe.out" && \
+    grep -q '^DEGOOGLE_STOCK_REINDEX_READY=1$' "$ROOT/legacy_restore_probe.out" && \
+    ok "restore legacy pode seguir para o reindex pos-restart" || bad "reindex legacy não ficou disponível"
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 \
+    run_script 0 "reindex finaliza restore legacy sem snapshot" reindex-stock > "$ROOT/legacy_reindex.out" || true
+grep -q '^state=STOCK_CONFIRMED$' "$BACKUP_BASE/transaction/journal" && \
+    ok "restore legacy foi confirmado sem snapshot" || { bad "restore legacy não foi confirmado"; cat "$ROOT/legacy_reindex.out"; }
 teardown_root
 
 setup_root
@@ -800,7 +905,7 @@ FAKE_STORE_SYSTEM_CODE_PATH="$PROF_STORE/Phonesky.apk" \
 grep -q '^DEGOOGLE_CAP_GMS_MASKABLE_STATUS=PASS$' "$ROOT/update_dry_run.out" && \
     grep -q '^DEGOOGLE_CAP_STORE_MASKABLE_STATUS=PASS$' "$ROOT/update_dry_run.out" && \
     ok "GMS/Store update não geram WARN de maskabilidade" || bad "GMS/Store update ainda geram WARN"
-grep -q 'update em /data/app será removido durante a preparação' "$ROOT/update_dry_run.out" && \
+grep -q 'update in /data/app will be removed during preparation' "$ROOT/update_dry_run.out" && \
     ok "dry-run informa o cleanup automático" || bad "dry-run não informa o cleanup automático"
 PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
 PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
@@ -924,6 +1029,7 @@ FAKE_PM_GMS_DISABLED=1 PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE=1 \
     ok "payloads do microG removidos pre-reboot" || bad "payloads antigos permaneceram"
 grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && \
     ok "rollback ordenado alcançou REINDEX_PENDING" || bad "rollback ordenado não foi concluído"
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 \
 FAKE_PM_GMS_DISABLED=1 PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE=1 \
     run_script 0 "reindex-stock reabilita apos o wipe" reindex-stock > "$ROOT/ordered_reindex.out" || true
 grep -q 'REINDEX_OK' "$ROOT/ordered_reindex.out" || grep -q 'REINDEX-STOCK CONCLUÍDO' "$ROOT/ordered_reindex.out" && \
@@ -943,7 +1049,8 @@ PM_GSF_MISSING=1 PM_STORE_MISSING=1 run_script 0 "restore-stock pre-reboot prese
 [ -e "$PM_SYSTEM/packages.xml" ] && ok "restore-stock não move packages.xml pre-reboot" || bad "restore-stock moveu packages.xml pre-reboot"
 printf 'stock gsf\n' > "$PROF_GSF/GoogleServicesFramework.apk"
 printf 'stock store\n' > "$PROF_STORE/Phonesky.apk"
-PM_GSF_MISSING=1 PM_STORE_MISSING=1 run_script 0 "reindex-stock invalida registro PM quando stock está presente" reindex-stock > "$ROOT/registry_reindex.out" || true
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 PM_GSF_MISSING=1 PM_STORE_MISSING=1 \
+    run_script 0 "reindex-stock invalida registro PM quando stock está presente" reindex-stock > "$ROOT/registry_reindex.out" || true
 [ ! -e "$PM_SYSTEM/packages.xml" ] && [ ! -e "$PM_SYSTEM/packages.list" ] && \
     [ ! -e "$PM_SYSTEM/packages.xml.reservecopy" ] && ok "arquivos stale do PM foram removidos do caminho ativo" || \
     { bad "registro stale do PM permaneceu ativo"; cat "$ROOT/registry_reindex.out"; }
@@ -1033,7 +1140,7 @@ grep -q 'kernel boot identity changed' "$ROOT/kernel_change.out" && \
 
 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=0 FAKE_GMS_PRIVILEGED=1 PM_GSF_MISSING=1 \
     run_script 4 "post-boot aguarda sys.boot_completed" post-boot-validate > "$ROOT/boot_incomplete.out" || true
-grep -q 'sys.boot_completed não confirmou' "$ROOT/boot_incomplete.out" && \
+grep -q 'sys.boot_completed did not confirm boot completion' "$ROOT/boot_incomplete.out" && \
     ok "boot incompleto não concluiu transação" || bad "boot incompleto foi aceito"
 
 for target in "$PROF_GMS" "$PROF_GSF" "$PROF_STORE"; do
@@ -1062,29 +1169,29 @@ cp "$ROOT/full_mountinfo" "$MOUNTINFO"
 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 FAKE_GMS_PRIVILEGED=1 PM_GSF_MISSING=1 \
 PM_GMS_PATH="/data/app/other/base.apk" \
     run_script 4 "post-boot rejeita GMS fora do target" post-boot-validate > "$ROOT/gms_path.out" || true
-grep -q 'GMS não resolve para a máscara' "$ROOT/gms_path.out" && \
+grep -q 'GMS does not resolve to the mask' "$ROOT/gms_path.out" && \
     ok "path GMS inesperado bloqueou conclusão" || bad "path GMS inesperado foi aceito"
 
 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 FAKE_GMS_PRIVILEGED=1 \
     run_script 4 "post-boot rejeita GSF stock ativo" post-boot-validate > "$ROOT/gsf_active.out" || true
-grep -q 'GSF stock ainda está ativo' "$ROOT/gsf_active.out" && \
+grep -q 'stock GSF is still active' "$ROOT/gsf_active.out" && \
     ok "GSF stock ativo bloqueou conclusão" || bad "GSF stock ativo foi aceito"
 
 PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
 PM_STORE_PATH="/data/app/other/base.apk" FAKE_GMS_PRIVILEGED=1 \
     run_script 4 "post-boot rejeita Store fora do target" post-boot-validate > "$ROOT/store_path.out" || true
-grep -q 'Companion não resolve para a máscara' "$ROOT/store_path.out" && \
+grep -q 'Companion does not resolve to the mask' "$ROOT/store_path.out" && \
     ok "path Store inesperado bloqueou conclusão" || bad "path Store inesperado foi aceito"
 
 PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
     run_script 4 "post-boot exige GMS privilegiado" post-boot-validate > "$ROOT/gms_privilege.out" || true
-grep -q 'GMS não está PRIVILEGED' "$ROOT/gms_privilege.out" && \
+grep -q 'GMS is not PRIVILEGED' "$ROOT/gms_privilege.out" && \
     ok "GMS sem flag privilegiada bloqueou conclusão" || bad "GMS sem flag privilegiada foi aceito"
 
 PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
 FAKE_GMS_PRIVILEGED=1 FAKE_SELINUX_MODE=Permissive \
     run_script 4 "post-boot exige SELinux Enforcing" post-boot-validate > "$ROOT/selinux_post_boot.out" || true
-grep -q 'SELinux deixou de estar Enforcing' "$ROOT/selinux_post_boot.out" && \
+grep -q 'SELinux is not Enforcing' "$ROOT/selinux_post_boot.out" && \
     ok "SELinux permissivo bloqueou conclusão" || bad "SELinux permissivo foi aceito"
 
 PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
@@ -1126,7 +1233,7 @@ if command -v zip >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
         ok "lib com modo 0444" || bad "modo da lib inválido"
     [ -f "$PROF_GMS/lib/arm64/libmapbox-gl.so" ] && \
         ok "lib visível no alvo mascarado" || bad "lib não apareceu no alvo"
-    grep -q 'libmapbox-gl.so ok' "$ROOT/mapbox_prepare.out" && \
+    grep -qi 'libmapbox-gl.so OK' "$ROOT/mapbox_prepare.out" && \
         ok "prepare validou a lib" || bad "prepare não validou a lib"
 else
     echo "  - zip/unzip ausentes no PATH (pulando)"

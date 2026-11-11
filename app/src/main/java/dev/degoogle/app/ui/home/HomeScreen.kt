@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.degoogle.app.R
 import dev.degoogle.app.domain.DeviceState
+import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.Screen
 import dev.degoogle.app.ui.UiState
@@ -154,6 +155,8 @@ fun HomeScreen(
             DeviceState.UNSUPPORTED -> UnsupportedCard(ui)
             DeviceState.STOCK -> StockContent(ui, vm, onNavigate, { vm.degoogle() })
             DeviceState.PREPARED -> PreparedContent(ui, vm, onNavigate)
+            DeviceState.DEGOOGLE_PREPARED -> PurePreparedContent(ui, vm)
+            DeviceState.DEGOOGLE_ACTIVE -> PureActiveContent(ui, vm)
             DeviceState.MICROG_BOOTED -> BootedContent(ui, vm)
             DeviceState.MICROG_NEEDS_SETUP, DeviceState.MICROG_ACTIVE,
             DeviceState.MICROG_ACTIVE_BACKED_UP -> ActiveContent(
@@ -203,6 +206,31 @@ fun HomeScreen(
     }
 
     // ------------------------------------------------------------ Dialogs
+    if (ui.modeDialogVisible) {
+        AlertDialog(
+            shape = RoundedCornerShape(0.dp),
+            onDismissRequest = { vm.dismissModeDialog() },
+            title = { Text(stringResource(R.string.home_mode_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(onClick = { vm.selectMode(OperationMode.PURE) }) {
+                        Column {
+                            Text(stringResource(R.string.home_mode_pure_title), fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.home_mode_pure_desc))
+                        }
+                    }
+                    TextButton(onClick = { vm.selectMode(OperationMode.MICROG) }) {
+                        Column {
+                            Text(stringResource(R.string.home_mode_microg_title), fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.home_mode_microg_desc))
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+        )
+    }
+
     if (ui.needsSetupPrompt) {
         AlertDialog(
             shape = RoundedCornerShape(0.dp),
@@ -339,10 +367,100 @@ private fun StockContent(
         }
     }
 
+    if (ui.selectedMode == null) {
+        Button(
+            onClick = { vm.openModeDialog() },
+            enabled = !ui.operationInProgress && !ui.recoveryRequired,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(0.dp),
+        ) {
+            Text(stringResource(R.string.home_choose_mode), fontWeight = FontWeight.Bold)
+        }
+    } else {
+        InfoCard(stringResource(R.string.home_selected_mode)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(
+                        if (ui.selectedMode == OperationMode.PURE) R.string.home_mode_pure_title
+                        else R.string.home_mode_microg_title,
+                    ),
+                    fontWeight = FontWeight.Bold,
+                )
+                TextButton(
+                    onClick = { vm.openModeDialog() },
+                    enabled = !ui.operationInProgress && !ui.recoveryRequired,
+                ) { Text(stringResource(R.string.home_change_mode)) }
+            }
+        }
+        SlideToExecute(
+            label = stringResource(
+                if (ui.selectedMode == OperationMode.PURE) R.string.home_slide_degoogle
+                else R.string.home_slide_microg,
+            ),
+            enabled = !ui.operationInProgress && !ui.recoveryRequired,
+            onExecute = onDeGoogle,
+        )
+    }
+}
+
+@Composable
+private fun PurePreparedContent(ui: UiState, vm: AppViewModel) {
+    InfoCard(
+        title = stringResource(R.string.home_pure_prepared_title),
+        action = {
+            StateBadge(
+                text = stringResource(R.string.home_badge_reboot_required),
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+        },
+    ) {
+        Text(
+            text = stringResource(R.string.home_pure_prepared_desc),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+    Button(
+        onClick = { vm.softReboot() },
+        enabled = !ui.operationInProgress,
+        modifier = Modifier.fillMaxWidth().height(56.dp),
+        shape = RoundedCornerShape(0.dp),
+    ) { Text(stringResource(R.string.home_soft_reboot_btn), fontWeight = FontWeight.Bold) }
     SlideToExecute(
-        label = "[ >>> SLIDE TO MOUNT PAYLOAD >>> ]",
+        label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
+        enabled = !ui.operationInProgress,
+        onExecute = { vm.restoreGoogle() },
+    )
+}
+
+@Composable
+private fun PureActiveContent(ui: UiState, vm: AppViewModel) {
+    InfoCard(
+        title = stringResource(R.string.home_pure_active_title),
+        action = {
+            StateBadge(
+                text = stringResource(R.string.home_badge_active),
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        },
+    ) {
+        Column(modifier = Modifier.padding(top = 8.dp)) {
+            StatusRow(stringResource(R.string.diag_play_services), stringResource(R.string.absent), Status.OK, showStatus = false)
+            StatusRow(stringResource(R.string.diag_framework_gsf), stringResource(R.string.absent), Status.OK, showStatus = false)
+            StatusRow(stringResource(R.string.diag_store_path), stringResource(R.string.absent), Status.OK, showStatus = false)
+            StatusRow(stringResource(R.string.home_pure_masks), stringResource(R.string.ok), Status.OK, showStatus = false)
+        }
+    }
+    SlideToExecute(
+        label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
         enabled = !ui.operationInProgress && !ui.recoveryRequired,
-        onExecute = onDeGoogle,
+        onExecute = { vm.restoreGoogle() },
     )
 }
 
@@ -387,9 +505,16 @@ private fun PreparedContent(
 
 @Composable
 private fun IsolationStages(ui: UiState) {
-    val stockRemoved = ui.state !in setOf(DeviceState.STOCK, DeviceState.UNSUPPORTED, DeviceState.NO_ROOT)
+    val pureMode = ui.facts.operationMode == OperationMode.PURE && !ui.facts.stockRestoreConfirmed
+    val stockRemoved = if (pureMode) {
+        ui.state == DeviceState.DEGOOGLE_ACTIVE
+    } else {
+        ui.state !in setOf(DeviceState.STOCK, DeviceState.UNSUPPORTED, DeviceState.NO_ROOT)
+    }
     val namespaceActive = ui.state in setOf(
         DeviceState.PREPARED,
+        DeviceState.DEGOOGLE_PREPARED,
+        DeviceState.DEGOOGLE_ACTIVE,
         DeviceState.MICROG_BOOTED,
         DeviceState.MICROG_NEEDS_SETUP,
         DeviceState.MICROG_ACTIVE,
@@ -397,12 +522,15 @@ private fun IsolationStages(ui: UiState) {
         DeviceState.RESTORE_PREPARED,
     )
     val identityVerified = ui.state in setOf(DeviceState.MICROG_ACTIVE, DeviceState.MICROG_ACTIVE_BACKED_UP)
-
     InfoCard("NAMESPACE INTEGRITY") {
         StageLine("STAGE_00: STOCK GOOGLE SURVEILLANCE", if (stockRemoved) "[x] REMOVED" else "[>] PRESENT")
         StageLine("STAGE_01: KERNEL NAMESPACE MASKING", if (namespaceActive) "[>] ACTIVE" else "[ ] PENDING")
-        StageLine("STAGE_02: MICROG IDENTITY SPOOFING", if (identityVerified) "[x] VERIFIED" else "[ ] PENDING")
-        StageLine("STAGE_03: FCM TOKEN AIRGAP ARCHIVE", if (ui.facts.backupPresent) "[x] SEALED" else "[ ] PENDING")
+        if (pureMode) {
+            StageLine("STAGE_02: PURE DEGOOGLE VALIDATION", if (ui.state == DeviceState.DEGOOGLE_ACTIVE) "[x] VERIFIED" else "[ ] PENDING")
+        } else {
+            StageLine("STAGE_02: MICROG IDENTITY SPOOFING", if (identityVerified) "[x] VERIFIED" else "[ ] PENDING")
+            StageLine("STAGE_03: FCM TOKEN AIRGAP ARCHIVE", if (ui.facts.backupPresent) "[x] SEALED" else "[ ] PENDING")
+        }
     }
 }
 
@@ -548,20 +676,31 @@ private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
         title = stringResource(R.string.home_restore_prepared_title),
     ) {
         Text(
-            text = stringResource(R.string.home_restore_prepared_desc),
+            text = stringResource(
+                if (ui.facts.stockReindexReady) R.string.home_reindex_stock_desc
+                else R.string.home_restore_prepared_desc,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 8.dp),
         )
     }
 
     Button(
-        onClick = { vm.softReboot() },
+        onClick = { if (ui.facts.stockReindexReady) vm.reindexStock() else vm.softReboot() },
+        enabled = !ui.operationInProgress && !ui.recoveryRequired,
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
         shape = RoundedCornerShape(0.dp),
     ) {
-        Text(stringResource(R.string.home_soft_reboot_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Text(
+            stringResource(
+                if (ui.facts.stockReindexReady) R.string.home_reindex_stock_btn
+                else R.string.home_soft_reboot_btn,
+            ),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 

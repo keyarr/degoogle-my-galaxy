@@ -70,6 +70,21 @@ class AutoRecoveryCoordinatorTest {
     }
 
     @Test
+    fun `reindex stock pronto aguarda a ação da tela`() {
+        val facts = stockFacts().copy(
+            gsfPath = null,
+            storePath = null,
+            stockReindexPending = true,
+            stockReindexReady = true,
+        )
+
+        val assessment = RecoveryPolicy.assess(facts, profile)
+
+        assertEquals(DeviceState.RESTORE_PREPARED, assessment.state)
+        assertEquals(AutoRecoveryAction.NONE, assessment.action)
+    }
+
+    @Test
     fun `mount legado conhecido solicita restore stock`() {
         val facts = stockFacts().copy(
             mountGms = true,

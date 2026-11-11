@@ -18,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.degoogle.app.R
+import dev.degoogle.app.domain.DeviceState
+import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
@@ -32,6 +34,10 @@ import dev.degoogle.app.ui.components.TechnicalStatusRow
 @Composable
 fun BackupScreen(ui: UiState, vm: AppViewModel) {
     val f = ui.facts
+    val pureMode = !f.stockRestoreConfirmed && (
+        f.operationMode == OperationMode.PURE ||
+            ui.state == DeviceState.STOCK && ui.selectedMode == OperationMode.PURE
+        )
     val backupCreatedAt = f.backupCreatedAt?.let { epochSeconds ->
         DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
             .format(Date(epochSeconds * 1000L))
@@ -124,6 +130,15 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
             }
         }
 
+        if (pureMode) {
+            InfoCard(stringResource(R.string.backup_pure_mode_title)) {
+                Text(
+                    text = stringResource(R.string.backup_pure_mode_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+
         InfoCard(
             title = stringResource(
                 if (ui.operationInProgress) R.string.operation_log_live
@@ -145,14 +160,14 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
             SlideToExecute(
                 label = if (f.backupPresent) "[ >>> SLIDE TO UPDATE TOKEN VAULT >>> ]"
                 else "[ >>> SLIDE TO CREATE TOKEN VAULT >>> ]",
-                enabled = !ui.operationInProgress,
+                enabled = !ui.operationInProgress && !pureMode,
                 onExecute = { vm.createBackup() },
             )
 
             if (f.backupPresent) {
                 SlideToExecute(
                     label = "[ >>> SLIDE TO RESTORE TOKENS >>> ]",
-                    enabled = !ui.operationInProgress,
+                    enabled = !ui.operationInProgress && !pureMode,
                     onExecute = { vm.restoreBackup() },
                 )
 

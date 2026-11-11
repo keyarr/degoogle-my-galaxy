@@ -96,6 +96,14 @@ class StateDetectorTest {
         assertEquals(DeviceState.STOCK, StateDetector.detect(f, profile))
     }
 
+    @Test
+    fun `reindex stock pendente continua em RESTORE_PREPARED`() {
+        val f = facts {
+            stockReindexPending = true
+        }
+        assertEquals(DeviceState.RESTORE_PREPARED, StateDetector.detect(f, profile))
+    }
+
     // 4. GMS em /data/app
     @Test
     fun `GMS em data app vira ERROR`() {
@@ -240,6 +248,56 @@ class StateDetectorTest {
         assertEquals(DeviceState.ERROR, StateDetector.detect(f, profile))
     }
 
+    @Test
+    fun `pure mode prepared requires three owned empty masks`() {
+        val f = facts {
+            mountedByUs()
+            operationMode = OperationMode.PURE
+            maskGmsEmpty = true
+            maskGsfEmpty = true
+            maskStoreEmpty = true
+            pureMasksValid = true
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
+            gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk"
+            storePath = "${profile.storeSystemDir}/Phonesky.apk"
+        }
+        assertEquals(DeviceState.DEGOOGLE_PREPARED, StateDetector.detect(f, profile))
+    }
+
+    @Test
+    fun `pure mode active requires post restart validation and absent packages`() {
+        val f = facts {
+            mountedByUs()
+            operationMode = OperationMode.PURE
+            maskGmsEmpty = true
+            maskGsfEmpty = true
+            maskStoreEmpty = true
+            pureMasksValid = true
+            postBootValidated = true
+            gmsPackage = targetInfo("com.google.android.gms", profile.gmsSystemDir)
+            gsfPackage = targetInfo("com.google.android.gsf", profile.gsfSystemDir)
+            storePackage = targetInfo("com.android.vending", profile.storeSystemDir)
+        }
+        assertEquals(DeviceState.DEGOOGLE_ACTIVE, StateDetector.detect(f, profile))
+
+        val packageStillRegistered = f.copy(gmsPath = "${profile.gmsSystemDir}/GmsCore.apk")
+        assertEquals(DeviceState.DEGOOGLE_PREPARED, StateDetector.detect(packageStillRegistered, profile))
+    }
+
+    @Test
+    fun `pure mode with unexpected payload or foreign mount is ERROR`() {
+        val f = facts {
+            mountedByUs()
+            operationMode = OperationMode.PURE
+            maskGmsEmpty = true
+            maskGsfEmpty = true
+            maskStoreEmpty = true
+            pureMasksValid = false
+        }
+        assertEquals(DeviceState.ERROR, StateDetector.detect(f, profile))
+        assertEquals(DeviceState.ERROR, StateDetector.detect(f.copy(mountStoreIsOurs = false), profile))
+    }
+
     // 11b. mounts de fonte desconhecida (ex.: microg-mask do script antigo)
     @Test
     fun `mounts de fonte desconhecida vira ERROR`() {
@@ -322,6 +380,14 @@ private class FactsBuilder(private val profile: DeviceProfile) {
     }
     var backupPresent = false
     var finalizeDone = false
+    var operationMode: OperationMode? = null
+    var maskGmsEmpty = false
+    var maskGsfEmpty = false
+    var maskStoreEmpty = false
+    var pureMasksValid = false
+    var postBootValidated = false
+    var stockReindexPending = false
+    var stockReindexReady = false
 
     fun build(): SystemFacts = SystemFacts(
         rootOk = rootOk,
@@ -357,6 +423,14 @@ private class FactsBuilder(private val profile: DeviceProfile) {
         mountStoreIsOurs = mountStoreIsOurs,
         mountGmsSource = mountGmsSource,
         backupPresent = backupPresent,
+        operationMode = operationMode,
+        maskGmsEmpty = maskGmsEmpty,
+        maskGsfEmpty = maskGsfEmpty,
+        maskStoreEmpty = maskStoreEmpty,
+        pureMasksValid = pureMasksValid,
+        postBootValidated = postBootValidated,
+        stockReindexPending = stockReindexPending,
+        stockReindexReady = stockReindexReady,
         finalizeDone = finalizeDone,
         shellState = null,
     )
@@ -372,4 +446,10 @@ private class FactsBuilder(private val profile: DeviceProfile) {
             targetDirectory = target,
         ).takeIf { it.safeTarget }
     }
+
+    fun targetInfo(packageName: String, target: String) = SystemPackageInfo(
+        packageName = packageName,
+        originalSystemPath = "$target/base.apk",
+        targetDirectory = target,
+    )
 }

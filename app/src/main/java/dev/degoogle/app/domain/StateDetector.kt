@@ -8,6 +8,7 @@ object StateDetector {
 
     fun detect(facts: SystemFacts, profile: DeviceProfile? = null): DeviceState {
         if (!facts.rootOk) return DeviceState.NO_ROOT
+        if (facts.operationModeConflict) return DeviceState.ERROR
 
         // PROFILE_MATCH is legacy backend telemetry. The source of truth for the
         // UI is the local profile, which also validates manufacturer, model, and SDK. In
@@ -20,6 +21,7 @@ object StateDetector {
 
         if (!facts.mountGms && !facts.mountGsf && !facts.mountStore) {
             // No active mounts: stock state or rollback pending a reboot.
+            if (facts.stockReindexPending) return DeviceState.RESTORE_PREPARED
             //
             // A legitimate system app update appears in
             // /data/app. It is accepted only when Package Locator also
@@ -57,6 +59,22 @@ object StateDetector {
         // does not manage this state and must not modify it.
         if (!facts.mountGmsIsOurs || !facts.mountGsfIsOurs || !facts.mountStoreIsOurs) {
             return DeviceState.ERROR
+        }
+
+        if (facts.operationMode == OperationMode.PURE) {
+            if (!facts.maskGmsEmpty || !facts.maskGsfEmpty || !facts.maskStoreEmpty || !facts.pureMasksValid) {
+                return DeviceState.ERROR
+            }
+            val targets = listOf(gmsTarget, gsfTarget, storeTarget)
+            if (targets.any { it == null } || targets.distinct().size != targets.size ||
+                targets.indices.any { i -> targets.indices.any { j ->
+                    i != j && targets[i]!!.startsWith("${targets[j]!!.trimEnd('/')}/")
+                } }
+            ) return DeviceState.ERROR
+            val packagesAbsent = facts.gmsPath.isNullOrBlank() &&
+                facts.gsfPath.isNullOrBlank() && facts.storePath.isNullOrBlank()
+            if (facts.postBootValidated && packagesAbsent) return DeviceState.DEGOOGLE_ACTIVE
+            return DeviceState.DEGOOGLE_PREPARED
         }
 
         val gmsFromMask = isUnderTarget(facts.gmsPath, gmsTarget)

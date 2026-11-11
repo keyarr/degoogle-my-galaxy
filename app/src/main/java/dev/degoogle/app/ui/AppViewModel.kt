@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import dev.degoogle.app.backup.BackupManager
 import dev.degoogle.app.data.Prefs
 import dev.degoogle.app.domain.DeviceState
+import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.domain.CompatibilityEngine
 import dev.degoogle.app.domain.KnownGoodDatabase
 import dev.degoogle.app.domain.TransactionJournalStore
@@ -101,6 +102,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch(Dispatchers.IO) {
             _notificationsEnabled.value = prefs.notificationsEnabled.first()
+            _ui.update { it.copy(selectedMode = prefs.selectedMode.firstOrNull()) }
         }
         refresh(clearError = true)
     }
@@ -147,18 +149,39 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                 // O backend detecta módulos e emite evidência, mas a prova
                 // decisiva precisa ocorrer via PackageManager no processo do
                 // app, que é o caminho efetivamente usado pelas aplicações.
-                capabilityResults = probe.facts.capabilityResults + (
-                    Capability.SIGNATURE_SPOOFING to signatureSpoofingProbe.check(
-                        probe.facts.capabilityResults[Capability.SIGNATURE_SPOOFING],
+                capabilityResults = if (probe.facts.operationMode == OperationMode.PURE) {
+                    probe.facts.capabilityResults
+                } else {
+                    probe.facts.capabilityResults + (
+                        Capability.SIGNATURE_SPOOFING to signatureSpoofingProbe.check(
+                            probe.facts.capabilityResults[Capability.SIGNATURE_SPOOFING],
+                        )
                     )
-                ),
+                },
             )
-            val state = StateDetector.detect(facts, profile = null)
+            var journal = transactionJournal.read()
+            val detectedState = StateDetector.detect(facts, profile = null)
+            val modeConflict = journal?.let {
+                it.operationMode == OperationMode.PURE && facts.operationMode == null ||
+                    it.operationMode != null && facts.operationMode != null && it.operationMode != facts.operationMode
+            } == true
+            val state = if (modeConflict) DeviceState.ERROR else detectedState
             val compatibility = CompatibilityEngine.evaluate(facts, knownGoodDatabase)
 
-            var journal = transactionJournal.read()
             var validationSucceeded = false
-            if (TransactionReconciliation.shouldCommitActiveState(journal, state)) {
+            val pureValidationPending = journal?.let { it.operationMode == OperationMode.PURE &&
+                it.state in setOf(
+                    TransactionState.PREFLIGHT_OK,
+                    TransactionState.BACKUP_STARTED,
+                    TransactionState.BACKUP_COMPLETE,
+                    TransactionState.GMS_MASKED,
+                    TransactionState.GSF_MASKED,
+                    TransactionState.STORE_MASKED,
+                    TransactionState.REBOOT_REQUESTED,
+                    TransactionState.POST_BOOT_VALIDATING,
+                ) } == true && state == DeviceState.DEGOOGLE_PREPARED &&
+                facts.gmsPath.isNullOrBlank() && facts.gsfPath.isNullOrBlank() && facts.storePath.isNullOrBlank()
+            if (TransactionReconciliation.shouldCommitActiveState(journal, state) || pureValidationPending) {
                 // O processo pode ter chegado a MICROG_ACTIVE antes de a
                 // Activity conseguir registrar COMMITTED. A validação completa
                 // é obrigatória antes de fechar o journal; não basta confiar no
@@ -170,7 +193,11 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                             operationId = current.operationId,
                             fingerprint = facts.fingerprint,
                             state = TransactionState.COMMITTED,
-                            detail = "post-boot validation confirmed active microG state",
+                            detail = if (journal?.operationMode == OperationMode.PURE) {
+                                "post-boot validation confirmed active pure DeGoogle state"
+                            } else {
+                                "post-boot validation confirmed active microG state"
+                            },
                         )
                     ) {
                         prefs.clearPendingOperation()
@@ -194,28 +221,24 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     prefs.clearPendingOperation()
                 }
             }
-            val stockConfirmed = state == DeviceState.STOCK
             var stockRestored = false
-            if (stockConfirmed && journal?.state in setOf(
-                    TransactionState.ROLLBACK_RUNNING,
-                    TransactionState.ROLLBACK_REQUIRED,
-                    TransactionState.REBOOT_REQUESTED,
-                    TransactionState.PACKAGE_CACHE_INVALIDATED,
-                    TransactionState.GMS_UNMOUNTED,
-                    TransactionState.GSF_UNMOUNTED,
-                    TransactionState.STORE_UNMOUNTED,
-                    TransactionState.REINDEX_PENDING,
-                    TransactionState.FAILED,
+            val confirmedOperationId = facts.stockConfirmationOperationId
+                ?.takeIf { it.isNotBlank() && it != "unknown" }
+            if (TransactionReconciliation.shouldMarkStockRestored(
+                    journal = journal,
+                    state = state,
+                    backendConfirmed = facts.stockRestoreConfirmed,
+                    backendOperationId = facts.stockConfirmationOperationId,
                 )
             ) {
-                journal?.let {
-                    transactionJournal.update(
-                        operationId = it.operationId,
-                        fingerprint = facts.fingerprint,
-                        state = TransactionState.RESTORED,
-                        detail = "stock state confirmed after rollback",
-                    )
-                }
+                prefs.setSelectedMode(null)
+                transactionJournal.update(
+                    operationId = journal?.operationId ?: confirmedOperationId ?: operationIdForCurrentTransaction(),
+                    fingerprint = facts.fingerprint,
+                    state = TransactionState.RESTORED,
+                    detail = "stock state confirmed after rollback",
+                    operationMode = journal?.operationMode ?: facts.operationMode,
+                )
                 prefs.clearPendingOperation()
                 journal = transactionJournal.read()
                 stockRestored = true
@@ -243,8 +266,36 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             } ?: false
             val rescuePartyNotice = rescuePartyOnlyFailure && !rescuePartyNoticeDismissed
 
+            val pendingPreparation = when (state) {
+                DeviceState.PREPARED -> journal?.state in setOf(
+                    TransactionState.PREFLIGHT_OK,
+                    TransactionState.BACKUP_STARTED,
+                    TransactionState.BACKUP_COMPLETE,
+                    TransactionState.GMS_MASKED,
+                    TransactionState.GSF_MASKED,
+                    TransactionState.STORE_MASKED,
+                    TransactionState.REBOOT_REQUESTED,
+                    TransactionState.POST_BOOT_VALIDATING,
+                )
+                DeviceState.DEGOOGLE_PREPARED -> journal?.let { it.operationMode == OperationMode.PURE &&
+                    it.state in setOf(
+                        TransactionState.PREFLIGHT_OK,
+                        TransactionState.BACKUP_STARTED,
+                        TransactionState.BACKUP_COMPLETE,
+                        TransactionState.GMS_MASKED,
+                        TransactionState.GSF_MASKED,
+                        TransactionState.STORE_MASKED,
+                        TransactionState.REBOOT_REQUESTED,
+                        TransactionState.POST_BOOT_VALIDATING,
+                    ) } == true
+                DeviceState.RESTORE_PREPARED -> journal?.state in setOf(
+                    TransactionState.REBOOT_REQUESTED,
+                    TransactionState.REINDEX_PENDING,
+                )
+                else -> false
+            }
             val recoveryRequired = transactionJournal.requiresRecovery() &&
-                state != DeviceState.PREPARED &&
+                !pendingPreparation &&
                 !rescuePartyOnlyFailure
 
             val recoveryDetail = if (recoveryRequired) journalDetail else null
@@ -263,6 +314,13 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             // Auxiliar: prompt de configuração na primeira instalação.
             val promptSeen = prefs.setupPromptSeen.firstOrNull() ?: false
             val needsPrompt = state == DeviceState.MICROG_ACTIVE && !facts.backupPresent && !promptSeen
+            val selectedMode = if (stockRestored) {
+                null
+            } else if (state != DeviceState.STOCK) {
+                journal?.operationMode ?: facts.operationMode
+            } else {
+                prefs.selectedMode.firstOrNull()
+            }
 
             _ui.update {
                 val resolvedError = if (validationSucceeded || stockRestored) null else it.error
@@ -276,15 +334,35 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     recoveryDetail = recoveryDetail,
                     rescuePartyNotice = rescuePartyNotice,
                     needsSetupPrompt = needsPrompt,
+                    selectedMode = selectedMode,
+                    modeDialogVisible = if (stockRestored) false else it.modeDialogVisible,
                     error = resolvedError,
                 )
             }
         }
     }
 
-    /** Fluxo DeGoogle: STOCK → PREPARED (download + validação + máscaras). */
+    fun openModeDialog() {
+        val current = _ui.value
+        if (current.refreshing || current.state != DeviceState.STOCK || current.operationInProgress || current.recoveryRequired) return
+        _ui.update { it.copy(modeDialogVisible = true) }
+    }
+
+    fun dismissModeDialog() = _ui.update { it.copy(modeDialogVisible = false) }
+
+    fun selectMode(mode: OperationMode) {
+        val current = _ui.value
+        if (current.refreshing || current.state != DeviceState.STOCK || current.operationInProgress || current.recoveryRequired) return
+        _ui.update { it.copy(selectedMode = mode, modeDialogVisible = false) }
+        viewModelScope.launch(Dispatchers.IO) { prefs.setSelectedMode(mode) }
+    }
+
+    /** Executes the selected operation after explicit slider confirmation. */
     fun degoogle() {
-        val m = microg ?: return
+        val initial = _ui.value
+        if (initial.refreshing || initial.state != DeviceState.STOCK || initial.operationInProgress || initial.recoveryRequired) return
+        val mode = initial.selectedMode ?: return
+        val backend = backend ?: return
         val decision = _ui.value.compatibility
         if (!decision.canExecuteNormally) {
             val message = when {
@@ -303,6 +381,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                 fingerprint = _ui.value.facts.fingerprint,
                 state = TransactionState.PREFLIGHT_OK,
                 detail = "compatibility engine authorized; backend preflight pending",
+                operationMode = mode,
             )
             _ui.update {
                 it.copy(
@@ -311,12 +390,40 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     error = null,
                 )
             }
-            val result = m.prepareNewSession()
+            val result = if (mode == OperationMode.PURE) {
+                appendOperationLog(app.getString(R.string.op_preflight))
+                val preflight = backend.preflight(OperationMode.PURE)
+                if (!preflight.succeeded) {
+                    PurePrepareResult(
+                        false,
+                        app.getString(
+                            R.string.op_preflight_blocked,
+                            preflight.exitCode,
+                            preflight.stderr.trim().takeLast(400),
+                        ),
+                    )
+                } else {
+                    val prepared = backend.preparePure()
+                    PurePrepareResult(
+                        prepared.succeeded,
+                        if (prepared.succeeded) "ok" else app.getString(
+                            R.string.op_prepare_failed,
+                            prepared.exitCode,
+                            prepared.stderr.trim().takeLast(400),
+                        ),
+                    )
+                }
+            } else {
+                val manager = microg
+                if (manager == null) PurePrepareResult(false, app.getString(R.string.error_backend_not_installed))
+                else manager.prepareNewSession().let { PurePrepareResult(it.succeeded, it.message) }
+            }
             transactionJournal.update(
                 operationId = operationIdForCurrentTransaction(),
                 fingerprint = _ui.value.facts.fingerprint,
                 state = if (result.succeeded) TransactionState.STORE_MASKED else TransactionState.FAILED,
                 detail = result.message,
+                operationMode = mode,
             )
             _ui.update {
                 it.copy(
@@ -336,8 +443,11 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private data class PurePrepareResult(val succeeded: Boolean, val message: String)
+
     /** Executa a fase final pós-boot (MICROG_BOOTED → ativo). */
     fun finalizeIfNeeded() {
+        if (_ui.value.facts.operationMode == OperationMode.PURE) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {
@@ -388,6 +498,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun createBackup() {
+        if (isPureModeActive()) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {
@@ -418,6 +529,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Restaura manualmente o backup local no formato do MicroG Session. */
     fun restoreBackup() {
+        if (isPureModeActive()) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {
@@ -562,11 +674,23 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun isPureModeActive(): Boolean {
+        val current = _ui.value
+        return !current.facts.stockRestoreConfirmed && (
+            current.facts.operationMode == OperationMode.PURE ||
+                current.state == DeviceState.STOCK && current.selectedMode == OperationMode.PURE
+            )
+    }
+
     /**
      * Pos-boot: reindexa pacotes stock quando o PM continua stale apos o
      * restore-stock + reboot. Binder so aqui, nunca no restore pre-reboot.
      */
     fun reindexStock() {
+        val current = _ui.value
+        if (current.refreshing || current.operationInProgress ||
+            current.state != DeviceState.RESTORE_PREPARED || !current.facts.stockReindexReady
+        ) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {

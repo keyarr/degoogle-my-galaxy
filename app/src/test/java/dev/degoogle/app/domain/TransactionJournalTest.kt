@@ -44,6 +44,73 @@ class TransactionJournalTest {
     }
 
     @Test
+    fun `modo da operação é persistido e mantido durante as transições`() {
+        val dir = Files.createTempDirectory("degoogle-journal-mode").toFile()
+        try {
+            val store = TransactionJournalStore(dir.resolve("journal"), clock = { 1234L })
+            assertTrue(
+                store.update(
+                    "op-pure",
+                    "fp",
+                    TransactionState.PREFLIGHT_OK,
+                    operationMode = OperationMode.PURE,
+                ),
+            )
+            assertTrue(store.update("op-pure", "fp", TransactionState.REBOOT_REQUESTED))
+            assertEquals(OperationMode.PURE, store.read()?.operationMode)
+            assertTrue(
+                TransactionReconciliation.shouldCommitActiveState(
+                    store.read(),
+                    DeviceState.DEGOOGLE_ACTIVE,
+                ),
+            )
+            assertFalse(
+                TransactionReconciliation.shouldCommitActiveState(
+                    store.read()?.copy(operationMode = OperationMode.MICROG),
+                    DeviceState.DEGOOGLE_ACTIVE,
+                ),
+            )
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `confirmação backend de stock é reconciliada uma vez para a mesma operação`() {
+        val journal = TransactionJournal(
+            operationId = "restore-op",
+            timestamp = 1234L,
+            deviceFingerprint = "fp",
+            state = TransactionState.REINDEX_PENDING,
+        )
+
+        assertTrue(
+            TransactionReconciliation.shouldMarkStockRestored(
+                journal = journal,
+                state = DeviceState.STOCK,
+                backendConfirmed = true,
+                backendOperationId = "restore-op",
+            ),
+        )
+        assertFalse(
+            TransactionReconciliation.shouldMarkStockRestored(
+                journal = journal.copy(state = TransactionState.RESTORED),
+                state = DeviceState.STOCK,
+                backendConfirmed = true,
+                backendOperationId = "restore-op",
+            ),
+        )
+        assertFalse(
+            TransactionReconciliation.shouldMarkStockRestored(
+                journal = journal.copy(operationId = "next-op", state = TransactionState.PREFLIGHT_OK),
+                state = DeviceState.STOCK,
+                backendConfirmed = true,
+                backendOperationId = "restore-op",
+            ),
+        )
+    }
+
+    @Test
     fun `transação pós reboot ativa pode ser reconciliada`() {
         val journal = TransactionJournal(
             operationId = "op-active",

@@ -1,6 +1,7 @@
 package dev.degoogle.app.root
 
 import dev.degoogle.app.domain.ProbeParser
+import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.domain.SystemFacts
 
 /**
@@ -49,7 +50,9 @@ class BackendRunner(
     suspend fun dryRun(): BackendCommandResult = runCommand(listOf("dry-run"), streamProgress = false)
 
     /** Revalidates the environment immediately before a destructive operation. */
-    suspend fun preflight(): BackendCommandResult = runCommand(listOf("preflight"))
+    suspend fun preflight(mode: OperationMode = OperationMode.MICROG): BackendCommandResult = runCommand(
+        listOf("preflight"), extraEnvironment = mapOf("DEGOOGLE_MODE" to mode.name),
+    )
 
     suspend fun prepare(
         gmsApk: String,
@@ -58,6 +61,12 @@ class BackendRunner(
         expectedCompanionSha256: String,
     ): BackendCommandResult = runCommand(
         listOf("prepare", gmsApk, companionApk, expectedGmsSha256, expectedCompanionSha256),
+        extraEnvironment = mapOf("DEGOOGLE_MODE" to OperationMode.MICROG.name),
+    )
+
+    suspend fun preparePure(): BackendCommandResult = runCommand(
+        listOf("prepare", "--mode", OperationMode.PURE.name),
+        extraEnvironment = mapOf("DEGOOGLE_MODE" to OperationMode.PURE.name),
     )
 
     suspend fun finalize(): BackendCommandResult = runCommand(listOf("finalize"))

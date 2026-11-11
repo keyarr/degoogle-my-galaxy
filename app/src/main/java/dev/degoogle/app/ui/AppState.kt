@@ -3,6 +3,7 @@ package dev.degoogle.app.ui
 import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.domain.CompatibilityDecision
 import dev.degoogle.app.domain.SystemFacts
+import dev.degoogle.app.domain.OperationMode
 
 /** Uma linha de log de uma operação (passos do backend, visíveis na UI). */
 data class StepLog(
@@ -38,6 +39,8 @@ data class UiState(
     val rescuePartyNotice: Boolean = false,
     /** Resultado do último soft reboot (para fallback). */
     val softRebootSupported: Boolean = true,
+    val selectedMode: OperationMode? = null,
+    val modeDialogVisible: Boolean = false,
 ) {
     companion object {
         val INITIAL = UiState()

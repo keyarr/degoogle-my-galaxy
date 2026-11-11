@@ -1,6 +1,7 @@
 package dev.degoogle.app.root
 
 import dev.degoogle.app.domain.DeviceState
+import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.domain.RootBackendType
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -82,6 +83,31 @@ class BackendRunnerTest {
             ),
             fake.recorded.single(),
         )
+    }
+
+    @Test
+    fun `pure prepara sem argumentos apk e envia modo explícito`() = runTest {
+        val fake = FakeExecutor()
+        val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
+
+        val result = runner.preparePure()
+
+        assertTrue(result.succeeded)
+        assertEquals(
+            listOf("sh", "/data/local/tmp/degoogle.sh", "prepare", "--mode", "PURE"),
+            fake.recorded.single(),
+        )
+        assertEquals(OperationMode.PURE.name, fake.environments.single()["DEGOOGLE_MODE"])
+    }
+
+    @Test
+    fun `preflight envia o modo solicitado`() = runTest {
+        val fake = FakeExecutor()
+        val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
+
+        runner.preflight(OperationMode.PURE)
+
+        assertEquals("PURE", fake.environments.single()["DEGOOGLE_MODE"])
     }
 
     @Test

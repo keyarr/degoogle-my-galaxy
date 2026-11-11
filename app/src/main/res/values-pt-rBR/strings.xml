@@ -20,6 +20,7 @@
     <string name="settings_profile_warning">O modo experimental nunca ignora FAIL ou UNKNOWN. Revise o relatório de compatibilidade antes de cada operação.</string>
     <string name="settings_footer">O banco known-good é versionado com o app. Um aparelho desconhecido nunca é aprovado apenas por semelhança de modelo.</string>
     <string name="diag_card_compatibility">Motor de compatibilidade</string>
+    <string name="diag_card_pure_mode">Validação DeGoogle pura</string>
     <string name="diag_compatibility">Classificação</string>
     <string name="diag_known_good_match">Match no known-good</string>
     <string name="diag_preparation_info">Os updates ativos do GMS/Play Store podem ser removidos durante a preparação; os caminhos stock serão revalidados depois.</string>
@@ -35,6 +36,8 @@
     <string name="state_stock">Google Stock</string>
     <string name="state_preparing">Preparando</string>
     <string name="state_prepared">Preparado</string>
+    <string name="state_degoogle_prepared">DeGoogle Preparado</string>
+    <string name="state_degoogle_active">DeGoogle Ativo</string>
     <string name="state_microg_booted">microG Inicializado</string>
     <string name="state_microg_needs_setup">Configuração Necessária</string>
     <string name="state_microg_active">microG Ativo</string>
@@ -170,6 +173,7 @@
     <string name="pending">pendente</string>
     <string name="not_created">não criado</string>
     <string name="not_supported">não suportado</string>
+    <string name="not_applicable">não se aplica</string>
     <string name="not_reported">Não informado</string>
     <string name="error_title">Erro</string>
     <string name="cancel">Cancelar</string>
@@ -193,6 +197,20 @@
     <string name="home_updates_detected_title">Updates do Google detectados</string>
     <string name="home_updates_detected_text">Os updates ativos do GMS/Play Store serão removidos automaticamente no início da preparação, retornando aos APKs stock. A Play Store será desabilitada temporariamente para evitar um novo update imediato.</string>
     <string name="home_install_microg_btn">Instalar microG (DeGoogle)</string>
+    <string name="home_choose_mode">Escolher modo</string>
+    <string name="home_selected_mode">Modo selecionado</string>
+    <string name="home_change_mode">Alterar modo</string>
+    <string name="home_mode_dialog_title">Escolha um modo</string>
+    <string name="home_mode_pure_title">Somente DeGoogle</string>
+    <string name="home_mode_pure_desc">Mascarar GMS, GSF e Play Store sem instalar substitutos.</string>
+    <string name="home_mode_microg_title">Substituir por microG</string>
+    <string name="home_mode_microg_desc">Instalar microG e Companion no lugar dos componentes Google stock.</string>
+    <string name="home_slide_degoogle">Deslize para DeGoogle</string>
+    <string name="home_slide_microg">Deslize para instalar microG</string>
+    <string name="home_pure_prepared_title">Preparação DeGoogle concluída</string>
+    <string name="home_pure_prepared_desc">Três máscaras vazias foram montadas. É necessário validar uma reinicialização de userspace antes de considerar os pacotes stock removidos.</string>
+    <string name="home_pure_active_title">Somente DeGoogle</string>
+    <string name="home_pure_masks">Máscaras vazias</string>
     <string name="home_prepared_title">Preparação concluída</string>
     <string name="home_badge_reboot_required">Requer Reboot</string>
     <string name="home_prepared_desc">As máscaras foram aplicadas no mount namespace global.\n\nO aparelho precisa de um soft reboot para o PackageManager registrar os novos pacotes priv-app.</string>
@@ -209,6 +227,8 @@
     <string name="home_btn_restore_google_stock">Restaurar Google Stock</string>
     <string name="home_restore_prepared_title">Rollback pronto</string>
     <string name="home_restore_prepared_desc">As máscaras foram removidas e o ambiente Google original será revelado após o soft reboot.</string>
+    <string name="home_reindex_stock_desc">O soft reboot foi confirmado. Reindexe os pacotes stock para concluir a restauração do ambiente Google original.</string>
+    <string name="home_reindex_stock_btn">Reindexar pacotes stock</string>
     <string name="home_error_state_title">Estado inconsistente</string>
     <string name="home_badge_warning">Atenção</string>
     <string name="home_error_state_desc">O aparelho está em um estado não esperado. Nenhuma operação foi executada automaticamente.\n\nConsulte a aba de Diagnóstico para ver os detalhes.</string>
@@ -243,6 +263,10 @@
     <string name="diag_security_notice">O relatório gerado é seguro e não contém tokens, senhas ou dados pessoais.</string>
     <string name="diag_root_access">Acesso Root</string>
     <string name="diag_state">Estado derivado</string>
+    <string name="diag_operation_mode">Modo da operação</string>
+    <string name="diag_mode_not_recorded">não registrado</string>
+    <string name="diag_empty_masks">Máscaras vazias</string>
+    <string name="diag_postboot_validation">Validação pós-reinício</string>
     <string name="diag_profile">Perfil</string>
     <string name="diag_device">Dispositivo</string>
     <string name="diag_android">Android</string>
@@ -255,6 +279,7 @@
     <string name="diag_version">Versão</string>
     <string name="diag_uid">UID</string>
     <string name="diag_privileged">Privileged (priv-app)</string>
+    <string name="diag_microg_checks">Verificações de identidade microG</string>
     <string name="diag_package_flags">Flags de Pacote</string>
     <string name="diag_gsf_present">GSF Presente</string>
     <string name="diag_gsf_path">GSF Path</string>
@@ -295,6 +320,8 @@
     <string name="backup_storage_path_value">/data/local/tmp/microg-backup</string>
     <string name="backup_why_title">Por que fazer o backup?</string>
     <string name="backup_why_desc">O backup preserva os dados de registro das notificações. Atualize-o depois de confirmar que elas funcionam.</string>
+    <string name="backup_pure_mode_title">Ações de token microG indisponíveis</string>
+    <string name="backup_pure_mode_desc">O modo DeGoogle puro não usa tokens do microG. Os arquivos de backup existentes são preservados e não indicam que o microG está ativo.</string>
     <string name="backup_btn_update_snapshot">Atualizar Snapshot do microG</string>
     <string name="backup_btn_create_snapshot">Criar Snapshot do microG</string>
     <string name="backup_btn_restore_data">Restaurar Dados do Backup</string>

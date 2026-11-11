@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import dev.degoogle.app.domain.OperationMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -27,6 +28,7 @@ class Prefs(private val context: Context) {
         val PENDING_SINCE = longPreferencesKey("pending_since")
         val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val RESCUE_PARTY_NOTICE_DISMISSED = stringPreferencesKey("rescue_party_notice_dismissed_op")
+        val SELECTED_MODE = stringPreferencesKey("selected_operation_mode")
     }
 
     val setupPromptSeen: Flow<Boolean> =
@@ -37,6 +39,11 @@ class Prefs(private val context: Context) {
 
     val notificationsEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[Keys.NOTIFICATIONS_ENABLED] ?: true }
+
+    val selectedMode: Flow<OperationMode?> =
+        context.dataStore.data.map { prefs ->
+            prefs[Keys.SELECTED_MODE]?.let { runCatching { OperationMode.valueOf(it) }.getOrNull() }
+        }
 
 
     /** Operação cujo aviso de Rescue Party já foi fechado pelo usuário. */
@@ -49,6 +56,12 @@ class Prefs(private val context: Context) {
 
     suspend fun setNotificationsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
+    }
+
+    suspend fun setSelectedMode(mode: OperationMode?) {
+        context.dataStore.edit {
+            if (mode == null) it.remove(Keys.SELECTED_MODE) else it[Keys.SELECTED_MODE] = mode.name
+        }
     }
 
     suspend fun markOperationPending(op: String) {

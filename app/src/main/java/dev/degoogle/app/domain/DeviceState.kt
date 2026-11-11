@@ -15,6 +15,8 @@ enum class DeviceState(@StringRes val labelRes: Int) {
     STOCK(R.string.state_stock),
     PREPARING(R.string.state_preparing),
     PREPARED(R.string.state_prepared),
+    DEGOOGLE_PREPARED(R.string.state_degoogle_prepared),
+    DEGOOGLE_ACTIVE(R.string.state_degoogle_active),
     MICROG_BOOTED(R.string.state_microg_booted),
     MICROG_NEEDS_SETUP(R.string.state_microg_needs_setup),
     MICROG_ACTIVE(R.string.state_microg_active),

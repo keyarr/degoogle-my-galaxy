@@ -5,6 +5,7 @@ import android.text.format.Formatter
 import android.util.Log
 import dev.degoogle.app.R
 import dev.degoogle.app.root.BackendRunner
+import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.root.RootExecutor
 import java.io.File
 
@@ -105,7 +106,7 @@ class MicrogManager(
         }
 
         onStep(context.getString(R.string.op_preflight))
-        val preflight = backend.preflight()
+        val preflight = backend.preflight(OperationMode.MICROG)
         if (!preflight.succeeded) {
             return PrepareResult(
                 false,

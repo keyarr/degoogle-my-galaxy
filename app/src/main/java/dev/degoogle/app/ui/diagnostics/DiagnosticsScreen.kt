@@ -32,6 +32,7 @@ import dev.degoogle.app.domain.CapabilityStatus
 import dev.degoogle.app.domain.DeviceCompatibility
 import dev.degoogle.app.domain.DeviceProfiles
 import dev.degoogle.app.domain.KnownGoodMatch
+import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
 import dev.degoogle.app.ui.components.Status
@@ -42,6 +43,7 @@ import dev.degoogle.app.ui.components.TechnicalStatusRow
 fun DiagnosticsScreen(ui: UiState) {
     val context = LocalContext.current
     val f = ui.facts
+    val pureMode = f.operationMode == OperationMode.PURE && !f.stockRestoreConfirmed
     var copied by remember { mutableStateOf(false) }
 
     Column(
@@ -67,6 +69,12 @@ fun DiagnosticsScreen(ui: UiState) {
                     label = stringResource(R.string.diag_root_access),
                     value = if (f.rootOk) f.rootManager.ifBlank { stringResource(R.string.yes) } else stringResource(R.string.no),
                     status = if (f.rootOk) Status.OK else Status.FAIL,
+                    showStatus = false,
+                )
+                StatusRow(
+                    label = stringResource(R.string.diag_operation_mode),
+                    value = f.operationMode?.name ?: stringResource(R.string.diag_mode_not_recorded),
+                    status = Status.UNKNOWN,
                     showStatus = false,
                 )
                 StatusRow(
@@ -104,7 +112,24 @@ fun DiagnosticsScreen(ui: UiState) {
 
         val isPortuguese = context.resources.configuration.locales[0].language.startsWith("pt")
 
-        InfoCard(stringResource(R.string.diag_card_compatibility)) {
+        if (pureMode) {
+            InfoCard(stringResource(R.string.diag_card_pure_mode)) {
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    StatusRow(
+                        label = stringResource(R.string.diag_empty_masks),
+                        value = if (f.pureMasksValid) stringResource(R.string.diag_capability_pass) else stringResource(R.string.diag_capability_fail),
+                        status = if (f.pureMasksValid) Status.OK else Status.FAIL,
+                        showStatus = true,
+                    )
+                    StatusRow(
+                        label = stringResource(R.string.diag_postboot_validation),
+                        value = f.postBootStatus ?: stringResource(R.string.pending),
+                        status = if (f.postBootValidated) Status.OK else Status.UNKNOWN,
+                        showStatus = !f.postBootValidated,
+                    )
+                }
+            }
+        } else InfoCard(stringResource(R.string.diag_card_compatibility)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 val compatStatus = when (ui.compatibility.compatibility) {
                     DeviceCompatibility.SUPPORTED -> Status.OK
@@ -195,15 +220,24 @@ fun DiagnosticsScreen(ui: UiState) {
                     status = Status.UNKNOWN,
                     showStatus = false,
                 )
-                StatusRow(
-                    label = stringResource(R.string.diag_privileged),
-                    value = if (f.gmsPrivileged) stringResource(R.string.yes) else stringResource(R.string.no),
-                    status = if (f.gmsPrivileged) Status.OK else Status.FAIL,
-                    showStatus = false,
-                )
+                if (pureMode) {
+                    StatusRow(
+                        label = stringResource(R.string.diag_microg_checks),
+                        value = stringResource(R.string.not_applicable),
+                        status = Status.UNKNOWN,
+                        showStatus = false,
+                    )
+                } else {
+                    StatusRow(
+                        label = stringResource(R.string.diag_privileged),
+                        value = if (f.gmsPrivileged) stringResource(R.string.yes) else stringResource(R.string.no),
+                        status = if (f.gmsPrivileged) Status.OK else Status.FAIL,
+                        showStatus = false,
+                    )
+                }
 
                 val flagsList = f.gmsFlags?.split(" ")?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
-                if (flagsList.isNotEmpty()) {
+                if (!pureMode && flagsList.isNotEmpty()) {
                     Column(modifier = Modifier.padding(top = 8.dp)) {
                         Text(
                             text = stringResource(R.string.diag_package_flags),
@@ -222,7 +256,7 @@ fun DiagnosticsScreen(ui: UiState) {
                             }
                         }
                     }
-                } else {
+                } else if (!pureMode) {
                     StatusRow(
                         label = stringResource(R.string.diag_package_flags),
                         value = stringResource(R.string.not_reported),
@@ -277,7 +311,7 @@ fun DiagnosticsScreen(ui: UiState) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 StatusRow(
                     label = stringResource(R.string.diag_mount_gms),
-                    value = if (f.mountGms) stringResource(R.string.diag_mount_masked_microg) else stringResource(R.string.diag_mount_visible_stock),
+                    value = if (!f.mountGms) stringResource(R.string.diag_mount_visible_stock) else if (f.operationMode == OperationMode.PURE) stringResource(R.string.diag_mount_masked_empty) else stringResource(R.string.diag_mount_masked_microg),
                     status = if (f.mountGms) Status.OK else Status.ABSENT,
                     showStatus = !f.mountGms,
                 )
@@ -289,7 +323,7 @@ fun DiagnosticsScreen(ui: UiState) {
                 )
                 StatusRow(
                     label = stringResource(R.string.diag_mount_store),
-                    value = if (f.mountStore) stringResource(R.string.diag_mount_masked_companion) else stringResource(R.string.diag_mount_visible_stock),
+                    value = if (!f.mountStore) stringResource(R.string.diag_mount_visible_stock) else if (f.operationMode == OperationMode.PURE) stringResource(R.string.diag_mount_masked_empty) else stringResource(R.string.diag_mount_masked_companion),
                     status = if (f.mountStore) Status.OK else Status.ABSENT,
                     showStatus = !f.mountStore,
                 )
@@ -299,11 +333,22 @@ fun DiagnosticsScreen(ui: UiState) {
                     status = Status.UNKNOWN,
                     showStatus = false,
                 )
+                if (f.operationMode == OperationMode.PURE) {
+                    StatusRow(stringResource(R.string.diag_empty_masks), "GMS=${f.maskGmsEmpty} GSF=${f.maskGsfEmpty} Store=${f.maskStoreEmpty}; valid=${f.pureMasksValid}", Status.UNKNOWN, showStatus = false)
+                    StatusRow(stringResource(R.string.diag_postboot_validation), f.postBootStatus ?: stringResource(R.string.pending), Status.UNKNOWN, showStatus = false)
+                }
             }
         }
 
         InfoCard(stringResource(R.string.diag_card_backup)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
+                if (pureMode) {
+                    Text(
+                        text = stringResource(R.string.backup_pure_mode_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 StatusRow(
                     label = stringResource(R.string.diag_backup_present),
                     value = if (f.backupPresent) stringResource(R.string.yes) else stringResource(R.string.no),
@@ -367,6 +412,9 @@ private fun copyDiagnostics(context: Context, ui: UiState) {
     val sb = StringBuilder()
     sb.appendLine("${context.getString(R.string.app_name)} ${context.getString(R.string.diag_title)}")
     sb.appendLine("${context.getString(R.string.diag_state)}: ${context.getString(ui.state.labelRes)}")
+    sb.appendLine("${context.getString(R.string.diag_operation_mode)}: ${f.operationMode?.name ?: context.getString(R.string.diag_mode_not_recorded)}")
+    sb.appendLine("${context.getString(R.string.diag_empty_masks)}: ${f.pureMasksValid}")
+    sb.appendLine("${context.getString(R.string.diag_postboot_validation)}: ${f.postBootStatus ?: context.getString(R.string.pending)}")
     sb.appendLine("${context.getString(R.string.diag_root_access)}: ${if (f.rootOk) f.rootManager else context.getString(R.string.no)}")
     val localProfile = DeviceProfiles.matching(f.manufacturer, f.model, f.androidSdk)
     val profileId = f.profileId.takeIf { f.profileMatch && it.isNotBlank() } ?: localProfile?.id

@@ -35,6 +35,7 @@ data class TransactionJournal(
     val deviceFingerprint: String,
     val state: TransactionState,
     val detail: String = "",
+    val operationMode: OperationMode? = null,
 )
 
 /** Atomic journal in the app private space; idempotent writes per state. */
@@ -65,6 +66,7 @@ class TransactionJournalStore(
         fingerprint: String,
         state: TransactionState,
         detail: String = "",
+        operationMode: OperationMode? = read()?.operationMode,
     ): Boolean = write(
         TransactionJournal(
             operationId = operationId,
@@ -72,6 +74,7 @@ class TransactionJournalStore(
             deviceFingerprint = fingerprint,
             state = state,
             detail = detail,
+            operationMode = operationMode,
         ),
     )
 
@@ -121,12 +124,43 @@ object TransactionReconciliation {
         TransactionState.POST_BOOT_VALIDATING,
     )
 
+    fun shouldMarkStockRestored(
+        journal: TransactionJournal?,
+        state: DeviceState,
+        backendConfirmed: Boolean,
+        backendOperationId: String?,
+    ): Boolean {
+        if (state != DeviceState.STOCK) return false
+
+        val rollbackPending = journal?.state in setOf(
+            TransactionState.ROLLBACK_RUNNING,
+            TransactionState.ROLLBACK_REQUIRED,
+            TransactionState.REBOOT_REQUESTED,
+            TransactionState.PACKAGE_CACHE_INVALIDATED,
+            TransactionState.GMS_UNMOUNTED,
+            TransactionState.GSF_UNMOUNTED,
+            TransactionState.STORE_UNMOUNTED,
+            TransactionState.REINDEX_PENDING,
+            TransactionState.FAILED,
+        )
+        val confirmationId = backendOperationId?.takeIf { it.isNotBlank() && it != "unknown" }
+        val backendRestoreUnrecorded = backendConfirmed &&
+            journal?.state != TransactionState.RESTORED &&
+            (journal == null || confirmationId == null || journal.operationId == confirmationId)
+        return rollbackPending || backendRestoreUnrecorded
+    }
+
     fun shouldCommitActiveState(
         journal: TransactionJournal?,
         state: DeviceState,
     ): Boolean = journal != null &&
-        state in ACTIVE_STATES &&
-        journal.state in COMMIT_CANDIDATES
+        journal.state in COMMIT_CANDIDATES &&
+        when (state) {
+            DeviceState.DEGOOGLE_ACTIVE -> journal.operationMode == OperationMode.PURE
+            DeviceState.MICROG_ACTIVE, DeviceState.MICROG_ACTIVE_BACKED_UP ->
+                journal.operationMode != OperationMode.PURE
+            else -> false
+        }
 
     /**
      * A Rescue Party reboot drops root and all bind mounts, so microG is healthy only
