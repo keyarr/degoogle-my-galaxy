@@ -5,18 +5,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.degoogle.app.R
 import dev.degoogle.app.domain.CapabilityStatus
 import dev.degoogle.app.domain.DeviceCompatibility
@@ -42,7 +38,6 @@ import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusRow
 import dev.degoogle.app.ui.components.TechnicalStatusRow
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DiagnosticsScreen(ui: UiState) {
     val context = LocalContext.current
@@ -53,15 +48,16 @@ fun DiagnosticsScreen(ui: UiState) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = stringResource(R.string.diag_title),
-                style = MaterialTheme.typography.headlineLarge,
+                text = "02 // SYSFACTS DUMP",
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
@@ -216,30 +212,12 @@ fun DiagnosticsScreen(ui: UiState) {
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.padding(bottom = 6.dp),
                         )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             flagsList.forEach { flag ->
-                                AssistChip(
-                                    onClick = {},
-                                    // Flags longas (private_flag_*) ficavam com o
-                                    // pill menor que as demais; altura mínima
-                                    // uniforme resolve.
-                                    modifier = Modifier.heightIn(min = 44.dp),
-                                    label = {
-                                        Text(
-                                            text = flag,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            modifier = Modifier.padding(vertical = 2.dp),
-                                        )
-                                    },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.surface,
-                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    ),
-                                    border = null,
-                                    shape = RoundedCornerShape(8.dp),
+                                Text(
+                                    text = "[ $flag ]",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }
@@ -359,7 +337,7 @@ fun DiagnosticsScreen(ui: UiState) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(0.dp),
             ) {
                 Text(
                     if (copied) stringResource(R.string.diag_report_copied) else stringResource(R.string.diag_copy_full_report),
@@ -369,7 +347,7 @@ fun DiagnosticsScreen(ui: UiState) {
             }
 
             Surface(
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(0.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
             ) {

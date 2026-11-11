@@ -22,9 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -32,10 +30,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.degoogle.app.R
 import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.ui.AppViewModel
@@ -53,6 +48,7 @@ import dev.degoogle.app.ui.components.OperationLog
 import dev.degoogle.app.ui.components.StateBadge
 import dev.degoogle.app.ui.components.Status
 import dev.degoogle.app.ui.components.StatusRow
+import dev.degoogle.app.ui.components.SlideToExecute
 import dev.degoogle.app.ui.components.TechnicalBlock
 import dev.degoogle.app.ui.components.TechnicalStatusRow
 
@@ -63,29 +59,30 @@ fun HomeScreen(
     onNavigate: (Screen) -> Unit,
 ) {
     val context = LocalContext.current
-    var showDeGoogleConfirm by remember { mutableStateOf(false) }
-    var showRestoreConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Cabeçalho One UI
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineLarge,
+                text = "01 // ROOT_AUTH",
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 
+        IsolationStages(ui)
+
         if (ui.refreshing) {
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(0.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -112,7 +109,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .offset(x = 8.dp, y = (-4).dp)
                             .size(28.dp)
-                            .clip(RoundedCornerShape(percent = 50))
+                            .clip(RoundedCornerShape(0.dp))
                             .clickable { vm.dismissRescuePartyNotice() },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -144,28 +141,23 @@ fun HomeScreen(
                     Spacer(Modifier.height(8.dp))
                     TechnicalBlock(text = ui.recoveryDetail)
                 }
-                OutlinedButton(
-                    onClick = { vm.restoreGoogle() },
+                SlideToExecute(
+                    label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
                     enabled = !ui.operationInProgress,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp),
-                    shape = RoundedCornerShape(16.dp),
-                ) {
-                    Text(stringResource(R.string.home_btn_restore_google_stock))
-                }
+                    onExecute = { vm.restoreGoogle() },
+                )
             }
         }
 
         when (ui.state) {
             DeviceState.NO_ROOT -> NoRootCard()
-            DeviceState.UNSUPPORTED -> UnsupportedCard(ui) { showDeGoogleConfirm = true }
-            DeviceState.STOCK -> StockContent(ui, vm, onNavigate, { showDeGoogleConfirm = true })
+            DeviceState.UNSUPPORTED -> UnsupportedCard(ui) { vm.degoogle() }
+            DeviceState.STOCK -> StockContent(ui, vm, onNavigate, { vm.degoogle() })
             DeviceState.PREPARED -> PreparedContent(ui, vm, onNavigate)
             DeviceState.MICROG_BOOTED -> BootedContent(ui, vm)
             DeviceState.MICROG_NEEDS_SETUP, DeviceState.MICROG_ACTIVE,
             DeviceState.MICROG_ACTIVE_BACKED_UP -> ActiveContent(
-                ui, vm, onNavigate, { showRestoreConfirm = true },
+                ui, vm, onNavigate, { vm.restoreGoogle() },
             )
             DeviceState.RESTORE_PREPARED -> RestorePreparedContent(ui, vm)
             DeviceState.ERROR -> ErrorContent(ui, vm, onNavigate)
@@ -188,7 +180,7 @@ fun HomeScreen(
                     Button(
                         onClick = { vm.unlock() },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(0.dp),
                     ) {
                         Text(stringResource(R.string.home_btn_release_lock))
                     }
@@ -196,78 +188,24 @@ fun HomeScreen(
             }
         }
 
-        if (ui.operationInProgress || ui.steps.isNotEmpty()) {
-            InfoCard(
-                title = stringResource(
-                    if (ui.operationInProgress) R.string.operation_log_live
-                    else R.string.operation_log_last,
-                ),
-            ) {
-                OperationLog(
-                    steps = ui.steps,
-                    inProgress = ui.operationInProgress,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+        InfoCard(
+            title = stringResource(
+                if (ui.operationInProgress) R.string.operation_log_live
+                else R.string.operation_log_last,
+            ),
+        ) {
+            OperationLog(
+                steps = ui.steps,
+                inProgress = ui.operationInProgress,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 
     // ------------------------------------------------------------ Dialogs
-    if (showDeGoogleConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeGoogleConfirm = false },
-            title = { Text(stringResource(R.string.home_dialog_degoogle_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(stringResource(R.string.home_dialog_degoogle_text))
-                    if (ui.compatibility.compatibility.name != "SUPPORTED") {
-                        Text(
-                            stringResource(R.string.home_dialog_experimental_text),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    shape = RoundedCornerShape(16.dp),
-                    onClick = {
-                        showDeGoogleConfirm = false
-                        vm.degoogle()
-                    },
-                ) { Text(stringResource(R.string.continue_btn)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeGoogleConfirm = false }) { Text(stringResource(R.string.cancel)) }
-            },
-        )
-    }
-
-    if (showRestoreConfirm) {
-        AlertDialog(
-            onDismissRequest = { showRestoreConfirm = false },
-            title = { Text(stringResource(R.string.home_dialog_restore_title)) },
-            text = {
-                Text(stringResource(R.string.home_dialog_restore_text))
-            },
-            confirmButton = {
-                Button(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    onClick = {
-                        showRestoreConfirm = false
-                        vm.restoreGoogle()
-                    },
-                ) { Text(stringResource(R.string.home_btn_restore_google_stock)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.cancel)) }
-            },
-        )
-    }
-
     if (ui.needsSetupPrompt) {
         AlertDialog(
+            shape = RoundedCornerShape(0.dp),
             onDismissRequest = { vm.dismissSetupPrompt() },
             title = { Text(stringResource(R.string.home_dialog_setup_title)) },
             text = {
@@ -275,7 +213,7 @@ fun HomeScreen(
             },
             confirmButton = {
                 Button(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(0.dp),
                     onClick = {
                         vm.dismissSetupPrompt()
                         openMicrogSettings(context)
@@ -331,15 +269,10 @@ private fun UnsupportedCard(ui: UiState, onExperimental: () -> Unit) {
             if (ui.compatibility.compatibility.name == "PROBABLY_SUPPORTED") Status.UNKNOWN else Status.FAIL,
         )
         if (ui.compatibility.compatibility.name == "PROBABLY_SUPPORTED") {
-            Button(
-                onClick = onExperimental,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Text(stringResource(R.string.home_experimental_button))
-            }
+            SlideToExecute(
+                label = "[ >>> ACKNOWLEDGE RISK & CONTINUE >>> ]",
+                onExecute = onExperimental,
+            )
         }
     }
 }
@@ -404,15 +337,11 @@ private fun StockContent(
         }
     }
 
-    Button(
-        onClick = onDeGoogle,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        shape = RoundedCornerShape(20.dp),
-    ) {
-        Text(stringResource(R.string.home_install_microg_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-    }
+    SlideToExecute(
+        label = "[ >>> SLIDE TO MOUNT PAYLOAD >>> ]",
+        enabled = !ui.operationInProgress && !ui.recoveryRequired,
+        onExecute = onDeGoogle,
+    )
 }
 
 @Composable
@@ -443,19 +372,47 @@ private fun PreparedContent(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(0.dp),
     ) {
         Text(stringResource(R.string.home_soft_reboot_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 
-    OutlinedButton(
-        onClick = { vm.restoreGoogle() },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp),
-        shape = RoundedCornerShape(18.dp),
+    SlideToExecute(
+        label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
+        onExecute = { vm.restoreGoogle() },
+    )
+}
+
+@Composable
+private fun IsolationStages(ui: UiState) {
+    val stockRemoved = ui.state !in setOf(DeviceState.STOCK, DeviceState.UNSUPPORTED, DeviceState.NO_ROOT)
+    val namespaceActive = ui.state in setOf(
+        DeviceState.PREPARED,
+        DeviceState.MICROG_BOOTED,
+        DeviceState.MICROG_NEEDS_SETUP,
+        DeviceState.MICROG_ACTIVE,
+        DeviceState.MICROG_ACTIVE_BACKED_UP,
+        DeviceState.RESTORE_PREPARED,
+    )
+    val identityVerified = ui.state in setOf(DeviceState.MICROG_ACTIVE, DeviceState.MICROG_ACTIVE_BACKED_UP)
+
+    InfoCard("NAMESPACE INTEGRITY") {
+        StageLine("STAGE_00: STOCK GOOGLE SURVEILLANCE", if (stockRemoved) "[x] REMOVED" else "[>] PRESENT")
+        StageLine("STAGE_01: KERNEL NAMESPACE MASKING", if (namespaceActive) "[>] ACTIVE" else "[ ] PENDING")
+        StageLine("STAGE_02: MICROG IDENTITY SPOOFING", if (identityVerified) "[x] VERIFIED" else "[ ] PENDING")
+        StageLine("STAGE_03: FCM TOKEN AIRGAP ARCHIVE", if (ui.facts.backupPresent) "[x] SEALED" else "[ ] PENDING")
+    }
+}
+
+@Composable
+private fun StageLine(label: String, state: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(stringResource(R.string.home_cancel_and_restore_btn))
+        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(state, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -483,7 +440,7 @@ private fun BootedContent(ui: UiState, vm: AppViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(0.dp),
     ) {
         Text(stringResource(R.string.home_complete_setup_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
@@ -561,7 +518,7 @@ private fun ActiveContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(0.dp),
         ) {
             Text(
                 text = if (isBackedUp) stringResource(R.string.home_btn_update_token_backup) else stringResource(R.string.home_btn_create_token_backup),
@@ -570,15 +527,16 @@ private fun ActiveContent(
             )
         }
 
-        FilledTonalButton(
-            onClick = onRestoreGoogle,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(18.dp),
-        ) {
-            Text(stringResource(R.string.home_btn_restore_google_stock))
-        }
+        Text(
+            text = "EMERGENCY RESTORE VECTOR",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SlideToExecute(
+            label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
+            enabled = !ui.operationInProgress && !ui.recoveryRequired,
+            onExecute = onRestoreGoogle,
+        )
     }
 }
 
@@ -599,7 +557,7 @@ private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(0.dp),
     ) {
         Text(stringResource(R.string.home_soft_reboot_btn), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
@@ -639,7 +597,7 @@ private fun ErrorContent(ui: UiState, vm: AppViewModel, onNavigate: (Screen) -> 
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(0.dp),
         ) {
             Text(stringResource(R.string.home_btn_remove_update_stock))
         }

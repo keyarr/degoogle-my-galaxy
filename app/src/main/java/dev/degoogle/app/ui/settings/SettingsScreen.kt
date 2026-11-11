@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.degoogle.app.R
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.components.InfoCard
@@ -32,16 +33,17 @@ fun SettingsScreen(vm: AppViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Cabeçalho One UI, igual às demais abas
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = stringResource(R.string.settings_title),
-                style = MaterialTheme.typography.headlineLarge,
+                text = "04 // LOCAL CONFIG",
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
 

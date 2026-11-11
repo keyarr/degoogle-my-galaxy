@@ -1,30 +1,49 @@
 package dev.degoogle.app.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import dev.degoogle.app.R
 import dev.degoogle.app.ui.StepLog
 
@@ -72,9 +91,9 @@ fun OperationLog(
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 72.dp)
             .heightIn(max = 184.dp),
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(
             modifier = Modifier
@@ -82,14 +101,21 @@ fun OperationLog(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
+            if (visibleSteps.isEmpty()) {
+                Text(
+                    text = "AWAITING EXECUTION",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             visibleSteps.forEach { step ->
                 val status = when (step.ok) {
-                    true -> stringResource(R.string.status_ok)
-                    false -> stringResource(R.string.status_fail)
-                    null -> null
+                    true -> "[x]"
+                    false -> "[!]"
+                    null -> "[>]"
                 }
                 Text(
-                    text = if (status != null) "$status · ${step.text}" else step.text,
+                    text = "$status ${step.text}",
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = FontFamily.Monospace,
                     color = if (step.ok == false) {
@@ -215,7 +241,7 @@ fun TechnicalStatusRow(
     }
 }
 
-/** Card padrão com raio de 24dp estilo One UI / Material You */
+/** Seção da fita contínua, separada das demais por uma regra horizontal. */
 @Composable
 fun InfoCard(
     title: String,
@@ -224,16 +250,13 @@ fun InfoCard(
     titleFontWeight: FontWeight = FontWeight.Bold,
     content: @Composable () -> Unit,
 ) {
-    Card(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
+            .padding(top = 4.dp),
     ) {
-        Column(modifier = Modifier.padding(18.dp)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF262626)))
+        Column(modifier = Modifier.padding(vertical = 14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -243,7 +266,7 @@ fun InfoCard(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = titleFontWeight,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
                 if (action != null) {
@@ -265,7 +288,7 @@ fun StateBadge(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(0.dp),
         color = containerColor,
         contentColor = contentColor,
     ) {
@@ -286,7 +309,7 @@ fun TechnicalBlock(text: String, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(0.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -303,6 +326,89 @@ fun TechnicalBlock(text: String, modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(top = 4.dp),
             )
+        }
+    }
+}
+
+@Composable
+fun SlideToExecute(
+    label: String,
+    enabled: Boolean = true,
+    onExecute: () -> Unit,
+) {
+    var progress by remember { mutableFloatStateOf(0f) }
+    var startedOnHandle by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    val activeColor = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f) },
+    ) {
+        val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val thumbWidth = 72.dp
+        val thumbWidthPx = with(LocalDensity.current) { thumbWidth.toPx() }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .then(
+                    if (enabled) Modifier.pointerInput(widthPx) {
+                        detectDragGestures(
+                            onDragStart = { startedOnHandle = it.x <= thumbWidthPx },
+                            onDragEnd = {
+                                if (startedOnHandle && progress >= 0.98f) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onExecute()
+                                }
+                                progress = 0f
+                                startedOnHandle = false
+                            },
+                            onDragCancel = {
+                                progress = 0f
+                                startedOnHandle = false
+                            },
+                        ) { change, dragAmount ->
+                            change.consume()
+                            if (startedOnHandle) {
+                                progress = (progress + dragAmount.x / (widthPx - thumbWidthPx).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                            }
+                        }
+                    } else Modifier,
+                ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .align(Alignment.TopCenter)
+                    .background(activeColor),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(activeColor),
+            )
+            Text(
+                text = label,
+                modifier = Modifier.align(Alignment.Center),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((progress * (widthPx - thumbWidthPx)).toInt(), 0) }
+                    .size(width = thumbWidth, height = 48.dp)
+                    .background(activeColor),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("[ > ]", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }

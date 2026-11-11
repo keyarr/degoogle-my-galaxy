@@ -9,24 +9,35 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Backup
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Troubleshoot
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.flow.first
@@ -70,40 +81,81 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    containerColor = MaterialTheme.colorScheme.background,
+                    topBar = {
+                        Column(modifier = Modifier.statusBarsPadding()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .padding(horizontal = 16.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text(
+                                    "[DEGOOGLE://SAMSUNG-SECURITY-NULL]",
+                                    modifier = Modifier.weight(1f),
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 8.sp,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    "ROOT:${if (ui.facts.rootOk) "AVAILABLE" else "ABSENT"} // SELINUX:${ui.facts.selinux.uppercase()}",
+                                    modifier = Modifier.weight(1f),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 8.sp,
+                                    maxLines = 1,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                                )
+                            }
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF262626)))
+                        }
+                    },
                     bottomBar = {
-                        NavigationBar {
-                            NavigationBarItem(
-                                selected = screen == Screen.HOME,
-                                onClick = { screen = Screen.HOME },
-                                icon = {
-                                    Icon(Icons.Rounded.Home, contentDescription = stringResource(R.string.nav_home))
-                                },
-                                label = { Text(stringResource(R.string.nav_home)) },
-                            )
-                            NavigationBarItem(
-                                selected = screen == Screen.DIAGNOSTICS,
-                                onClick = { screen = Screen.DIAGNOSTICS },
-                                icon = {
-                                    Icon(Icons.Rounded.Troubleshoot, contentDescription = stringResource(R.string.nav_diagnostics))
-                                },
-                                label = { Text(stringResource(R.string.nav_diagnostics)) },
-                            )
-                            NavigationBarItem(
-                                selected = screen == Screen.BACKUP,
-                                onClick = { screen = Screen.BACKUP },
-                                icon = {
-                                    Icon(Icons.Rounded.Backup, contentDescription = stringResource(R.string.nav_backup))
-                                },
-                                label = { Text(stringResource(R.string.nav_backup)) },
-                            )
-                            NavigationBarItem(
-                                selected = screen == Screen.SETTINGS,
-                                onClick = { screen = Screen.SETTINGS },
-                                icon = {
-                                    Icon(Icons.Rounded.Settings, contentDescription = stringResource(R.string.nav_settings))
-                                },
-                                label = { Text(stringResource(R.string.nav_settings)) },
-                            )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.background)
+                                .navigationBarsPadding(),
+                        ) {
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF262626)))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(68.dp),
+                                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            ) {
+                                listOf(
+                                    Triple(Screen.HOME, R.drawable.ic_nav_home, R.string.nav_home),
+                                    Triple(Screen.DIAGNOSTICS, R.drawable.ic_nav_diagnostics, R.string.nav_diagnostics),
+                                    Triple(Screen.BACKUP, R.drawable.ic_nav_backup, R.string.nav_backup),
+                                    Triple(Screen.SETTINGS, R.drawable.ic_nav_settings, R.string.nav_settings),
+                                ).forEach { (target, icon, label) ->
+                                    val selected = screen == target
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxSize()
+                                            .clickable { screen = target },
+                                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(icon),
+                                            contentDescription = stringResource(label),
+                                            modifier = Modifier.size(28.dp),
+                                            tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        Box(
+                                            Modifier
+                                                .width(18.dp)
+                                                .height(2.dp)
+                                                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     },
                 ) { innerPadding ->
