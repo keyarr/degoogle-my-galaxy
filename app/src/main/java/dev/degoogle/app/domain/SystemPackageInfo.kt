@@ -19,9 +19,13 @@ data class SystemPackageInfo(
 ) {
     /** O alvo é seguro somente em raízes aprovadas e sem traversal. */
     val safeTarget: Boolean
-        get() = targetDirectory != null &&
-            !targetDirectory.contains("..") &&
-            ALLOWED_SYSTEM_ROOTS.any { targetDirectory == it || targetDirectory.startsWith("$it/") }
+        get() {
+            val target = targetDirectory ?: return false
+            if (target.contains("..") || target.contains('\\')) return false
+            if (ALLOWED_SYSTEM_ROOTS.none { target.startsWith("$it/") }) return false
+            val parent = target.substringBeforeLast('/', "")
+            return parent.endsWith("/app") || parent.endsWith("/priv-app")
+        }
 
     companion object {
         val ALLOWED_SYSTEM_ROOTS = listOf("/system", "/system_ext", "/product")
@@ -74,12 +78,16 @@ class PackageLocator(
         ): SystemPackageInfo {
             val paths = parsePmPaths(pmPathOutput)
             val active = paths.firstOrNull()
-            val original = paths.firstOrNull { isAllowedSystemPath(it, allowedSystemRoots) }
+            val updatedSystemApp = dumpsysOutput.contains("UPDATED_SYSTEM_APP")
+            val systemCodePath = Regex("systemCodePath=([^\\s]+)")
+                .find(dumpsysOutput)?.groupValues?.get(1)
+                ?.takeIf { updatedSystemApp && isAllowedSystemPath(it, allowedSystemRoots) }
+            val original = paths.firstOrNull { isAllowedSystemPath(it, allowedSystemRoots) } ?: systemCodePath
             val base = paths.firstOrNull { it.substringAfterLast('/') == "base.apk" } ?: original ?: active
             val target = (original ?: active)?.substringBeforeLast('/', missingDelimiterValue = "")
                 ?.takeIf(String::isNotBlank)
             val splits = paths.filterNot { it == base }
-            val hasDataUpdate = paths.any { isDataAppPath(it) } ||
+            val hasDataUpdate = paths.any(::isDataAppPath) && updatedSystemApp && systemCodePath != null &&
                 dumpsysOutput.contains("codePath=/data/app/")
             return SystemPackageInfo(
                 packageName = packageName,
@@ -105,6 +113,6 @@ class PackageLocator(
         fun isDataAppPath(path: String): Boolean = path.startsWith("/data/app/")
 
         fun isAllowedSystemPath(path: String, roots: List<String> = SystemPackageInfo.ALLOWED_SYSTEM_ROOTS): Boolean =
-            !path.contains("..") && roots.any { path == it || path.startsWith("$it/") }
+            !path.contains("..") && !path.contains('\\') && roots.any { path.startsWith("$it/") }
     }
 }

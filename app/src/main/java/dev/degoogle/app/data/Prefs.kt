@@ -26,7 +26,6 @@ class Prefs(private val context: Context) {
         val PENDING_OPERATION = stringPreferencesKey("pending_operation")
         val PENDING_SINCE = longPreferencesKey("pending_since")
         val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
-        val EXPERIMENTAL_OPT_IN = booleanPreferencesKey("experimental_opt_in")
         val RESCUE_PARTY_NOTICE_DISMISSED = stringPreferencesKey("rescue_party_notice_dismissed_op")
     }
 
@@ -39,8 +38,6 @@ class Prefs(private val context: Context) {
     val notificationsEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[Keys.NOTIFICATIONS_ENABLED] ?: true }
 
-    val experimentalOptIn: Flow<Boolean> =
-        context.dataStore.data.map { it[Keys.EXPERIMENTAL_OPT_IN] ?: false }
 
     /** Operação cujo aviso de Rescue Party já foi fechado pelo usuário. */
     val dismissedRescuePartyOperation: Flow<String?> =
@@ -52,10 +49,6 @@ class Prefs(private val context: Context) {
 
     suspend fun setNotificationsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
-    }
-
-    suspend fun setExperimentalOptIn(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.EXPERIMENTAL_OPT_IN] = enabled }
     }
 
     suspend fun markOperationPending(op: String) {

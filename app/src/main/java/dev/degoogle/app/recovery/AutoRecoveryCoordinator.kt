@@ -1,8 +1,7 @@
 package dev.degoogle.app.recovery
 
-import dev.degoogle.app.domain.DeviceProfile
-import dev.degoogle.app.domain.DeviceProfiles
 import dev.degoogle.app.domain.DeviceState
+import dev.degoogle.app.domain.DeviceProfile
 import dev.degoogle.app.domain.StateDetector
 import dev.degoogle.app.domain.SystemFacts
 import dev.degoogle.app.root.BackendRunner
@@ -32,8 +31,8 @@ data class RecoveryAssessment(
  *   payloads temporários desmontados.
  */
 object RecoveryPolicy {
-    fun assess(facts: SystemFacts, profile: DeviceProfile?): RecoveryAssessment {
-        val state = StateDetector.detect(facts, profile)
+    fun assess(facts: SystemFacts, profile: DeviceProfile? = null): RecoveryAssessment {
+        val state = StateDetector.detect(facts)
         val legacyMount = facts.mountGmsIsLegacy || facts.mountGsfIsLegacy || facts.mountStoreIsLegacy
 
         return when {
@@ -81,9 +80,6 @@ data class AutoRecoveryResult(
  */
 class AutoRecoveryCoordinator(
     private val backend: BackendRunner,
-    private val profileResolver: (SystemFacts) -> DeviceProfile? = { facts ->
-        DeviceProfiles.matching(facts.manufacturer, facts.model, facts.androidSdk)
-    },
 ) {
     suspend fun runIfNeeded(wipeData: Boolean = true): AutoRecoveryResult {
         val probe = backend.probe()
@@ -103,7 +99,7 @@ class AutoRecoveryCoordinator(
         }
 
         val facts = probe.facts
-        val assessment = RecoveryPolicy.assess(facts, profileResolver(facts))
+        val assessment = RecoveryPolicy.assess(facts)
         return when (assessment.action) {
             AutoRecoveryAction.NONE -> AutoRecoveryResult(
                 status = AutoRecoveryStatus.NOT_NEEDED,

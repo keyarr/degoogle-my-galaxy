@@ -3,12 +3,58 @@ package dev.degoogle.app.microg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
 import kotlin.concurrent.thread
 
 class ReleaseRepositoryDownloadTest {
+
+    @Test
+    fun `verifiedEntryJson rejeita indice sem assinatura confiavel`() {
+        val jar = ByteArrayOutputStream().use { bytes ->
+            JarOutputStream(bytes).use { output ->
+                output.putNextEntry(JarEntry("entry.json"))
+                output.write("{}".toByteArray())
+                output.closeEntry()
+            }
+            bytes.toByteArray()
+        }
+
+        assertEquals(null, ReleaseRepository().verifiedEntryJson(jar))
+    }
+
+    @Test
+    fun `parseIndexV2 exige hash e certificado do APK`() {
+        val index = """
+            {"packages":{"com.google.android.gms":{"versions":{"v1":{
+              "file":{"name":"/com.google.android.gms-1.apk","sha256":"${"a".repeat(64)}","size":1},
+              "manifest":{"versionCode":1,"versionName":"1.0","usesSdk":{"minSdkVersion":21},
+                "signer":{"sha256":["${"b".repeat(64)}"]}}
+            }}}}}
+        """.trimIndent().toByteArray()
+
+        val release = ReleaseRepository().parseIndexV2(index, MicrogPackages.GMS)
+
+        assertEquals("a".repeat(64), release?.sha256)
+        assertEquals("b".repeat(64), release?.certSha256)
+        assertEquals(21, release?.minSdk)
+    }
+
+    @Test
+    fun `parseIndexV2 rejeita APK sem signer`() {
+        val index = """
+            {"packages":{"com.google.android.gms":{"versions":{"v1":{
+              "file":{"name":"/com.google.android.gms-1.apk","sha256":"${"a".repeat(64)}","size":1},
+              "manifest":{"versionCode":1,"versionName":"1.0"}
+            }}}}}
+        """.trimIndent().toByteArray()
+
+        assertEquals(null, ReleaseRepository().parseIndexV2(index, MicrogPackages.GMS))
+    }
 
     @Test
     fun `download reporta progresso e salva arquivo corretamente`() {
@@ -51,6 +97,7 @@ class ReleaseRepositoryDownloadTest {
                 versionName = "1.0",
                 apkName = "test.apk",
                 sha256 = "",
+                certSha256 = "",
                 minSdk = null,
                 apkUrl = "http://127.0.0.1:$port/test.apk",
             )

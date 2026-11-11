@@ -36,9 +36,27 @@ class AutoRecoveryCoordinatorTest {
         manufacturer = profile.manufacturer,
         model = profile.models.first(),
         androidSdk = "36",
-        gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk",
+        gmsPath = "${profile.gmsSystemDir}/GmsCore.apk",
+        gmsPackage = dev.degoogle.app.domain.SystemPackageInfo(
+            packageName = "com.google.android.gms",
+            activeCodePath = "${profile.gmsSystemDir}/GmsCore.apk",
+            originalSystemPath = "${profile.gmsSystemDir}/GmsCore.apk",
+            targetDirectory = "${profile.gmsSystemDir}",
+        ),
         gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk",
+        gsfPackage = dev.degoogle.app.domain.SystemPackageInfo(
+            packageName = "com.google.android.gsf",
+            activeCodePath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk",
+            originalSystemPath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk",
+            targetDirectory = profile.gsfSystemDir,
+        ),
         storePath = "${profile.storeSystemDir}/Phonesky.apk",
+        storePackage = dev.degoogle.app.domain.SystemPackageInfo(
+            packageName = "com.android.vending",
+            activeCodePath = "${profile.storeSystemDir}/Phonesky.apk",
+            originalSystemPath = "${profile.storeSystemDir}/Phonesky.apk",
+            targetDirectory = profile.storeSystemDir,
+        ),
     )
 
     @Test
@@ -110,6 +128,7 @@ class AutoRecoveryCoordinatorTest {
             DEGOOGLE_MODEL=SM-S928B
             DEGOOGLE_ANDROID_SDK=36
             DEGOOGLE_GMS_PATH=/product/priv-app/GmsCore/GmsCore.apk
+            DEGOOGLE_GMS_TARGET_DIRECTORY=/product/priv-app/GmsCore
             DEGOOGLE_GSF_PATH=
             DEGOOGLE_STORE_PATH=
         """.trimIndent()

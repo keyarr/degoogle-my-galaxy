@@ -54,7 +54,6 @@ class CompatibilityEngineTest {
         val decision = CompatibilityEngine.evaluate(facts())
         assertEquals(DeviceCompatibility.SUPPORTED, decision.compatibility)
         assertTrue(decision.canExecuteNormally)
-        assertFalse(decision.canExecuteExperimental)
     }
 
     @Test
@@ -117,23 +116,37 @@ class CompatibilityEngineTest {
     }
 
     @Test
-    fun `firmware não homologado não vira supported por semelhança`() {
+    fun `fingerprint fora da base não bloqueia runtime aprovado`() {
         val decision = CompatibilityEngine.evaluate(
             facts(fingerprint = "samsung/e3qxxx/e3q:16/NEW_BUILD:user/release-keys"),
         )
-        assertEquals(DeviceCompatibility.PROBABLY_SUPPORTED, decision.compatibility)
-        assertFalse(decision.canExecuteNormally)
-        assertTrue(decision.canExecuteExperimental)
+        assertEquals(DeviceCompatibility.SUPPORTED, decision.compatibility)
+        assertTrue(decision.canExecuteNormally)
     }
 
     @Test
-    fun `unknown em capability crítica exige perfil`() {
+    fun `fabricante e modelo desconhecidos passam quando runtime passa`() {
+        val decision = CompatibilityEngine.evaluate(
+            facts(fingerprint = "google/akita/akita:16/NEW_BUILD:user/release-keys").copy(
+                manufacturer = "Google",
+                model = "Pixel 8a",
+                device = "akita",
+                product = "akita",
+            ),
+        )
+
+        assertEquals(KnownGoodMatch.NO_MATCH, decision.knownGood.level)
+        assertEquals(DeviceCompatibility.SUPPORTED, decision.compatibility)
+        assertTrue(decision.canExecuteNormally)
+    }
+
+    @Test
+    fun `signature spoofing desconhecido não bloqueia operação`() {
         val capabilities = allPassCapabilities().toMutableMap()
         capabilities[Capability.SIGNATURE_SPOOFING] = CapabilityResult.unknown("fixture sem prova")
         val decision = CompatibilityEngine.evaluate(facts(capabilities = capabilities))
-        assertEquals(DeviceCompatibility.REQUIRES_PROFILE, decision.compatibility)
-        assertFalse(decision.canExecuteNormally)
-        assertFalse(decision.canExecuteExperimental)
+        assertEquals(DeviceCompatibility.SUPPORTED, decision.compatibility)
+        assertTrue(decision.canExecuteNormally)
     }
 
     @Test
@@ -142,7 +155,6 @@ class CompatibilityEngineTest {
         capabilities[Capability.SAFE_RESTORE] = CapabilityResult.fail("fixture sem rollback")
         val decision = CompatibilityEngine.evaluate(facts(capabilities = capabilities))
         assertEquals(DeviceCompatibility.UNSAFE, decision.compatibility)
-        assertFalse(decision.canExecuteExperimental)
     }
 
     @Test
@@ -170,11 +182,10 @@ class CompatibilityEngineTest {
         )
         assertEquals(DeviceCompatibility.UNSUPPORTED, decision.compatibility)
         assertFalse(decision.canExecuteNormally)
-        assertFalse(decision.canExecuteExperimental)
     }
 
     @Test
-    fun `reboot WARN com resto PASS libera experimental via opt-in`() {
+    fun `reboot WARN blocks preparation pending validation`() {
         val capabilities = allPassCapabilities().toMutableMap()
         capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn(
             "strategy exists, but firmware is unhomologated",
@@ -191,11 +202,10 @@ class CompatibilityEngineTest {
         assertEquals(KnownGoodMatch.FIRMWARE_FAMILY_MATCH, decision.knownGood.level)
         assertEquals(DeviceCompatibility.PROBABLY_SUPPORTED, decision.compatibility)
         assertFalse(decision.canExecuteNormally)
-        assertTrue(decision.canExecuteExperimental)
     }
 
     @Test
-    fun `modelo Samsung desconhecido compatível libera experimental`() {
+    fun `unknown model still uses runtime requirements`() {
         val capabilities = allPassCapabilities().toMutableMap()
         capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn(
             "strategy exists, but firmware is unhomologated",
@@ -215,7 +225,6 @@ class CompatibilityEngineTest {
         assertEquals(KnownGoodMatch.NO_MATCH, decision.knownGood.level)
         assertEquals(DeviceCompatibility.PROBABLY_SUPPORTED, decision.compatibility)
         assertFalse(decision.canExecuteNormally)
-        assertTrue(decision.canExecuteExperimental)
     }
 
     @Test
@@ -267,7 +276,6 @@ class CompatibilityEngineTest {
         assertEquals(CapabilityStatus.WARN, decision.matrix[Capability.STORE_MASKABLE].status)
         assertEquals(DeviceCompatibility.PROBABLY_SUPPORTED, decision.compatibility)
         assertFalse(decision.canExecuteNormally)
-        assertFalse(decision.canExecuteExperimental)
     }
 
     @Test

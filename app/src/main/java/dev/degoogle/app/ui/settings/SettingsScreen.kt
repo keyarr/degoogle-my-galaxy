@@ -27,7 +27,6 @@ import dev.degoogle.app.ui.components.InfoCard
 @Composable
 fun SettingsScreen(vm: AppViewModel) {
     val notificationsEnabled by vm.notificationsEnabled.collectAsState()
-    val experimentalOptIn by vm.experimentalOptIn.collectAsState()
 
     Column(
         modifier = Modifier
@@ -74,47 +73,6 @@ fun SettingsScreen(vm: AppViewModel) {
                     Switch(
                         checked = notificationsEnabled,
                         onCheckedChange = { vm.setNotificationsEnabled(it) },
-                    )
-                }
-            }
-        }
-
-        // Opt-in experimental: não desativa o engine; apenas autoriza a UI a
-        // prosseguir quando todas as capabilities críticas passaram.
-        InfoCard(stringResource(R.string.settings_profile_title)) {
-            Column(modifier = Modifier.padding(top = 4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.settings_profile_label),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_profile_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = experimentalOptIn,
-                        onCheckedChange = { vm.setExperimentalOptIn(it) },
-                    )
-                }
-                if (experimentalOptIn) {
-                    Text(
-                        text = stringResource(R.string.settings_profile_warning),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
             }

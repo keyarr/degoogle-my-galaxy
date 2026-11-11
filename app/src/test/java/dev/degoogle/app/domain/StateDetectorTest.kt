@@ -22,16 +22,19 @@ class StateDetectorTest {
         assertEquals(DeviceState.NO_ROOT, StateDetector.detect(f, profile))
     }
 
-    // 2. device incompatível
+    // 2. unknown device with valid runtime paths
     @Test
-    fun `device incompatível vira UNSUPPORTED`() {
+    fun `manufacturer and model do not block discovered stock paths`() {
         val f = facts {
             rootOk = true
             manufacturer = "xiaomi"
             model = "POCO X3"
             profileMatch = false
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
+            gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk"
+            storePath = "${profile.storeSystemDir}/Phonesky.apk"
         }
-        assertEquals(DeviceState.UNSUPPORTED, StateDetector.detect(f, profile))
+        assertEquals(DeviceState.STOCK, StateDetector.detect(f, profile))
     }
 
     // 2b. Samsung fora da lista homologada usa perfil dinâmico do locator
@@ -86,8 +89,8 @@ class StateDetectorTest {
     @Test
     fun `stock correto vira STOCK`() {
         val f = facts {
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
-            gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework/GoogleServicesFramework.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
+            gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk"
             storePath = "${profile.storeSystemDir}/Phonesky.apk"
         }
         assertEquals(DeviceState.STOCK, StateDetector.detect(f, profile))
@@ -115,13 +118,17 @@ class StateDetectorTest {
                 packageName = "com.google.android.gms",
                 activeCodePath = gmsUpdate,
                 hasDataUpdate = true,
+                originalSystemPath = "${profile.gmsSystemDir}/base.apk",
+                targetDirectory = profile.gmsSystemDir,
             )
-            gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework/GoogleServicesFramework.apk"
+            gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk"
             storePath = storeUpdate
             storePackage = SystemPackageInfo(
                 packageName = "com.android.vending",
                 activeCodePath = storeUpdate,
                 hasDataUpdate = true,
+                originalSystemPath = "${profile.storeSystemDir}/Phonesky.apk",
+                targetDirectory = profile.storeSystemDir,
             )
         }
         assertEquals(DeviceState.STOCK, StateDetector.detect(f, profile))
@@ -130,7 +137,7 @@ class StateDetectorTest {
     @Test
     fun `path inesperado em pacote presente não vira STOCK`() {
         val f = facts {
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gsfPath = "/data/local/tmp/GoogleServicesFramework.apk"
             storePath = "${profile.storeSystemDir}/Phonesky.apk"
         }
@@ -142,7 +149,7 @@ class StateDetectorTest {
     fun `GMS mascarado com GSF presente vira PREPARED`() {
         val f = facts {
             mountedByUs()
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gsfPath = "${profile.gsfSystemDir}/GoogleServicesFramework.apk"
             storePath = "${profile.storeSystemDir}/Phonesky.apk"
         }
@@ -154,7 +161,7 @@ class StateDetectorTest {
         val f = facts {
             profileMatch = false
             mountedByUs()
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gmsPrivileged = true
             gsfPath = null
             storePath = "${profile.storeSystemDir}/Companion.apk"
@@ -169,7 +176,7 @@ class StateDetectorTest {
     fun `GMS mascarado com GSF ausente e finalize pendente vira MICROG_BOOTED`() {
         val f = facts {
             mountedByUs()
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gmsPrivileged = true
             gsfPath = null
             storePath = "${profile.storeSystemDir}/Companion.apk"
@@ -183,7 +190,7 @@ class StateDetectorTest {
     fun `microG ativo mas Companion ausente vira ERROR`() {
         val f = facts {
             mountedByUs()
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gmsPrivileged = true
             gsfPath = null
             storePath = null
@@ -197,7 +204,7 @@ class StateDetectorTest {
     fun `microG ativo sem backup vira MICROG_ACTIVE`() {
         val f = facts {
             mountedByUs()
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gmsPrivileged = true
             gsfPath = null
             storePath = "${profile.storeSystemDir}/Companion.apk"
@@ -211,7 +218,7 @@ class StateDetectorTest {
     fun `microG ativo com backup presente vira MICROG_ACTIVE_BACKED_UP`() {
         val f = facts {
             mountedByUs()
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gmsPrivileged = true
             gsfPath = null
             storePath = "${profile.storeSystemDir}/Companion.apk"
@@ -228,7 +235,7 @@ class StateDetectorTest {
             mountGms = true
             mountGsf = false
             mountStore = true
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
         }
         assertEquals(DeviceState.ERROR, StateDetector.detect(f, profile))
     }
@@ -241,7 +248,7 @@ class StateDetectorTest {
             mountGmsIsOurs = false
             mountGsfIsOurs = false
             mountStoreIsOurs = false
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gmsPrivileged = true
             gsfPath = null
             storePath = "${profile.storeSystemDir}/Companion.apk"
@@ -253,7 +260,7 @@ class StateDetectorTest {
     @Test
     fun `sem mounts com GMS ainda da máscara vira RESTORE_PREPARED`() {
         val f = facts {
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gsfPath = null
             storePath = null
         }
@@ -265,7 +272,7 @@ class StateDetectorTest {
     fun `GMS da máscara mas não privileged vira ERROR`() {
         val f = facts {
             mountedByUs()
-            gmsPath = "${profile.gmsSystemDir}/GmsCore/GmsCore.apk"
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gmsPrivileged = false
             gsfPath = null
             storePath = "${profile.storeSystemDir}/Companion.apk"
@@ -331,16 +338,16 @@ private class FactsBuilder(private val profile: DeviceProfile) {
         selinux = selinux,
         abi = abi,
         gmsPath = gmsPath,
-        gmsPackage = gmsPackage,
+        gmsPackage = gmsPackage ?: packageAt(gmsPath, "com.google.android.gms"),
         gmsVersion = gmsVersion,
         gmsVersionCode = gmsVersionCode,
         gmsUid = gmsUid,
         gmsFlags = gmsFlags,
         gmsPrivileged = gmsPrivileged,
         gsfPath = gsfPath,
-        gsfPackage = gsfPackage,
+        gsfPackage = gsfPackage ?: packageAt(gsfPath, "com.google.android.gsf"),
         storePath = storePath,
-        storePackage = storePackage,
+        storePackage = storePackage ?: packageAt(storePath, "com.android.vending"),
         storeVersion = storeVersion,
         mountGms = mountGms,
         mountGmsIsOurs = mountGmsIsOurs,
@@ -353,4 +360,16 @@ private class FactsBuilder(private val profile: DeviceProfile) {
         finalizeDone = finalizeDone,
         shellState = null,
     )
+
+    private fun packageAt(path: String?, packageName: String): SystemPackageInfo? {
+        val actual = path ?: return null
+        if (!PackageLocator.isAllowedSystemPath(actual)) return null
+        val target = actual.substringBeforeLast('/')
+        return SystemPackageInfo(
+            packageName = packageName,
+            activeCodePath = actual,
+            originalSystemPath = actual,
+            targetDirectory = target,
+        ).takeIf { it.safeTarget }
+    }
 }

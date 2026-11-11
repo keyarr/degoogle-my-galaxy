@@ -3,12 +3,13 @@ package dev.degoogle.app.microg
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import org.xmlpull.v1.XmlPullParser
-import org.xmlpull.v1.XmlPullParserFactory
-import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.zip.ZipInputStream
+import java.security.MessageDigest
+import java.util.jar.JarFile
 
 /**
  * Release de um pacote microG publicada no repositório F-Droid oficial.
@@ -19,6 +20,7 @@ data class Release(
     val versionName: String,
     val apkName: String,
     val sha256: String,
+    val certSha256: String,
     val minSdk: Int?,
     val apkUrl: String,
 ) {
@@ -26,22 +28,21 @@ data class Release(
 }
 
 /**
- * Consulta o repo F-Droid oficial do microG (https://microg.org/fdroid/repo/):
- *  - index-v2.json (JSON) — preferido;
- *  - fallback: index-v1.jar (zip com index.xml), parseado com XmlPullParser
- *    (sem dependência extra).
+ * Consulta releases do índice v2 assinado do repo F-Droid oficial do microG.
  *
- * Nenhuma versão é hardcoded: sempre a última versionCode disponível.
+ * O certificado do repositório é fixado para que os hashes do índice sejam
+ * uma fonte confiável para validar os APKs.
  */
 class ReleaseRepository(
     private val baseUrl: String = "https://microg.org/fdroid/repo/",
-    private val githubApiBase: String = "https://api.github.com/repos/microG/GmsCore",
-    private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
 
     companion object {
-        /** GitHub exige User-Agent (rejeita sem); alguns CDNs também. */
+        /** Alguns CDNs rejeitam requests sem User-Agent. */
         private const val USER_AGENT = "DeGoogle/0.1.0 (Android; microg)"
+        private const val REPOSITORY_CERT_SHA256 =
+            "9bd06727e62796c0130eb6dab39b73157451582cbd138e86c468acc395d14165"
+        private val json = Json { ignoreUnknownKeys = true }
     }
 
     private fun http(base: String): HttpURLConnection = run {
@@ -52,95 +53,20 @@ class ReleaseRepository(
         c
     }
 
-    /**
-     * Consulta a release estável mais recente do pacote:
-     *  1. GitHub Releases (releases/latest — já filtra prereleases);
-     *  2. fallback: F-Droid repo oficial (index-v2, depois index-v1).
-     */
-    suspend fun latest(packageName: String): Release? {
-        return latestFromGithub(packageName)
-            ?: runCatching {
-                val v2 = fetchIndexV2()
-                if (v2 != null) {
-                    parseIndexV2(v2, packageName) ?: parseIndexV1(fetchIndexV1(), packageName)
-                } else {
-                    parseIndexV1(fetchIndexV1(), packageName)
-                }
-            }.getOrNull()
-    }
+    suspend fun latest(packageName: String): Release? =
+        fetchVerifiedIndexV2()?.let { parseIndexV2(it, packageName) }
 
     /**
-     * Par GmsCore + Companion (FakeStore) da mesma fonte. Nunca mistura
-     * versoes de fontes diferentes: se o GitHub nao tiver asset para um dos
-     * dois, os dois vem do F-Droid.
+     * Par GmsCore + Companion (FakeStore) do mesmo índice assinado.
      */
     data class MicrogReleases(val gms: Release, val companion: Release)
 
     suspend fun latestPair(): MicrogReleases? {
-        val gmsGithub = latestFromGithub(MicrogPackages.GMS)
-        val companionGithub = latestFromGithub(MicrogPackages.VENDING)
-        if (gmsGithub != null && companionGithub != null) {
-            return MicrogReleases(gmsGithub, companionGithub)
-        }
-        return runCatching {
-            val v2 = fetchIndexV2()
-            val gms = if (v2 != null) {
-                parseIndexV2(v2, MicrogPackages.GMS) ?: parseIndexV1(fetchIndexV1(), MicrogPackages.GMS)
-            } else {
-                parseIndexV1(fetchIndexV1(), MicrogPackages.GMS)
-            } ?: return null
-            val companion = if (v2 != null) {
-                parseIndexV2(v2, MicrogPackages.VENDING) ?: parseIndexV1(fetchIndexV1(), MicrogPackages.VENDING)
-            } else {
-                parseIndexV1(fetchIndexV1(), MicrogPackages.VENDING)
-            } ?: return null
-            MicrogReleases(gms, companion)
-        }.getOrNull()
+        val index = fetchVerifiedIndexV2() ?: return null
+        val gms = parseIndexV2(index, MicrogPackages.GMS) ?: return null
+        val companion = parseIndexV2(index, MicrogPackages.VENDING) ?: return null
+        return MicrogReleases(gms, companion)
     }
-
-    // --------------------------------------------------------------- GitHub
-
-    @Serializable
-    private data class GhRelease(
-        @SerialName("tag_name") val tagName: String = "",
-        @SerialName("assets") val assets: List<GhAsset> = emptyList(),
-    )
-
-    @Serializable
-    private data class GhAsset(
-        @SerialName("name") val name: String = "",
-        @SerialName("size") val size: Long = 0,
-        @SerialName("browser_download_url") val url: String = "",
-    )
-
-    /** Release (não-prerelease) mais recente do GitHub, com o asset do pacote. */
-    internal fun latestFromGithub(packageName: String): Release? = runCatching {
-        val c = http("$githubApiBase/releases/latest")
-        if (c.responseCode !in 200..299) return null
-        val body = c.inputStream.bufferedReader().use { it.readText() }
-        val rel = json.decodeFromString(GhRelease.serializer(), body)
-        val asset = rel.assets.firstOrNull { a ->
-            a.name.startsWith("$packageName-") &&
-                a.name.endsWith(".apk") &&
-                !a.name.contains("-hw") &&
-                !a.name.contains("-user")
-        } ?: return null
-        val versionCode = asset.name
-            .removePrefix("$packageName-")
-            .removeSuffix(".apk")
-            .toLongOrNull() ?: return null
-        Release(
-            packageName = packageName,
-            versionCode = versionCode,
-            versionName = rel.tagName.removePrefix("v"),
-            apkName = asset.name,
-            sha256 = "", // GitHub não publica hash; validamos package/versão/parse
-            minSdk = null,
-            apkUrl = asset.url,
-        )
-    }.getOrNull()
-
-    // ------------------------------------------------------------------ v2
 
     /** Baixa o APK de uma release para [targetFile], emitindo callbacks periódicos com o progresso em bytes e bytes totais. */
     fun download(
@@ -178,28 +104,29 @@ class ReleaseRepository(
         true
     }.getOrDefault(false)
 
-    // ------------------------------------------------------------------ v2
+    // ------------------------------------------------------------------ index-v2
 
     @Serializable
-    private data class IndexV2(
-        @SerialName("packages") val packages: Map<String, PackageV2> = emptyMap(),
+    private data class EntryV2(@SerialName("index") val index: IndexFile = IndexFile())
+
+    @Serializable
+    private data class IndexFile(
+        @SerialName("name") val name: String = "",
+        @SerialName("sha256") val sha256: String = "",
+        @SerialName("size") val size: Long = 0,
     )
 
-    /** Cada pacote do índice v2 tem `metadata` e `versions` (chave = sha256). */
     @Serializable
-    private data class PackageV2(
-        @SerialName("versions") val versions: Map<String, PackageVersionV2> = emptyMap(),
-    )
+    private data class IndexV2(@SerialName("packages") val packages: Map<String, PackageV2> = emptyMap())
+
+    @Serializable
+    private data class PackageV2(@SerialName("versions") val versions: Map<String, PackageVersionV2> = emptyMap())
 
     @Serializable
     private data class PackageVersionV2(
         @SerialName("file") val file: FileV2 = FileV2(),
         @SerialName("manifest") val manifest: ManifestV2 = ManifestV2(),
-    ) {
-        /** sha256 = chave do map de versões (igual a file.sha256). */
-        val sha256: String get() = file.sha256
-        val apkName: String get() = file.name.removePrefix("/")
-    }
+    )
 
     @Serializable
     private data class FileV2(
@@ -213,104 +140,93 @@ class ReleaseRepository(
         @SerialName("versionCode") val versionCode: Long = 0,
         @SerialName("versionName") val versionName: String = "",
         @SerialName("usesSdk") val usesSdk: UsesSdkV2? = null,
+        @SerialName("signer") val signer: SignerV2 = SignerV2(),
     )
 
     @Serializable
-    private data class UsesSdkV2(@SerialName("minSdkVersion") val minSdkVersion: Int? = null)
+    private data class UsesSdkV2(@SerialName("minSdkVersion") val minSdk: Int? = null)
 
-    private fun fetchIndexV2(): String? = runCatching {
-        val c = http(baseUrl + "index-v2.json")
-        c.requestMethod = "GET"
+    @Serializable
+    private data class SignerV2(@SerialName("sha256") val sha256: List<String> = emptyList())
+
+    private fun fetchEntry(): ByteArray? = runCatching {
+        val c = http(baseUrl + "entry.jar")
         if (c.responseCode !in 200..299) return null
-        val s = c.inputStream.bufferedReader().use { it.readText() }
-        if (s.length > 200_000_000) null else s
+        c.inputStream.use { readBytesAtMost(it, 1_000_000) }
     }.getOrNull()
 
-    private fun parseIndexV2(body: String, packageName: String): Release? = runCatching {
-        val idx = json.decodeFromString(IndexV2.serializer(), body)
-        val versions = idx.packages[packageName]?.versions ?: return null
-        val best = versions.values.maxByOrNull { it.manifest.versionCode } ?: return null
-        if (best.apkName.isEmpty() || best.sha256.isEmpty()) return null
+    private fun fetchVerifiedIndexV2(): ByteArray? = runCatching {
+        val entryBytes = fetchEntry() ?: return null
+        val entryJson = verifiedEntryJson(entryBytes) ?: return null
+        val entry = json.decodeFromString(EntryV2.serializer(), entryJson.decodeToString())
+        if (entry.index.name != "/index-v2.json" || !entry.index.sha256.isSha256() ||
+            entry.index.size !in 1..20_000_000
+        ) {
+            return null
+        }
+        val c = http(baseUrl + entry.index.name.removePrefix("/"))
+        if (c.responseCode !in 200..299) return null
+        val index = c.inputStream.use { readBytesAtMost(it, entry.index.size.toInt()) } ?: return null
+        if (index.size.toLong() != entry.index.size || sha256(index) != entry.index.sha256.lowercase()) return null
+        index
+    }.getOrNull()
+
+    internal fun verifiedEntryJson(jarBytes: ByteArray): ByteArray? = runCatching {
+        val tempFile = File.createTempFile("microg-entry-", ".jar")
+        try {
+            tempFile.writeBytes(jarBytes)
+            JarFile(tempFile, true).use { jar ->
+                val entry = jar.getJarEntry("entry.json") ?: return null
+                val contents = jar.getInputStream(entry).use { it.readBytes() }
+                val certs = entry.certificates ?: return null
+                val trusted = certs.any { cert -> sha256(cert.encoded) == REPOSITORY_CERT_SHA256 }
+                contents.takeIf { trusted }
+            }
+        } finally {
+            tempFile.delete()
+        }
+    }.getOrNull()
+
+    internal fun parseIndexV2(indexBytes: ByteArray, packageName: String): Release? = runCatching {
+        val index = json.decodeFromString(IndexV2.serializer(), indexBytes.decodeToString())
+        val best = index.packages[packageName]?.versions?.values
+            ?.filter { it.file.name.startsWith("/") && !it.file.name.contains("..") }
+            ?.filter { it.file.sha256.isSha256() && it.manifest.signer.sha256.firstOrNull()?.isSha256() == true }
+            ?.filter { it.manifest.versionCode > 0 && it.manifest.versionName.isNotBlank() }
+            ?.filter { !it.file.name.contains("-hw") && !it.file.name.contains("-user") }
+            ?.maxByOrNull { it.manifest.versionCode }
+            ?: return null
+        val apkName = best.file.name.removePrefix("/")
+        if (apkName.isBlank() || apkName.contains('/')) return null
         Release(
             packageName = packageName,
             versionCode = best.manifest.versionCode,
             versionName = best.manifest.versionName,
-            apkName = best.apkName,
-            sha256 = best.sha256,
-            minSdk = best.manifest.usesSdk?.minSdkVersion,
-            apkUrl = baseUrl + best.apkName,
+            apkName = apkName,
+            sha256 = best.file.sha256.lowercase(),
+            certSha256 = best.manifest.signer.sha256.first().lowercase(),
+            minSdk = best.manifest.usesSdk?.minSdk,
+            apkUrl = baseUrl + apkName,
         )
     }.getOrNull()
 
-    // ------------------------------------------------------------------ v1
+    private fun String.isSha256(): Boolean =
+        length == 64 && all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
-    private fun fetchIndexV1(): ByteArray? = runCatching {
-        val c = http(baseUrl + "index-v1.jar")
-        if (c.responseCode !in 200..299) return null
-        c.inputStream.use { it.readBytes() }
-    }.getOrNull()
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
-    private fun parseIndexV1(jar: ByteArray?, packageName: String): Release? {
-        if (jar == null) return null
-        return runCatching {
-            val xmlBytes = ZipInputStream(ByteArrayInputStream(jar)).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    if (entry.name == "index.xml") {
-                        return@use zip.readBytes()
-                    }
-                    entry = zip.nextEntry
-                }
-                null
-            } ?: return null
-
-            val parser = XmlPullParserFactory.newInstance().newPullParser()
-            parser.setInput(ByteArrayInputStream(xmlBytes), "UTF-8")
-
-            var currentApp: String? = null
-            var currentVersionCode = 0L
-            var currentVersionName = ""
-            var currentApkName = ""
-            var currentSha256 = ""
-            var best: Release? = null
-
-            var event = parser.eventType
-            while (event != XmlPullParser.END_DOCUMENT) {
-                when (event) {
-                    XmlPullParser.START_TAG -> when (parser.name) {
-                        "application" -> currentApp = parser.getAttributeValue(null, "id")
-                        "versioncode" -> currentVersionCode = parser.nextText().toLongOrNull() ?: 0
-                        "versionname" -> currentVersionName = parser.nextText()
-                        "apkname" -> currentApkName = parser.nextText()
-                        "hash" -> {
-                            if (parser.getAttributeValue(null, "type") == "sha256") {
-                                currentSha256 = parser.nextText()
-                            }
-                        }
-                    }
-                    XmlPullParser.END_TAG -> if (parser.name == "version" && currentApp == packageName) {
-                        if (currentVersionCode > (best?.versionCode ?: 0L) &&
-                            currentApkName.isNotEmpty() && currentSha256.isNotEmpty()
-                        ) {
-                            best = Release(
-                                packageName = packageName,
-                                versionCode = currentVersionCode,
-                                versionName = currentVersionName,
-                                apkName = currentApkName,
-                                sha256 = currentSha256,
-                                minSdk = null,
-                                apkUrl = baseUrl + currentApkName,
-                            )
-                        }
-                        currentVersionCode = 0
-                        currentVersionName = ""
-                        currentApkName = ""
-                        currentSha256 = ""
-                    }
-                }
-                event = parser.next()
-            }
-            best
-        }.getOrNull()
+    private fun readBytesAtMost(input: InputStream, maxBytes: Int): ByteArray? {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            if (total > maxBytes) return null
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
     }
 }

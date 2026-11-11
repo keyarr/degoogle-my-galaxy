@@ -81,9 +81,9 @@ class MicrogManager(
             file = gmsApk,
             expectedPackage = MicrogPackages.GMS,
             expectedVersionCode = gms.versionCode,
-            expectedVersionName = gms.versionName.takeIf { gms.sha256.isNotEmpty() } ?: "",
+            expectedVersionName = gms.versionName,
             expectedSha256 = gms.sha256,
-            expectedCertSha256 = null,
+            expectedCertSha256 = gms.certSha256,
         )
         if (v1 !is ApkValidator.ValidationResult.Ok) {
             gmsApk.delete()
@@ -94,9 +94,9 @@ class MicrogManager(
             file = companionApk,
             expectedPackage = MicrogPackages.VENDING,
             expectedVersionCode = companion.versionCode,
-            expectedVersionName = companion.versionName.takeIf { companion.sha256.isNotEmpty() } ?: "",
+            expectedVersionName = companion.versionName,
             expectedSha256 = companion.sha256,
-            expectedCertSha256 = null,
+            expectedCertSha256 = companion.certSha256,
         )
         if (v2 !is ApkValidator.ValidationResult.Ok) {
             companionApk.delete()
@@ -120,7 +120,12 @@ class MicrogManager(
         }
 
         onStep(context.getString(R.string.op_applying_masks))
-        val r = backend.prepare(gmsApk.absolutePath, companionApk.absolutePath)
+        val r = backend.prepare(
+            gmsApk.absolutePath,
+            companionApk.absolutePath,
+            gms.sha256,
+            companion.sha256,
+        )
         if (!r.succeeded) {
             Log.e(TAG, "prepare failed exit=${r.exitCode}: ${r.stderr.lineSequence().lastOrNull()}")
             return PrepareResult(

@@ -37,7 +37,7 @@ class ApkValidator(private val context: Context) {
         expectedVersionCode: Long,
         expectedVersionName: String,
         expectedSha256: String,
-        expectedCertSha256: String?,
+        expectedCertSha256: String,
     ): ValidationResult {
         if (!file.exists() || file.length() == 0L) {
             return ValidationResult.Failed(context.getString(R.string.validator_empty_file))
@@ -45,13 +45,13 @@ class ApkValidator(private val context: Context) {
 
         // 1) parse pelo PackageManager
         val pm = context.packageManager
-        val info: PackageInfo? = if (Build.VERSION.SDK_INT >= 33) {
-            @Suppress("DEPRECATION")
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+        val packageInfoFlags = if (Build.VERSION.SDK_INT >= 28) {
+            PackageManager.GET_SIGNING_CERTIFICATES
         } else {
             @Suppress("DEPRECATION")
-            pm.getPackageArchiveInfo(file.absolutePath, PackageManager.GET_SIGNATURES)
+            PackageManager.GET_SIGNATURES
         }
+        val info = pm.getPackageArchiveInfo(file.absolutePath, packageInfoFlags)
         if (info == null) return ValidationResult.Failed(context.getString(R.string.validator_unparseable))
 
         // 2) package name
@@ -79,15 +79,27 @@ class ApkValidator(private val context: Context) {
         }
 
         // 4) assinatura
-        val certSha = info.signatures?.firstOrNull()?.toByteArray()
+        val signatures = if (Build.VERSION.SDK_INT >= 28) {
+            info.signingInfo?.apkContentsSigners
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures
+        }
+        val certSha = signatures?.firstOrNull()?.toByteArray()
             ?.let { sha256Hex(it) }
-        if (expectedCertSha256 != null && certSha != null && certSha != expectedCertSha256) {
+        if (certSha == null) {
+            return ValidationResult.Failed(context.getString(R.string.validator_signature_missing))
+        }
+        if (certSha != expectedCertSha256.lowercase()) {
             return ValidationResult.Failed(context.getString(R.string.validator_signature_mismatch, certSha))
         }
 
         // 5) hash do arquivo inteiro
+        if (expectedSha256.length != 64 || expectedSha256.any { it !in '0'..'9' && it !in 'a'..'f' && it !in 'A'..'F' }) {
+            return ValidationResult.Failed(context.getString(R.string.validator_sha256_missing))
+        }
         val actualSha = file.inputStream().use { sha256Hex(it.readBytes()) }
-        if (expectedSha256.isNotEmpty() && actualSha != expectedSha256) {
+        if (actualSha != expectedSha256.lowercase()) {
             return ValidationResult.Failed(context.getString(R.string.validator_sha256_mismatch, actualSha, expectedSha256))
         }
 

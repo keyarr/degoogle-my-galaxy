@@ -34,9 +34,22 @@ class PackageLocatorTest {
             pmPathOutput = "package:/data/app/~~abc/com.google.android.gms/base.apk",
             dumpsysOutput = "codePath=/data/app/~~abc/com.google.android.gms",
         )
-        assertTrue(info.hasDataUpdate)
+        assertFalse(info.hasDataUpdate)
         assertFalse(info.safeTarget)
         assertEquals(null, info.originalSystemPath)
+    }
+
+    @Test
+    fun `updated system app requires validated stock metadata`() {
+        val info = PackageLocator.parse(
+            packageName = "com.google.android.gms",
+            pmPathOutput = "package:/data/app/~~abc/com.google.android.gms/base.apk",
+            dumpsysOutput = "codePath=/data/app/~~abc/com.google.android.gms UPDATED_SYSTEM_APP systemCodePath=/product/priv-app/GmsCore/base.apk",
+        )
+        assertTrue(info.hasDataUpdate)
+        assertEquals("/product/priv-app/GmsCore/base.apk", info.originalSystemPath)
+        assertEquals("/product/priv-app/GmsCore", info.targetDirectory)
+        assertTrue(info.safeTarget)
     }
 
     @Test

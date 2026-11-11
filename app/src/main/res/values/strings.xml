@@ -70,7 +70,9 @@
     <string name="validator_unexpected_version_code">Unexpected versionCode: %1$d (expected %2$d)</string>
     <string name="validator_unexpected_version_name">Unexpected versionName: %1$s (expected %2$s)</string>
     <string name="validator_signature_mismatch">Signature does not match index (%1$s)</string>
+    <string name="validator_signature_missing">APK signing certificate could not be read</string>
     <string name="validator_sha256_mismatch">SHA-256 mismatch (%1$s != %2$s)</string>
+    <string name="validator_sha256_missing">Trusted SHA-256 is missing or invalid</string>
     <string name="op_invalid_gms">Invalid microG Services: %1$s</string>
     <string name="op_invalid_companion">Invalid microG Companion: %1$s</string>
     <string name="op_preflight">Revalidating environment before changes…</string>

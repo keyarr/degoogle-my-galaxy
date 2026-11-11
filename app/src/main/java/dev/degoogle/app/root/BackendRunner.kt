@@ -11,7 +11,6 @@ import dev.degoogle.app.domain.SystemFacts
 class BackendRunner(
     private val executor: RootExecutor,
     private val backendPath: String,
-    private val experimentalOptIn: () -> Boolean = { false },
     private val transactionBase: String? = null,
     private val operationId: () -> String? = { null },
     private val onProgress: (String) -> Unit = {},
@@ -52,8 +51,14 @@ class BackendRunner(
     /** Revalida o ambiente imediatamente antes de uma operação destrutiva. */
     suspend fun preflight(): BackendCommandResult = runCommand(listOf("preflight"))
 
-    suspend fun prepare(gmsApk: String, companionApk: String): BackendCommandResult =
-        runCommand(listOf("prepare", gmsApk, companionApk))
+    suspend fun prepare(
+        gmsApk: String,
+        companionApk: String,
+        expectedGmsSha256: String,
+        expectedCompanionSha256: String,
+    ): BackendCommandResult = runCommand(
+        listOf("prepare", gmsApk, companionApk, expectedGmsSha256, expectedCompanionSha256),
+    )
 
     suspend fun finalize(): BackendCommandResult = runCommand(listOf("finalize"))
 
@@ -117,7 +122,6 @@ class BackendRunner(
     }
 
     private fun environment(extra: Map<String, String> = emptyMap()): Map<String, String> = buildMap {
-        if (experimentalOptIn()) put("DEGOOGLE_EXPERIMENTAL", "1")
         transactionBase?.takeIf { it.isNotBlank() }?.let {
             put("DEGOOGLE_TRANSACTION_BASE", it)
         }

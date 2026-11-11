@@ -70,7 +70,8 @@ abstract class CommandRootBackend(
             mkdir -p "${'$'}base/src" "${'$'}base/dst" || exit 1;
             printf capability > "${'$'}base/src/value" || exit 1;
             nsenter --mount=/proc/1/ns/mnt -- mount --bind "${'$'}base/src" "${'$'}base/dst" || exit 1;
-            nsenter --mount=/proc/1/ns/mnt -- test "${'$'}base/dst/value" || exit 1;
+            value=${'$'}(nsenter --mount=/proc/1/ns/mnt -- cat "${'$'}base/dst/value") || exit 1;
+            [ "${'$'}value" = capability ] || exit 1;
             nsenter --mount=/proc/1/ns/mnt -- umount "${'$'}base/dst" || exit 1;
             test ! -e "${'$'}base/dst/value" || exit 1
         """.trimIndent()
@@ -87,21 +88,34 @@ abstract class CommandRootBackend(
 
     override suspend fun supportsSoftReboot(): CapabilityResult {
         if (!isAvailable()) return CapabilityResult.fail("root backend not available")
-        val method = when (type) {
-            RootBackendType.KERNELSU -> "/data/adb/ksud"
-            else -> "sys.powerctl userspace"
-        }
-        return CapabilityResult.warn(
-            reason = "strategy exists, but safety depends on firmware homologation",
-            evidence = method,
+        val result = executor.execute(
+            listOf(
+                "sh",
+                "-c",
+                "if [ \"$(getprop init.userspace_reboot.is_supported 2>/dev/null)\" = \"1\" ] && " +
+                    "command -v setprop >/dev/null 2>&1; then printf supported; fi",
+            ),
         )
+        return if (result.succeeded && result.stdout.trim() == "supported") {
+            CapabilityResult.pass("init.userspace_reboot.is_supported=1; AOSP userspace restart selected")
+        } else {
+            CapabilityResult.fail(
+                "AOSP userspace restart support is not confirmed",
+                "exit=${result.exitCode} ${result.stderr.trim()}".trim(),
+            )
+        }
     }
 
     override suspend fun softReboot(): OperationResult {
-        val result = when (type) {
-            RootBackendType.KERNELSU -> executor.execute(listOf("/data/adb/ksud", "soft-reboot"))
-            else -> executor.execute(listOf("setprop", "sys.powerctl", "reboot,userspace"))
+        val support = supportsSoftReboot()
+        if (!support.passed) {
+            return OperationResult(
+                succeeded = false,
+                message = support.reason,
+                exitCode = 5,
+            )
         }
+        val result = executor.execute(listOf("setprop", "sys.powerctl", "reboot,userspace"))
         return OperationResult(
             succeeded = result.succeeded,
             message = if (result.succeeded) "soft reboot requested" else result.stderr.ifBlank { "soft reboot failed" },

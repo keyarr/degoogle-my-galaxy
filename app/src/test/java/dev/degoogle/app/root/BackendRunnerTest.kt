@@ -65,10 +65,21 @@ class BackendRunnerTest {
         )
         val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
 
-        val r = runner.prepare("/data/user/0/dev.degoogle/files/downloads/gms.apk", "/path/com panion.apk")
+        val gmsSha256 = "a".repeat(64)
+        val companionSha256 = "b".repeat(64)
+        val r = runner.prepare(
+            "/data/user/0/dev.degoogle/files/downloads/gms.apk",
+            "/path/com panion.apk",
+            gmsSha256,
+            companionSha256,
+        )
         assertTrue(r.succeeded)
         assertEquals(
-            listOf("sh", "/data/local/tmp/degoogle.sh", "prepare", "/data/user/0/dev.degoogle/files/downloads/gms.apk", "/path/com panion.apk"),
+            listOf(
+                "sh", "/data/local/tmp/degoogle.sh", "prepare",
+                "/data/user/0/dev.degoogle/files/downloads/gms.apk", "/path/com panion.apk",
+                gmsSha256, companionSha256,
+            ),
             fake.recorded.single(),
         )
     }
@@ -81,7 +92,7 @@ class BackendRunnerTest {
             ),
         )
         val runner = BackendRunner(fake, "/data/local/tmp/degoogle.sh")
-        val r = runner.prepare("/x.apk", "/y.apk")
+        val r = runner.prepare("/x.apk", "/y.apk", "a".repeat(64), "b".repeat(64))
         assertEquals(false, r.succeeded)
         assertEquals(3, r.exitCode)
         assertTrue(r.stderr.contains("GMS"))
@@ -125,7 +136,7 @@ class BackendRunnerTest {
             onProgress = progress::add,
         )
 
-        runner.prepare("/x.apk", "/y.apk")
+        runner.prepare("/x.apk", "/y.apk", "a".repeat(64), "b".repeat(64))
 
         assertEquals(listOf("===== PREPARE =====", "  mascarado: GMS"), progress)
     }
@@ -141,6 +152,57 @@ class BackendRunnerTest {
 
         assertEquals(6, result.exitCode)
         assertEquals("automatic", fake.environments.single()["DEGOOGLE_REBOOT_SOURCE"])
+    }
+
+    @Test
+    fun `KernelSU não usa ksud sem suporte AOSP confirmado`() = runTest {
+        val fake = FakeExecutor(
+            ArrayDeque(
+                listOf(
+                    RootResult.Ok(0, "", ""),
+                    RootResult.Ok(0, "", ""),
+                ),
+            ),
+        )
+
+        val result = KernelSuBackend(fake).softReboot()
+
+        assertEquals(false, result.succeeded)
+        assertEquals(5, result.exitCode)
+        assertTrue(fake.recorded.none { it.firstOrNull() == "/data/adb/ksud" || it.firstOrNull() == "setprop" })
+    }
+
+    @Test
+    fun `KernelSU usa somente AOSP userspace quando init confirma suporte`() = runTest {
+        val fake = FakeExecutor(
+            ArrayDeque(
+                listOf(
+                    RootResult.Ok(0, "", ""),
+                    RootResult.Ok(0, "supported\n", ""),
+                    RootResult.Ok(0, "", ""),
+                ),
+            ),
+        )
+
+        val result = KernelSuBackend(fake).softReboot()
+
+        assertTrue(result.succeeded)
+        assertEquals(listOf("setprop", "sys.powerctl", "reboot,userspace"), fake.recorded.last())
+        assertTrue(fake.recorded.none { it.firstOrNull() == "/data/adb/ksud" })
+    }
+
+    @Test
+    fun `RootBackend bind probe confere conteúdo e cleanup`() = runTest {
+        val fake = FakeExecutor()
+
+        val result = KernelSuBackend(fake).canPerformBindMount()
+
+        assertTrue(result.passed)
+        val script = fake.recorded.last().last()
+        assertTrue(script.contains("-- cat"))
+        assertTrue(script.contains("[ \"${'$'}value\" = capability ]"))
+        assertTrue(script.contains("umount"))
+        assertTrue(script.contains("test ! -e"))
     }
 
     @Test

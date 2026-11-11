@@ -6,7 +6,7 @@ package dev.degoogle.app.domain
  */
 object StateDetector {
 
-    fun detect(facts: SystemFacts, profile: DeviceProfile?): DeviceState {
+    fun detect(facts: SystemFacts, profile: DeviceProfile? = null): DeviceState {
         if (!facts.rootOk) return DeviceState.NO_ROOT
 
         // PROFILE_MATCH é telemetria legada do backend. A fonte de verdade da
@@ -14,17 +14,9 @@ object StateDetector {
         // um estado pós-procedimento o PackageManager pode ter sido reindexado
         // por uma versão diferente do backend; não transforme essa flag stale
         // em UNSUPPORTED quando o perfil local e as provas operacionais batem.
-        val localProfile = DeviceProfiles.matching(
-            manufacturer = facts.manufacturer,
-            model = facts.model,
-            sdk = facts.androidSdk,
-        )
-        val compatibleProfile = profile?.takeIf { it.id == localProfile?.id } ?: localProfile
-            // Samsung fora da lista homologada usa os dirs descobertos pelo
-            // locator; o resto continua validado como no perfil fixo.
-            ?: DeviceProfiles.dynamic(facts) ?: return DeviceState.UNSUPPORTED
-
-        val profileSafe = compatibleProfile
+        val gmsTarget = facts.gmsPackage?.targetDirectory?.takeIf { facts.gmsPackage.safeTarget }
+        val gsfTarget = facts.gsfPackage?.targetDirectory?.takeIf { facts.gsfPackage.safeTarget }
+        val storeTarget = facts.storePackage?.targetDirectory?.takeIf { facts.storePackage.safeTarget }
 
         if (!facts.mountGms && !facts.mountGsf && !facts.mountStore) {
             // Nenhum mount ativo: stock ou rollback pendente de reboot.
@@ -35,7 +27,7 @@ object StateDetector {
             // sendo tratado como estado inesperado.
             val gmsIsStock = isStockPackagePath(
                 facts.gmsPath,
-                profileSafe.gmsSystemDir,
+                gmsTarget,
                 facts.gmsPackage,
             )
             if (!gmsIsStock) return DeviceState.ERROR
@@ -46,12 +38,12 @@ object StateDetector {
 
             val gsfIsStock = isStockPackagePath(
                 facts.gsfPath,
-                profileSafe.gsfSystemDir,
+                gsfTarget,
                 facts.gsfPackage,
             )
             val storeIsStock = isStockPackagePath(
                 facts.storePath,
-                profileSafe.storeSystemDir,
+                storeTarget,
                 facts.storePackage,
             )
             return if (gsfIsStock && storeIsStock) DeviceState.STOCK else DeviceState.ERROR
@@ -67,7 +59,7 @@ object StateDetector {
             return DeviceState.ERROR
         }
 
-        val gmsFromMask = facts.gmsPath?.startsWith(profileSafe.gmsSystemDir) == true
+        val gmsFromMask = isUnderTarget(facts.gmsPath, gmsTarget)
         if (!gmsFromMask) return DeviceState.ERROR
 
         if (!facts.gsfPath.isNullOrEmpty()) {
@@ -79,7 +71,7 @@ object StateDetector {
         // Pós-boot: GSF sumiu. microG deve ser priv-app de verdade.
         if (!facts.gmsPrivileged) return DeviceState.ERROR
 
-        val storeFromMask = facts.storePath?.startsWith(profileSafe.storeSystemDir) == true
+        val storeFromMask = isUnderTarget(facts.storePath, storeTarget)
         if (!storeFromMask) return DeviceState.ERROR
 
         if (!facts.finalizeDone) return DeviceState.MICROG_BOOTED
@@ -100,14 +92,16 @@ object StateDetector {
      */
     private fun isStockPackagePath(
         path: String?,
-        systemDir: String,
+        systemDir: String?,
         packageInfo: SystemPackageInfo?,
     ): Boolean {
         val actual = path?.takeIf { it.isNotBlank() } ?: return false
-        val expectedRoot = systemDir.trimEnd('/')
-        if (actual.startsWith("$expectedRoot/")) return true
-        return actual.startsWith("/data/app/") && packageInfo?.hasDataUpdate == true
+        if (isUnderTarget(actual, systemDir)) return true
+        return actual.startsWith("/data/app/") && packageInfo?.hasDataUpdate == true && packageInfo.safeTarget
     }
+
+    private fun isUnderTarget(path: String?, target: String?): Boolean =
+        !path.isNullOrBlank() && !target.isNullOrBlank() && path.startsWith("${target.trimEnd('/')}/")
 }
 
 /**

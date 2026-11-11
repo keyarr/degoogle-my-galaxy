@@ -96,9 +96,9 @@ reboot. A separação era só para depuração manual.
 
 ### 2.9 Falta validação do APK fonte
 
-`prep`/`store install` aceitam qualquer arquivo. O app novo valida em Kotlin
-(package, versão, assinatura, sha256) **antes** de chamar o backend; o backend
-revalida magic bytes e registra hash nos logs.
+O app valida package, versão, certificado e SHA-256 contra o índice F-Droid
+assinado por uma chave fixada. O backend exige os dois SHA-256 e confere os
+arquivos antes da limpeza e antes de copiar para as máscaras.
 
 ### 2.10 `gms_uid` frágil
 
@@ -171,14 +171,14 @@ app/
 
 ```text
 degoogle.sh probe             fatos do sistema (máquina + humano)
-degoogle.sh prepare <gms> <companion>
+degoogle.sh prepare <gms> <companion> <gms-sha256> <companion-sha256>
 degoogle.sh finalize          valida priv-app + grants/appops/doze (idempotente)
 degoogle.sh backup            microG → cópia de diretórios MicroG Session
 degoogle.sh restore-backup    restaura gms-user0/userde no destino correto
 degoogle.sh restore-stock     rollback pre-reboot (unmount+mascara+dados, sem binder), preserva backup
 degoogle.sh reindex-stock     pos-boot: invalida cache/registro stale e reabilita Store/GMS
 degoogle.sh status            estado derivado
-degoogle.sh soft-reboot       userspace reboot com fallback
+degoogle.sh soft-reboot       userspace restart confirmado, sem fallback
 degoogle.sh test              self-test/failure injection (sem tocar no aparelho)
 ```
 
@@ -228,9 +228,9 @@ Regras de derivação (ordem importa):
 
 ### 4.5 Decisões de segurança (resumo)
 
-1. Nenhuma alteração sem provar root (`id -u` = 0) e perfil compatível.
-2. APK só entra no backend depois de validado (parse, package, versão,
-   assinatura vs. índice F-Droid, sha256). Download inválido → apagado.
+1. Nenhuma alteração sem provar root (`id -u` = 0) e os requisitos da operação.
+2. APK só entra no backend depois de validar parse, package, versão, assinatura
+   e SHA-256 contra metadados do índice F-Droid assinado.
 3. `RootExecutor` executa **argv** (nunca concatena strings); caminhos de APK
    ficam no filesDir do app e são validados por regex antes de qualquer shell.
 4. `prepare` é transacional: se GMS montou e GSF falhou, desfaz tudo.
@@ -247,9 +247,8 @@ Regras de derivação (ordem importa):
 ### 4.6 Fonte de downloads (microG)
 
 Repo F-Droid oficial: `https://microg.org/fdroid/repo/`.
-- `index-v2.json` (JSON) → preferido; fallback `index-v1.jar` (zip com
-  `index.xml`), que o Android parseia com `java.util.zip` + `XmlPullParser`
-  (sem dependência extra).
+- `entry.jar` é verificado contra o certificado SHA-256 publicado pelo microG;
+  seu hash assinado autentica `index-v2.json` e os metadados dos APKs.
 - Pacotes: `com.google.android.gms` (GmsCore) e `com.android.vending`
   (microG Companion). Sempre a última `versionCode`; APK em
   `https://microg.org/fdroid/repo/<apkName>`.
@@ -257,9 +256,10 @@ Repo F-Droid oficial: `https://microg.org/fdroid/repo/`.
 
 ### 4.7 Soft reboot
 
-- `setprop sys.powerctl reboot,userspace` (AOSP 11+); init falha o setprop se o
-  userspace reboot não for suportado → detectável.
-- `ksud soft-reboot` é preferido quando o backend KernelSU está disponível.
+- `setprop sys.powerctl reboot,userspace` só é selecionado quando init anuncia
+  suporte pelo property `init.userspace_reboot.is_supported=1`.
+- KernelSU não é selecionado até que a versão instalada e seu comportamento
+  sejam validados.
 - Não existe fallback automático para reboot completo: em root volátil ele
   remove o próprio root e os bind mounts. A estratégia é registrada como
   `WARN` até ser homologada para a combinação firmware/backend.

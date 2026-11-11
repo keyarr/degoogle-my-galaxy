@@ -71,7 +71,6 @@ data class CapabilityMatrix(
         /** Requisitos mínimos para qualquer alteração crítica. */
         val CRITICAL_CAPABILITIES: Set<Capability> = linkedSetOf(
             Capability.ROOT,
-            Capability.SAMSUNG_DEVICE,
             Capability.GLOBAL_MOUNT_NAMESPACE,
             Capability.BIND_MOUNT,
             Capability.SYSTEM_GMS_FOUND,
@@ -82,8 +81,6 @@ data class CapabilityMatrix(
             Capability.STORE_MASKABLE,
             Capability.SELINUX_ENFORCING,
             Capability.SELINUX_CONTEXT_CLONABLE,
-            Capability.SIGNATURE_SPOOFING,
-            Capability.PACKAGE_MANAGER_CACHE_ACCESS,
             Capability.SAFE_SOFT_REBOOT,
             Capability.SAFE_RESTORE,
         )
@@ -210,10 +207,8 @@ object CapabilityEngine {
         // O shell pode fornecer provas mais específicas. Elas sempre vencem a
         // inferência local, inclusive quando o status é WARN/UNKNOWN.
         facts.capabilityResults.forEach { (capability, result) -> inferred[capability] = result }
-        // O backend marca update em /data/app como UNKNOWN fora do perfil S24
-        // (preparable exige profile_check). Com hasDataUpdate + active em
-        // /data/app não é ambíguo: é update conhecido que o cleanup revela.
-        // Mantém WARN (bloqueia experimental, sem virar SUPPORTED).
+        // Um update sem target stock validado continua bloqueado; o path de
+        // /data/app nunca substitui a evidência do pacote original.
         requalifyDataUpdate(inferred, Capability.GMS_MASKABLE, facts.gmsPackage, "GMS")
         requalifyDataUpdate(inferred, Capability.GSF_MASKABLE, facts.gsfPackage, "GSF")
         requalifyDataUpdate(inferred, Capability.STORE_MASKABLE, facts.storePackage, "Store")

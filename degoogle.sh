@@ -3,8 +3,8 @@
 # degoogle.sh — backend DeGoogle (v0.2.0)
 #
 # Backend shell do app DeGoogle. Opera exclusivamente com root; o profile
-# abaixo é a baseline legacy do S24, enquanto o fluxo experimental usa paths
-# descobertos sob allowlist e aprovação do Compatibility Engine. Todas as
+# abaixo é usado somente na recuperação legacy verificada. Novas preparações
+# usam paths descobertos sob a allowlist e aprovados pelas runtime checks. Todas as
 # operações são idempotentes; operações destrutivas têm rollback; nada é
 # declarado sucesso sem verificação.
 #
@@ -24,7 +24,7 @@
 #
 # Uso:
 #   degoogle.sh probe
-#   degoogle.sh prepare <gms.apk> <companion.apk>
+#   degoogle.sh prepare <gms.apk> <companion.apk> <gms-sha256> <companion-sha256>
 #   degoogle.sh finalize
 #   degoogle.sh backup
 #   degoogle.sh restore-backup
@@ -43,7 +43,7 @@ set -u
 SCRIPT_VERSION="0.2.0"
 
 # ---------------------------------------------------------------------------
-# Device profile (v1: Samsung Galaxy S24 Ultra / SM-S928x)
+# Legacy recovery profile (Samsung Galaxy S24 Ultra / SM-S928x)
 # ---------------------------------------------------------------------------
 PROFILE_ID="samsung_sm-s928b"
 PROFILE_MANUFACTURER="samsung"
@@ -55,8 +55,8 @@ STORE_PKG="com.android.vending"
 FAKEGAPPS_PKG="${DEGOOGLE_FAKEGAPPS_PACKAGE:-inc.whew.android.fakegapps}"
 LSPOSED_MARKER="${DEGOOGLE_LSPOSED_MARKER:-/data/adb/modules/zygisk_lsposed/module.prop}"
 
-# Paths podem ser sobrescritos por env (usado pelo harness de teste em host;
-# no aparelho valem os defaults do device profile)
+# Paths configuráveis pelo harness de teste; no aparelho, os defaults servem
+# somente para recovery legacy verificada.
 PM_SYSTEM_DIR="${DEGOOGLE_PM_SYSTEM_DIR:-/data/system}"
 PM_CACHE_DIR="${DEGOOGLE_PM_CACHE:-$PM_SYSTEM_DIR/package_cache}"
 
@@ -114,6 +114,7 @@ TRANSACTION_BASE="${DEGOOGLE_TRANSACTION_BASE:-$BACKUP_BASE/transaction}"
 JOURNAL_FILE="$TRANSACTION_BASE/journal"
 SNAPSHOT_FILE="$TRANSACTION_BASE/snapshot.json"
 PROBE_BASELINE_FILE="$TRANSACTION_BASE/probe-baseline"
+REBOOT_BASELINE_FILE="$TRANSACTION_BASE/reboot-baseline"
 RESCUE_STATE_FILE="${DEGOOGLE_RESCUE_STATE:-$TRANSACTION_BASE/rescue-party.state}"
 KSUD_PATH="${DEGOOGLE_KSUD_PATH:-/data/adb/ksud}"
 
@@ -322,8 +323,9 @@ mount_namespace_identity()
 
 journal_state()
 {
-    local state="$1" tmp
+    local state="$1" tmp operation
     mkdir -p "$TRANSACTION_BASE" 2>/dev/null || return 1
+    operation="${DEGOOGLE_OPERATION_ID:-unknown}"
     tmp="$JOURNAL_FILE.tmp.$$"
     {
         printf 'schemaVersion=1\n'
@@ -332,9 +334,14 @@ journal_state()
         printf 'state=%s\n' "$state"
         printf 'model=%s\n' "$MODEL"
         printf 'fingerprint=%s\n' "$FINGERPRINT"
+        printf 'targetGms=%s\n' "$TARGET_GMS"
+        printf 'targetGsf=%s\n' "$TARGET_GSF"
+        printf 'targetStore=%s\n' "$TARGET_STORE"
     } > "$tmp" || return 1
     mv "$tmp" "$JOURNAL_FILE" || return 1
-    return 0
+    [ "$(sed -n 's/^schemaVersion=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" = "1" ] || return 1
+    [ "$(sed -n 's/^operationId=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" = "$operation" ] || return 1
+    [ "$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" = "$state" ] || return 1
 }
 
 hash_file()
@@ -348,6 +355,16 @@ hash_file()
     fi
     [ -n "$hash" ] || return 1
     printf '%s' "$hash"
+}
+
+sha256_matches_file()
+{
+    local file="$1" expected="$2" actual
+    [ "${#expected}" = "64" ] || return 1
+    case "$expected" in *[!0123456789abcdefABCDEF]*) return 1 ;; esac
+    expected="$(printf '%s' "$expected" | tr 'A-F' 'a-f')"
+    actual="$(hash_file "$file")" || return 1
+    [ "$actual" = "$expected" ]
 }
 
 snapshot_state()
@@ -383,20 +400,22 @@ snapshot_state()
         printf '  "gsf": {"activeCodePath":"%s","originalSystemPath":"%s","targetDirectory":"%s","sha256":"%s","owner":"%s","mode":"%s","selinuxContext":"%s"},\n' "$GSF_ACTIVE_CODE_PATH" "$GSF_ORIGINAL_SYSTEM_PATH" "$TARGET_GSF" "$gsf_hash" "$ORIGINAL_GSF_OWNER" "$ORIGINAL_GSF_MODE" "$ORIGINAL_GSF_CONTEXT"
         printf '  "store": {"activeCodePath":"%s","originalSystemPath":"%s","targetDirectory":"%s","sha256":"%s","owner":"%s","mode":"%s","selinuxContext":"%s"},\n' "$STORE_ACTIVE_CODE_PATH" "$STORE_ORIGINAL_SYSTEM_PATH" "$TARGET_STORE" "$store_hash" "$ORIGINAL_STORE_OWNER" "$ORIGINAL_STORE_MODE" "$ORIGINAL_STORE_CONTEXT"
         printf '  "mounts": ['
-        global_mountinfo | awk -v g="${TARGET_GMS:-$PROFILE_GMS}" -v f="${TARGET_GSF:-$PROFILE_GSF}" -v s="${TARGET_STORE:-$PROFILE_STORE}" \
+        global_mountinfo | awk -v g="$TARGET_GMS" -v f="$TARGET_GSF" -v s="$TARGET_STORE" \
             '$5 == g || $5 == f || $5 == s { printf "%s{\"mountpoint\":\"%s\",\"sourceRoot\":\"%s\"}", sep, $5, $4; sep="," }'
         printf '],\n'
         printf '  "state": "PREPARED"\n'
         printf '}\n'
     } > "$tmp" || return 1
     mv "$tmp" "$SNAPSHOT_FILE" || return 1
+    validate_snapshot || return 1
     journal_state "BACKUP_COMPLETE" || return 1
+    [ "$(snapshot_top_field operationId)" = "$(sed -n 's/^operationId=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" ] || return 1
     return 0
 }
 
 clone_mask_metadata()
 {
-    local target="$1" mask="$2" owner="$3" mode="$4" context="$5" label="$6" actual
+    local target="$1" mask="$2" owner="$3" mode="$4" context="$5" label="$6" actual_owner actual_mode actual_context
     [ -n "$owner" ] && [ -n "$mode" ] && [ -n "$context" ] || \
         _prep_fail 4 "$label: metadados owner/mode/SELinux incompletos"
     global chown "$owner" "$mask" 2>/dev/null || _prep_fail 4 "$label: não consegui clonar owner=$owner"
@@ -404,8 +423,11 @@ clone_mask_metadata()
     if ! global chcon -R "$context" "$mask" 2>/dev/null; then
         global restorecon -R "$mask" 2>/dev/null || _prep_fail 4 "$label: não consegui aplicar contexto SELinux"
     fi
-    actual="$(global ls -Zd "$mask" 2>/dev/null | awk '{print $1}')"
-    [ "$actual" = "$context" ] || _prep_fail 4 "$label: contexto SELinux não reproduzido (esperado=$context atual=${actual:-<ausente>})"
+    actual_owner="$(global stat -c %u:%g "$mask" 2>/dev/null)"
+    actual_mode="$(global stat -c %a "$mask" 2>/dev/null)"
+    actual_context="$(global ls -Zd "$mask" 2>/dev/null | awk '{print $1}')"
+    [ "$actual_owner" = "$owner" ] && [ "$actual_mode" = "$mode" ] && [ "$actual_context" = "$context" ] || \
+        _prep_fail 4 "$label: metadados não reproduzidos (esperado=$owner:$mode:$context atual=${actual_owner:-<ausente>}:${actual_mode:-<ausente>}:${actual_context:-<ausente>})"
 }
 
 write_probe_baseline()
@@ -474,18 +496,46 @@ is_allowed_system_path()
 {
     local path="$1"
     case "$path" in
-        "$PROFILE_GMS"|"$PROFILE_GMS"/*|"$PROFILE_GSF"|"$PROFILE_GSF"/*|"$PROFILE_STORE"|"$PROFILE_STORE"/*|/system|/system/*|/system_ext|/system_ext/*|/product|/product/*)
-            case "$path" in *..*) return 1 ;; esac
-            return 0
+        /system/*|/system_ext/*|/product/*) ;;
+        *)
+            [ "${DEGOOGLE_TEST_MODE:-0}" = "1" ] || return 1
+            case "$path" in
+                "${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/system/*|"${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/system_ext/*|"${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/product/*|\
+                "$PROFILE_GMS"|"$PROFILE_GMS"/*|"$PROFILE_GSF"|"$PROFILE_GSF"/*|"$PROFILE_STORE"|"$PROFILE_STORE"/*) ;;
+                *) return 1 ;;
+            esac
             ;;
-        *) return 1 ;;
     esac
+    case "$path" in *..*|*/app|*/priv-app) return 1 ;; esac
+    [ -n "$(basename "$path")" ] && [ "$(basename "$path")" != "." ]
+}
+
+is_safe_target_directory()
+{
+    local target="$1" real parent
+    is_allowed_system_path "$target" || return 1
+    parent="$(dirname "$target")"
+    case "$parent" in */app|*/priv-app) ;; *) return 1 ;; esac
+    real="$(global readlink -f "$target" 2>/dev/null || true)"
+    [ -n "$real" ] || return 1
+    is_allowed_system_path "$real" || return 1
+    [ "$real" = "$target" ] && [ "$(dirname "$real")" = "$parent" ]
+}
+
+targets_are_distinct()
+{
+    local first="$1" second="$2" third="$3"
+    [ "$first" != "$second" ] && [ "$first" != "$third" ] && [ "$second" != "$third" ] || return 1
+    case "$first/" in "$second/"*|"$third/"*) return 1 ;; esac
+    case "$second/" in "$first/"*|"$third/"*) return 1 ;; esac
+    case "$third/" in "$first/"*|"$second/"*) return 1 ;; esac
+    return 0
 }
 
 locate_package()
 {
     # locate_package <GMS|GSF|STORE> <package>
-    local prefix="$1" pkg="$2" paths active original target base splits update real fs partition
+    local prefix="$1" pkg="$2" paths active original target base splits update real fs partition package_dump
     case "$prefix" in
         GMS)
             GMS_ACTIVE_CODE_PATH=""; GMS_ORIGINAL_SYSTEM_PATH=""; GMS_TARGET_DIRECTORY=""; GMS_BASE_APK=""; GMS_SPLIT_APKS=""
@@ -499,14 +549,20 @@ locate_package()
     esac
     paths="$(pm_paths "$pkg")"
     active="$(printf '%s\n' "$paths" | sed '/^$/d' | head -n 1)"
+    package_dump="$(dumpsys package "$pkg" 2>/dev/null || true)"
     original="$(printf '%s\n' "$paths" | while IFS= read -r p; do
         [ -n "$p" ] || continue
         if is_allowed_system_path "$p"; then printf '%s' "$p"; break; fi
     done)"
+    if [ -z "$original" ] && printf '%s\n' "$package_dump" | grep -q 'UPDATED_SYSTEM_APP'; then
+        original="$(printf '%s\n' "$package_dump" | sed -n 's/.*systemCodePath=\([^[:space:]]*\).*/\1/p' | head -n 1)"
+        is_allowed_system_path "$original" || original=""
+    fi
     if [ -n "$original" ]; then
         target="$(dirname "$original" 2>/dev/null)"
     elif [ -n "$active" ]; then
         target="$(dirname "$active" 2>/dev/null)"
+        is_allowed_system_path "$target" || target=""
     else
         target=""
     fi
@@ -515,8 +571,12 @@ locate_package()
     [ -n "$base" ] || base="${original:-$active}"
     splits="$(printf '%s\n' "$paths" | awk -v b="$base" 'NF && $0 != b { if (out != "") out=out ","; out=out $0 } END { print out }')"
     update=0
-    printf '%s\n' "$paths" | grep -q '^/data/app/' && update=1
-    dumpsys package "$pkg" 2>/dev/null | grep -q 'codePath=/data/app/' && update=1
+    if printf '%s\n' "$paths" | grep -q '^/data/app/'; then
+        if printf '%s\n' "$package_dump" | grep -q 'codePath=/data/app/' && \
+            printf '%s\n' "$package_dump" | grep -q 'UPDATED_SYSTEM_APP' && [ -n "$original" ]; then
+            update=1
+        fi
+    fi
     real="$(readlink -f "$active" 2>/dev/null || true)"
     [ -n "$real" ] || real="$active"
     fs="$(stat -f -c %T "$active" 2>/dev/null || true)"
@@ -544,7 +604,23 @@ locate_package()
 mountinfo_root()
 {
     # mountinfo: campo 4 = root (fonte do bind mount), campo 5 = mountpoint
-    awk -v m="$1" '$5 == m { print $4; exit }' "$MOUNTINFO" 2>/dev/null
+    awk -v m="$1" '$5 == m { print $4 }' "$MOUNTINFO" 2>/dev/null | head -n 1
+}
+
+mountinfo_count()
+{
+    awk -v m="$1" '$5 == m { count++ } END { print count+0 }' "$MOUNTINFO" 2>/dev/null
+}
+
+mountinfo_device_for_path()
+{
+    awk -v p="$1" '
+        $5 != "" && (p == $5 || index(p, $5 "/") == 1) && length($5) > length(best) {
+            best = $5
+            device = $3
+        }
+        END { print device }
+    ' "$MOUNTINFO" 2>/dev/null
 }
 
 fs_root_of()
@@ -583,10 +659,7 @@ is_masked_by_us()
 {
     # is_masked_by_us <mountpoint> <mask> [apk]
     local mp="$1" mask="$2" apk="${3:-}"
-    local root
-    root="$(mountinfo_root "$mp")"
-    [ -n "$root" ] || return 1
-    [ "$root" = "$(fs_root_of "$mask")" ] || return 1
+    mount_source_matches_mask "$mp" "$mask" || return 1
     if [ -n "$apk" ]; then
         global test -f "$mp/$apk" 2>/dev/null || return 1
     else
@@ -603,10 +676,8 @@ is_masked_by_legacy()
 is_masked_by()
 {
     # is_masked_by <mountpoint> <mask> [apk]
-    local mp="$1" mask="$2" apk="${3:-}" root
-    root="$(mountinfo_root "$mp")"
-    [ -n "$root" ] || return 1
-    [ "$root" = "$(fs_root_of "$mask")" ] || return 1
+    local mp="$1" mask="$2" apk="${3:-}"
+    mount_source_matches_mask "$mp" "$mask" || return 1
     if [ -n "$apk" ]; then
         global test -f "$mp/$apk" 2>/dev/null || return 1
     else
@@ -623,14 +694,19 @@ mount_source_matches_mask()
     # Não exija que o arquivo apareça no mountpoint: durante um boot quebrado
     # o Package Manager pode ainda não ter recriado os diretórios/arquivos,
     # e os fixtures de recuperação representam apenas a origem do mount.
-    local mp="$1" mask="$2" root
+    local mp="$1" mask="$2" root device mask_device
+    [ "$(mountinfo_count "$mp")" = "1" ] || return 1
     root="$(mountinfo_root "$mp")"
     [ -n "$root" ] || return 1
-    [ "$root" = "$(fs_root_of "$mask")" ]
+    [ "$root" = "$(fs_root_of "$mask")" ] || return 1
+    device="$(awk -v m="$mp" '$5 == m { print $3; exit }' "$MOUNTINFO" 2>/dev/null)"
+    mask_device="$(mountinfo_device_for_path "$mask")"
+    [ -n "$device" ] && [ "$device" = "$mask_device" ]
 }
 
 refresh_residue_facts()
 {
+    local base residue
     MASK_RESIDUE_PRESENT=0
     for p in "$MASK_BASE" "$LEGACY_MASK_BASE" \
         "$MASK_GMS/$GMS_APK" "$MASK_STORE/$STORE_APK" \
@@ -640,49 +716,56 @@ refresh_residue_facts()
             return 0
         fi
     done
+    for base in "$MASK_BASE" "$LEGACY_MASK_BASE"; do
+        [ -d "$base" ] || continue
+        residue="$(find "$base" -mindepth 1 -print -quit 2>/dev/null)" || continue
+        if [ -n "$residue" ]; then
+            MASK_RESIDUE_PRESENT=1
+            return 0
+        fi
+    done
 }
 
 refresh_mount_facts()
 {
-    # Package Manager pode não listar GSF/Store durante uma recuperação. Os
-    # alvos aqui já devem ter sido resolvidos pelo locator, snapshot ou perfil;
-    # mountinfo é a fonte de verdade para saber o que ainda está montado.
+    # Alvos ausentes ficam desconhecidos. Recuperação resolve snapshot ou
+    # exceção legacy verificada antes de consultar novamente os mounts.
     local mr
     MOUNT_GMS=0; MOUNT_GMS_IS_OURS=0; MOUNT_GMS_IS_LEGACY=0; MOUNT_GMS_IS_KNOWN=0; MOUNT_GMS_SOURCE=""
-    mr="$(mountinfo_root "${TARGET_GMS:-$PROFILE_GMS}")"
+    mr="$(mountinfo_root "$TARGET_GMS")"
     if [ -n "$mr" ]; then
         MOUNT_GMS=1
         MOUNT_GMS_SOURCE="$mr"
-        if mount_source_matches_mask "${TARGET_GMS:-$PROFILE_GMS}" "$MASK_GMS"; then
+        if mount_source_matches_mask "$TARGET_GMS" "$MASK_GMS"; then
             MOUNT_GMS_IS_OURS=1
             MOUNT_GMS_IS_KNOWN=1
-        elif mount_source_matches_mask "${TARGET_GMS:-$PROFILE_GMS}" "$LEGACY_MASK_GMS"; then
+        elif mount_source_matches_mask "$TARGET_GMS" "$LEGACY_MASK_GMS"; then
             MOUNT_GMS_IS_LEGACY=1
             MOUNT_GMS_IS_KNOWN=1
         fi
     fi
 
     MOUNT_GSF=0; MOUNT_GSF_IS_OURS=0; MOUNT_GSF_IS_LEGACY=0; MOUNT_GSF_IS_KNOWN=0
-    mr="$(mountinfo_root "${TARGET_GSF:-$PROFILE_GSF}")"
+    mr="$(mountinfo_root "$TARGET_GSF")"
     if [ -n "$mr" ]; then
         MOUNT_GSF=1
-        if mount_source_matches_mask "${TARGET_GSF:-$PROFILE_GSF}" "$MASK_GSF"; then
+        if mount_source_matches_mask "$TARGET_GSF" "$MASK_GSF"; then
             MOUNT_GSF_IS_OURS=1
             MOUNT_GSF_IS_KNOWN=1
-        elif mount_source_matches_mask "${TARGET_GSF:-$PROFILE_GSF}" "$LEGACY_MASK_GSF"; then
+        elif mount_source_matches_mask "$TARGET_GSF" "$LEGACY_MASK_GSF"; then
             MOUNT_GSF_IS_LEGACY=1
             MOUNT_GSF_IS_KNOWN=1
         fi
     fi
 
     MOUNT_STORE=0; MOUNT_STORE_IS_OURS=0; MOUNT_STORE_IS_LEGACY=0; MOUNT_STORE_IS_KNOWN=0
-    mr="$(mountinfo_root "${TARGET_STORE:-$PROFILE_STORE}")"
+    mr="$(mountinfo_root "$TARGET_STORE")"
     if [ -n "$mr" ]; then
         MOUNT_STORE=1
-        if mount_source_matches_mask "${TARGET_STORE:-$PROFILE_STORE}" "$MASK_STORE"; then
+        if mount_source_matches_mask "$TARGET_STORE" "$MASK_STORE"; then
             MOUNT_STORE_IS_OURS=1
             MOUNT_STORE_IS_KNOWN=1
-        elif mount_source_matches_mask "${TARGET_STORE:-$PROFILE_STORE}" "$LEGACY_MASK_STORE"; then
+        elif mount_source_matches_mask "$TARGET_STORE" "$LEGACY_MASK_STORE"; then
             MOUNT_STORE_IS_LEGACY=1
             MOUNT_STORE_IS_KNOWN=1
         fi
@@ -777,14 +860,14 @@ preparable_system_update()
     local prefix="$1" active update expected
     case "$prefix" in
         GMS)
-            active="$GMS_ACTIVE_CODE_PATH"; update="$GMS_HAS_DATA_UPDATE"; expected="$PROFILE_GMS" ;;
+            active="$GMS_ACTIVE_CODE_PATH"; update="$GMS_HAS_DATA_UPDATE"; expected="$GMS_ORIGINAL_SYSTEM_PATH" ;;
         STORE)
-            active="$STORE_ACTIVE_CODE_PATH"; update="$STORE_HAS_DATA_UPDATE"; expected="$PROFILE_STORE" ;;
+            active="$STORE_ACTIVE_CODE_PATH"; update="$STORE_HAS_DATA_UPDATE"; expected="$STORE_ORIGINAL_SYSTEM_PATH" ;;
         *) return 1 ;;
     esac
     [ "$update" = "1" ] || return 1
     printf '%s' "$active" | grep -q '^/data/app/' || return 1
-    is_allowed_system_path "$expected"
+    [ -n "$expected" ] && is_safe_target_directory "$(dirname "$expected")"
 }
 
 cap_set()
@@ -900,33 +983,54 @@ probe_bind_mount()
 probe_selinux_context()
 {
     local base="${DEGOOGLE_CAP_TEST_BASE:-${MASK_BASE%/*}/degoogle-selinux-test.$$}"
-    local original masked source_target="${TARGET_GMS:-$PROFILE_GMS}"
+    local original masked component target owner mode actual_owner actual_mode
     [ "$SELINUX" = "Enforcing" ] || {
         cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "SELinux não está Enforcing"
         return
     }
-    original="$(global ls -Zd "$source_target" 2>/dev/null | awk '{print $1}')"
-    [ -n "$original" ] || {
-        cap_set SELINUX_CONTEXT_CLONABLE UNKNOWN "" "contexto SELinux do alvo original não pôde ser lido"
-        return
-    }
-    mkdir -p "$base" 2>/dev/null || {
-        cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "não foi possível criar alvo de teste"
-        return
-    }
-    if ! global chcon -R "$original" "$base" >/dev/null 2>&1 && \
-        ! global restorecon -R "$base" >/dev/null 2>&1; then
+    for component in GMS GSF STORE; do
+        case "$component" in
+            GMS) target="$TARGET_GMS" ;;
+            GSF) target="$TARGET_GSF" ;;
+            STORE) target="$TARGET_STORE" ;;
+        esac
+        [ -n "$target" ] || {
+            cap_set SELINUX_CONTEXT_CLONABLE UNKNOWN "" "$component target não resolvido"
+            return
+        }
+        original="$(global ls -Zd "$target" 2>/dev/null | awk '{print $1}')"
+        owner="$(global stat -c %u:%g "$target" 2>/dev/null)"
+        mode="$(global stat -c %a "$target" 2>/dev/null)"
+        [ -n "$original" ] || {
+            cap_set SELINUX_CONTEXT_CLONABLE UNKNOWN "" "contexto SELinux do alvo $component não pôde ser lido"
+            return
+        }
+        mkdir -p "$base" 2>/dev/null || {
+            cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "não foi possível criar alvo de teste"
+            return
+        }
+        if ! global chcon -R "$original" "$base" >/dev/null 2>&1 && \
+            ! global restorecon -R "$base" >/dev/null 2>&1; then
+            rm -rf "$base" 2>/dev/null || true
+            cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "não foi possível reproduzir o contexto SELinux de $component"
+            return
+        fi
+        if ! global chown "$owner" "$base" >/dev/null 2>&1 || \
+            ! global chmod "$mode" "$base" >/dev/null 2>&1; then
+            rm -rf "$base" 2>/dev/null || true
+            cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "não foi possível reproduzir owner/mode de $component"
+            return
+        fi
+        masked="$(global ls -Zd "$base" 2>/dev/null | awk '{print $1}')"
+        actual_owner="$(global stat -c %u:%g "$base" 2>/dev/null)"
+        actual_mode="$(global stat -c %a "$base" 2>/dev/null)"
         rm -rf "$base" 2>/dev/null || true
-        cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "não foi possível reproduzir o contexto SELinux do alvo"
-        return
-    fi
-    masked="$(global ls -Zd "$base" 2>/dev/null | awk '{print $1}')"
-    rm -rf "$base" 2>/dev/null || true
-    if [ "$original" = "$masked" ]; then
-        cap_set SELINUX_CONTEXT_CLONABLE PASS "origem=$original; alvo restaurado=$masked"
-    else
-        cap_set SELINUX_CONTEXT_CLONABLE FAIL "origem=$original; alvo=$masked" "contexto SELinux não pôde ser reproduzido exatamente"
-    fi
+        [ "$original" = "$masked" ] && [ "$owner" = "$actual_owner" ] && [ "$mode" = "$actual_mode" ] || {
+            cap_set SELINUX_CONTEXT_CLONABLE FAIL "origem=$owner:$mode:$original; alvo=$actual_owner:$actual_mode:$masked" "metadados de $component não puderam ser reproduzidos exatamente"
+            return
+        }
+    done
+    cap_set SELINUX_CONTEXT_CLONABLE PASS "owner, mode e contexto SELinux reproduzíveis para GMS, GSF e Store"
 }
 
 probe_signature_spoofing()
@@ -978,30 +1082,26 @@ probe_signature_spoofing()
 
 probe_package_manager_cache()
 {
-    local parent test_file
-    parent="$(dirname "$PM_CACHE_DIR")"
-    test_file="$parent/.degoogle-pm-capability-test.$$"
-    if [ -d "$parent" ] && [ -w "$parent" ] && : > "$test_file" 2>/dev/null; then
-        if rm -f "$test_file" 2>/dev/null; then
-            if [ -r "$PM_CACHE_DIR" ]; then
-                cap_set PACKAGE_MANAGER_CACHE_ACCESS PASS "cache legível e diretório pai gravável: $PM_CACHE_DIR"
-            else
-                cap_set PACKAGE_MANAGER_CACHE_ACCESS PASS "diretório pai gravável; cache ausente será tratado como no-op: $PM_CACHE_DIR"
-            fi
-        else
-            cap_set PACKAGE_MANAGER_CACHE_ACCESS FAIL "$test_file" "teste de limpeza do cache temporário falhou"
-        fi
-    elif [ -e "$PM_CACHE_DIR" ]; then
-        cap_set PACKAGE_MANAGER_CACHE_ACCESS WARN "cache existe, mas acesso de escrita não foi confirmado" "$PM_CACHE_DIR"
-    else
-        cap_set PACKAGE_MANAGER_CACHE_ACCESS UNKNOWN "" "diretório pai do cache não é gravável"
+    if [ ! -e "$PM_CACHE_DIR" ]; then
+        cap_set PACKAGE_MANAGER_CACHE_ACCESS PASS "cache ausente; invalidação não é necessária"
+        return
     fi
+    if [ ! -d "$PM_CACHE_DIR" ]; then
+        cap_set PACKAGE_MANAGER_CACHE_ACCESS FAIL "$PM_CACHE_DIR" "cache existe, mas não é um diretório inspecionável"
+        return
+    fi
+    [ -r "$PM_CACHE_DIR" ] && [ -w "$PM_CACHE_DIR" ] && [ -x "$PM_CACHE_DIR" ] && \
+        { printf '' > "$PM_CACHE_DIR/.degoogle-capability-test.$$"; } 2>/dev/null && \
+        rm -f "$PM_CACHE_DIR/.degoogle-capability-test.$$" 2>/dev/null && \
+        cap_set PACKAGE_MANAGER_CACHE_ACCESS PASS "cache legível e gravável: $PM_CACHE_DIR" && return
+    rm -f "$PM_CACHE_DIR/.degoogle-capability-test.$$" 2>/dev/null || true
+    cap_set PACKAGE_MANAGER_CACHE_ACCESS FAIL "$PM_CACHE_DIR" "cache existe, mas não pode ser inspecionado ou modificado"
 }
 
 probe_safe_restore()
 {
     local test_file="$TRANSACTION_BASE/.capability-test.$$"
-    if ! mkdir -p "$TRANSACTION_BASE" 2>/dev/null || ! : > "$test_file" 2>/dev/null; then
+    if ! mkdir -p "$TRANSACTION_BASE" 2>/dev/null || ! { printf '' > "$test_file"; } 2>/dev/null; then
         cap_set SAFE_RESTORE FAIL "" "diretório persistente de rollback não é gravável"
         return
     fi
@@ -1012,28 +1112,57 @@ probe_safe_restore()
     cap_set SAFE_RESTORE PASS "snapshot/journal persistentes podem ser criados em $TRANSACTION_BASE"
 }
 
+framework_identity()
+{
+    local boot_id server_pid server_start
+    if [ "${DEGOOGLE_TEST_MODE:-0}" = "1" ]; then
+        boot_id="${DEGOOGLE_TEST_BOOT_ID:-test-boot-id}"
+        server_pid="${DEGOOGLE_TEST_SYSTEM_SERVER_PID:-100}"
+        server_start="${DEGOOGLE_TEST_SYSTEM_SERVER_START:-1000}"
+    else
+        boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || true)"
+        server_pid="$(pidof system_server 2>/dev/null || true)"
+        [ -n "$server_pid" ] || server_pid="$(ps -A 2>/dev/null | awk '$NF == "system_server" {print $1; exit}')"
+        case "$server_pid" in *' '*) server_pid="${server_pid%% *}" ;; esac
+        server_start="$(sed 's/^.*) //' "/proc/$server_pid/stat" 2>/dev/null | awk '{print $20}')"
+    fi
+    [ -n "$boot_id" ] && [ -n "$server_pid" ] && [ -n "$server_start" ] || return 1
+    printf '%s\n%s\n%s' "$boot_id" "$server_pid" "$server_start"
+}
+
+persist_reboot_baseline()
+{
+    local identity="$1" tmp
+    tmp="$REBOOT_BASELINE_FILE.tmp.$$"
+    mkdir -p "$TRANSACTION_BASE" 2>/dev/null || return 1
+    {
+        printf 'kernelBootId=%s\n' "$(printf '%s\n' "$identity" | sed -n '1p')"
+        printf 'systemServerPid=%s\n' "$(printf '%s\n' "$identity" | sed -n '2p')"
+        printf 'systemServerStart=%s\n' "$(printf '%s\n' "$identity" | sed -n '3p')"
+    } > "$tmp" || return 1
+    mv "$tmp" "$REBOOT_BASELINE_FILE" || return 1
+    [ "$(sed -n 's/^kernelBootId=//p' "$REBOOT_BASELINE_FILE")" = "$(printf '%s\n' "$identity" | sed -n '1p')" ] && \
+        [ "$(sed -n 's/^systemServerPid=//p' "$REBOOT_BASELINE_FILE")" = "$(printf '%s\n' "$identity" | sed -n '2p')" ] && \
+        [ "$(sed -n 's/^systemServerStart=//p' "$REBOOT_BASELINE_FILE")" = "$(printf '%s\n' "$identity" | sed -n '3p')" ]
+}
+
 probe_reboot_strategy()
 {
     REBOOT_STRATEGY_BACKEND="$ROOT_MANAGER"
     REBOOT_STRATEGY_METHOD=""
     REBOOT_STRATEGY_CONFIDENCE="UNKNOWN"
     REBOOT_STRATEGY_FIRMWARE_VALIDATED=0
-    if [ -x /data/adb/ksud ]; then
-        REBOOT_STRATEGY_METHOD="KSUD_SOFT_REBOOT"
-    elif command -v setprop >/dev/null 2>&1; then
+    if [ "$(getprop init.userspace_reboot.is_supported 2>/dev/null)" = "1" ] && command -v setprop >/dev/null 2>&1; then
         REBOOT_STRATEGY_METHOD="SYS_POWERCTL_USERSPACE"
-    fi
-    if [ -n "$REBOOT_STRATEGY_METHOD" ]; then
+        REBOOT_STRATEGY_CONFIDENCE="VERIFIED"
+        REBOOT_STRATEGY_FIRMWARE_VALIDATED=1
+        cap_set SAFE_SOFT_REBOOT PASS "init.userspace_reboot.is_supported=1; método AOSP userspace selecionado"
+    elif [ -x "$KSUD_PATH" ]; then
+        REBOOT_STRATEGY_METHOD="KSUD_SOFT_REBOOT"
         REBOOT_STRATEGY_CONFIDENCE="LOW"
-        if [ "${DEGOOGLE_FIRMWARE_HOMOLOGATED:-0}" = "1" ]; then
-            REBOOT_STRATEGY_CONFIDENCE="VERIFIED"
-            REBOOT_STRATEGY_FIRMWARE_VALIDATED=1
-            cap_set SAFE_SOFT_REBOOT PASS "estratégia $REBOOT_STRATEGY_METHOD marcada como homologada"
-        else
-            cap_set SAFE_SOFT_REBOOT WARN "estratégia existe, mas firmware não foi homologado" "$REBOOT_STRATEGY_METHOD"
-        fi
+        cap_set SAFE_SOFT_REBOOT WARN "KernelSU soft reboot encontrado, mas versão instalada e comportamento não foram verificados" "$KSUD_PATH"
     else
-        cap_set SAFE_SOFT_REBOOT UNKNOWN "" "nenhuma estratégia de soft reboot identificada"
+        cap_set SAFE_SOFT_REBOOT UNKNOWN "" "nenhum mecanismo de userspace restart com suporte confirmado"
     fi
 }
 
@@ -1199,15 +1328,24 @@ collect_facts()
         locate_package GMS "$GMS_PKG"
         locate_package GSF "$GSF_PKG"
         locate_package STORE "$STORE_PKG"
-        TARGET_GMS="${GMS_TARGET_DIRECTORY:-$PROFILE_GMS}"
-        TARGET_GSF="${GSF_TARGET_DIRECTORY:-$PROFILE_GSF}"
-        TARGET_STORE="${STORE_TARGET_DIRECTORY:-$PROFILE_STORE}"
-        # Antes do cleanup, um update legítimo pode esconder o target stock.
-        # Só usamos a baseline conhecida do S24 quando a regra acima prova
-        # que o próprio fluxo sabe remover esse update; aparelhos/layouts
-        # desconhecidos continuam sem alvo seguro.
-        preparable_system_update GMS && TARGET_GMS="$PROFILE_GMS"
-        preparable_system_update STORE && TARGET_STORE="$PROFILE_STORE"
+        TARGET_GMS="${GMS_TARGET_DIRECTORY:-}"
+        TARGET_GSF="${GSF_TARGET_DIRECTORY:-}"
+        TARGET_STORE="${STORE_TARGET_DIRECTORY:-}"
+        if [ -f "$SNAPSHOT_FILE" ]; then
+            if validate_snapshot; then
+                TARGET_GMS="$(snapshot_field gms targetDirectory)"
+                TARGET_GSF="$(snapshot_field gsf targetDirectory)"
+                TARGET_STORE="$(snapshot_field store targetDirectory)"
+                GMS_ORIGINAL_SYSTEM_PATH="$(snapshot_field gms originalSystemPath)"
+                GSF_ORIGINAL_SYSTEM_PATH="$(snapshot_field gsf originalSystemPath)"
+                STORE_ORIGINAL_SYSTEM_PATH="$(snapshot_field store originalSystemPath)"
+            else
+                TARGET_GMS=""; TARGET_GSF=""; TARGET_STORE=""
+            fi
+        else
+            preparable_system_update GMS && TARGET_GMS="$(dirname "$GMS_ORIGINAL_SYSTEM_PATH")"
+            preparable_system_update STORE && TARGET_STORE="$(dirname "$STORE_ORIGINAL_SYSTEM_PATH")"
+        fi
         GMS_VERSION="$(gms_version)"
         GMS_VERSION_CODE="$(gms_version_code)"
         GMS_FLAGS="$(gms_flags)"
@@ -1280,7 +1418,7 @@ emit_facts()
     emit PREPARATION_INFO "$UPDATE_CLEANUP_INFO"
     emit GMS_ACTIVE_CODE_PATH "$GMS_ACTIVE_CODE_PATH"
     emit GMS_ORIGINAL_SYSTEM_PATH "$GMS_ORIGINAL_SYSTEM_PATH"
-    emit GMS_TARGET_DIRECTORY "$GMS_TARGET_DIRECTORY"
+    emit GMS_TARGET_DIRECTORY "${TARGET_GMS:-$GMS_TARGET_DIRECTORY}"
     emit GMS_BASE_APK "$GMS_BASE_APK"
     emit GMS_SPLIT_APKS "$GMS_SPLIT_APKS"
     emit GMS_HAS_DATA_UPDATE "$GMS_HAS_DATA_UPDATE"
@@ -1289,7 +1427,7 @@ emit_facts()
     emit GMS_RESOLVED_REAL_PATH "$GMS_RESOLVED_REAL_PATH"
     emit GSF_ACTIVE_CODE_PATH "$GSF_ACTIVE_CODE_PATH"
     emit GSF_ORIGINAL_SYSTEM_PATH "$GSF_ORIGINAL_SYSTEM_PATH"
-    emit GSF_TARGET_DIRECTORY "$GSF_TARGET_DIRECTORY"
+    emit GSF_TARGET_DIRECTORY "${TARGET_GSF:-$GSF_TARGET_DIRECTORY}"
     emit GSF_BASE_APK "$GSF_BASE_APK"
     emit GSF_SPLIT_APKS "$GSF_SPLIT_APKS"
     emit GSF_HAS_DATA_UPDATE "$GSF_HAS_DATA_UPDATE"
@@ -1298,7 +1436,7 @@ emit_facts()
     emit GSF_RESOLVED_REAL_PATH "$GSF_RESOLVED_REAL_PATH"
     emit STORE_ACTIVE_CODE_PATH "$STORE_ACTIVE_CODE_PATH"
     emit STORE_ORIGINAL_SYSTEM_PATH "$STORE_ORIGINAL_SYSTEM_PATH"
-    emit STORE_TARGET_DIRECTORY "$STORE_TARGET_DIRECTORY"
+    emit STORE_TARGET_DIRECTORY "${TARGET_STORE:-$STORE_TARGET_DIRECTORY}"
     emit STORE_BASE_APK "$STORE_BASE_APK"
     emit STORE_SPLIT_APKS "$STORE_SPLIT_APKS"
     emit STORE_HAS_DATA_UPDATE "$STORE_HAS_DATA_UPDATE"
@@ -1354,7 +1492,7 @@ stock_path_valid()
     # aceito quando o locator confirmou essa condição explicitamente.
     local path="$1" expected_root="$2" has_data_update="$3"
     [ -n "$path" ] || return 1
-    if [ -n "$expected_root" ]; then
+    if [ -n "$expected_root" ] && is_safe_target_directory "$expected_root"; then
         case "$path" in
             "$expected_root"/*) return 0 ;;
         esac
@@ -1371,15 +1509,9 @@ compute_state()
         STATE="NO_ROOT"
         return
     fi
-    if ! profile_check; then
-        STATE="UNSUPPORTED"
-        return
-    fi
-    # O perfil legacy continua informativo para o estado operacional; mounts
-    # existentes ainda precisam ser completos e ter origem verificável.
     if [ "$MOUNT_GMS" = "0" ] && [ "$MOUNT_GSF" = "0" ] && [ "$MOUNT_STORE" = "0" ]; then
         # nenhum mount: stock ou rollback pendente de reboot
-        if ! stock_path_valid "$GMS_PATH" "$PROFILE_GMS" "$GMS_HAS_DATA_UPDATE"; then
+        if ! stock_path_valid "$GMS_PATH" "$GMS_TARGET_DIRECTORY" "$GMS_HAS_DATA_UPDATE"; then
             STATE="ERROR"
             return
         fi
@@ -1387,8 +1519,8 @@ compute_state()
             STATE="RESTORE_PREPARED"
             return
         fi
-        if stock_path_valid "$GSF_PATH" "$PROFILE_GSF" "$GSF_HAS_DATA_UPDATE" && \
-            stock_path_valid "$STORE_PATH" "$PROFILE_STORE" "$STORE_HAS_DATA_UPDATE"; then
+        if stock_path_valid "$GSF_PATH" "$GSF_TARGET_DIRECTORY" "$GSF_HAS_DATA_UPDATE" && \
+            stock_path_valid "$STORE_PATH" "$STORE_TARGET_DIRECTORY" "$STORE_HAS_DATA_UPDATE"; then
             STATE="STOCK"
         else
             STATE="ERROR"
@@ -1498,23 +1630,41 @@ run_safety_preflight()
         emit PREFLIGHT_REASON "namespace global do PID 1 inacessível ou identidade não confirmada"
         return 3
     fi
+    [ "$CAP_BIND_MOUNT_STATUS" = "PASS" ] || {
+        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "bind mount global temporário não passou no teste de criação, leitura e remoção"; return 3
+    }
+    [ "$CAP_SELINUX_CONTEXT_CLONABLE_STATUS" = "PASS" ] || {
+        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "owner, mode e contexto SELinux não foram validados nos três alvos"; return 3
+    }
+    [ "$CAP_SAFE_RESTORE_STATUS" = "PASS" ] || {
+        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "armazenamento persistente de transação não está gravável"; return 3
+    }
+    [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "PASS" ] || {
+        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "mecanismo de userspace restart não está confirmado"; return 3
+    }
     if [ -z "$GMS_ORIGINAL_SYSTEM_PATH" ]; then
         preparable_system_update GMS || {
             emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "GMS sem alvo de sistema seguro: ${TARGET_GMS:-ausente}"; return 3
         }
-    elif ! is_allowed_system_path "$TARGET_GMS"; then
+    elif ! is_safe_target_directory "$TARGET_GMS"; then
         emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "GMS sem alvo de sistema seguro: ${TARGET_GMS:-ausente}"; return 3
     fi
-    if [ -z "$GSF_ORIGINAL_SYSTEM_PATH" ] || ! is_allowed_system_path "$TARGET_GSF"; then
+    if [ -z "$GSF_ORIGINAL_SYSTEM_PATH" ] || ! is_safe_target_directory "$TARGET_GSF"; then
         emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "GSF sem alvo de sistema seguro: ${TARGET_GSF:-ausente}"; return 3
     fi
     if [ -z "$STORE_ORIGINAL_SYSTEM_PATH" ]; then
         preparable_system_update STORE || {
             emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "Store sem alvo de sistema seguro: ${TARGET_STORE:-ausente}"; return 3
         }
-    elif ! is_allowed_system_path "$TARGET_STORE"; then
+    elif ! is_safe_target_directory "$TARGET_STORE"; then
         emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "Store sem alvo de sistema seguro: ${TARGET_STORE:-ausente}"; return 3
     fi
+    targets_are_distinct "$TARGET_GMS" "$TARGET_GSF" "$TARGET_STORE" || {
+        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "targets de sistema duplicados ou sobrepostos"; return 3
+    }
+    case "$(dirname "$TARGET_GMS")" in */priv-app) ;; *)
+        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "GMS não está em um diretório priv-app"; return 3 ;;
+    esac
     if ! path_under_target "$gms_now" "$TARGET_GMS" && ! printf '%s' "$gms_now" | grep -q '^/data/app/'; then
         emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "GMS em caminho inesperado: ${gms_now:-ausente}"; return 3
     fi
@@ -1553,6 +1703,17 @@ run_safety_preflight()
     emit PREFLIGHT_STATUS "PASS"
     emit PREFLIGHT_REASON "paths, SELinux, namespace global ($namespace_evidence), mounts e espaço revalidados"
     return 0
+}
+
+check_payload_storage()
+{
+    local gms_apk="$1" store_apk="$2" mask_dir free_kb payload_kb required_kb
+    mask_dir="$(dirname "$MASK_BASE")"
+    free_kb="$(df -Pk "$mask_dir" 2>/dev/null | tail -n 1 | awk '{print $4}')"
+    payload_kb="$(( ($(wc -c < "$gms_apk") + $(wc -c < "$store_apk") + 1023) / 1024 ))"
+    case "$free_kb:$payload_kb" in *[!0-9:]*) return 1 ;; esac
+    required_kb=$((16384 + payload_kb))
+    [ "$free_kb" -ge "$required_kb" ]
 }
 
 dry_run()
@@ -1672,15 +1833,22 @@ _prep_fail()
 
 mount_mask()
 {
-    # mount_mask <target> <mask> <apkname> <apk_src|''>
-    local target="$1" mask="$2" apkname="$3" src="${4:-}"
+    # mount_mask <target> <mask> <apkname> <apk_src|''> <expected_sha256|''>
+    local target="$1" mask="$2" apkname="$3" src="${4:-}" expected_sha256="${5:-}"
 
+    if [ "$target" = "$TARGET_GSF" ] && find "$mask" -mindepth 1 -print -quit 2>/dev/null | grep -q .; then
+        _prep_fail 3 "GSF mask não está vazia; preservando payload existente"
+    fi
     if is_masked_by_us "$target" "$mask" "$apkname"; then
         say "  $target já mascarado por nós (idempotente)."
-        if [ -n "$src" ] && [ ! -f "$mask/$apkname" ]; then
-            cp "$src" "$mask/$apkname" || _prep_fail 1 "cp $apkname para a máscara"
-            chown root:root "$mask/$apkname" || _prep_fail 1 "chown root:root $apkname"
-            chmod 0644 "$mask/$apkname" || _prep_fail 1 "chmod $apkname"
+        if [ -n "$src" ]; then
+            sha256_matches_file "$src" "$expected_sha256" || _prep_fail 3 "SHA-256 do APK diverge dos metadados confiáveis: $src"
+            if [ ! -f "$mask/$apkname" ]; then
+                cp "$src" "$mask/$apkname" || _prep_fail 1 "cp $apkname para a máscara"
+                chown root:root "$mask/$apkname" || _prep_fail 1 "chown root:root $apkname"
+                chmod 0644 "$mask/$apkname" || _prep_fail 1 "chmod $apkname"
+            fi
+            sha256_matches_file "$mask/$apkname" "$expected_sha256" || _prep_fail 3 "SHA-256 do APK mascarado diverge dos metadados confiáveis: $apkname"
         fi
         return 0
     fi
@@ -1690,10 +1858,12 @@ mount_mask()
     if [ -n "$src" ]; then
         [ -f "$src" ] || _prep_fail 3 "APK não encontrado: $src"
         is_apk "$src" || _prep_fail 3 "Não é um APK válido: $src"
+        sha256_matches_file "$src" "$expected_sha256" || _prep_fail 3 "SHA-256 do APK diverge dos metadados confiáveis: $src"
         [ "${DEGOOGLE_FAIL_CP:-0}" = "1" ] && _prep_fail 1 "DEGOOGLE_FAIL_CP injetado"
         cp "$src" "$mask/$apkname" || _prep_fail 1 "cp $src → $mask/$apkname"
         chown root:root "$mask/$apkname" || _prep_fail 1 "chown root:root $apkname"
         chmod 0644 "$mask/$apkname" || _prep_fail 1 "chmod $apkname"
+        sha256_matches_file "$mask/$apkname" "$expected_sha256" || _prep_fail 3 "cópia do APK diverge dos metadados confiáveis: $apkname"
         # verificação real do APK na máscara (owner/modo) — nunca confiar no comando
         local own mode
         own="$(stat -c %u:%g "$mask/$apkname" 2>/dev/null)"
@@ -1778,16 +1948,22 @@ prepare()
     STORE_WAS_DISABLED=0
     STORE_STATE_CAPTURED=0
 
-    local gms_src="${1:-}" store_src="${2:-}"
-    [ -n "$gms_src" ] && [ -n "$store_src" ] || fail_usage "prepare <gms.apk> <companion.apk>"
-
-    if ! profile_check && [ "${DEGOOGLE_EXPERIMENTAL:-0}" != "1" ]; then
-        fail 5 "Perfil não homologado. Use o fluxo experimental somente após o app aprovar todas as capabilities."
-    fi
+    local gms_src="${1:-}" store_src="${2:-}" gms_sha256="${3:-}" store_sha256="${4:-}" transaction_state
+    [ -n "$gms_src" ] && [ -n "$store_src" ] && [ -n "$gms_sha256" ] && [ -n "$store_sha256" ] || \
+        fail_usage "prepare <gms.apk> <companion.apk> <gms-sha256> <companion-sha256>"
 
     say "===== PREPARE ====="
 
     collect_facts
+    transaction_state="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+    if [ -f "$SNAPSHOT_FILE" ] && [ "$transaction_state" != "STOCK_CONFIRMED" ]; then
+        [ "$MOUNT_GMS_IS_OURS" = "1" ] && [ "$MOUNT_GSF_IS_OURS" = "1" ] && [ "$MOUNT_STORE_IS_OURS" = "1" ] || \
+            fail 3 "transação existente ainda não foi confirmada como stock; execute recovery antes de preparar"
+    fi
+    if [ "$MOUNT_GMS" = "1" ] || [ "$MOUNT_GSF" = "1" ] || [ "$MOUNT_STORE" = "1" ]; then
+        [ "$MOUNT_GMS_IS_OURS" = "1" ] && [ "$MOUNT_GSF_IS_OURS" = "1" ] && [ "$MOUNT_STORE_IS_OURS" = "1" ] || \
+            fail 3 "transação parcial ou mount externo detectado; execute recovery antes de preparar"
+    fi
     run_safety_preflight || fail 3 "Safety preflight bloqueou a operação. Nada foi alterado."
     journal_state "PREFLIGHT_OK" || fail 4 "não foi possível registrar o preflight"
 
@@ -1810,14 +1986,6 @@ prepare()
         fail 3 "Play Store em path inesperado (atual: ${store_now:-ausente}). Nada foi alterado."
     fi
 
-    # O caminho descoberto só pode substituir a baseline antiga no modo
-    # experimental explicitamente autorizado pelo app. A execução legacy do
-    # S24 continua exigindo os três diretórios known-good.
-    if profile_check && [ "${DEGOOGLE_EXPERIMENTAL:-0}" != "1" ]; then
-        [ "$TARGET_GMS" = "$PROFILE_GMS" ] && [ "$TARGET_GSF" = "$PROFILE_GSF" ] && [ "$TARGET_STORE" = "$PROFILE_STORE" ] || \
-            fail 3 "paths descobertos divergem do perfil legacy; exige opt-in experimental"
-    fi
-
     # Valida os APKs antes de remover qualquer update ou desabilitar a Store.
     # Um erro de download/arquivo inválido deve deixar o ambiente exatamente
     # como estava.
@@ -1825,6 +1993,9 @@ prepare()
     [ -f "$store_src" ] || fail 3 "APK Companion não encontrado: $store_src"
     is_apk "$gms_src" || fail 3 "microG não é um APK válido: $gms_src"
     is_apk "$store_src" || fail 3 "Companion não é um APK válido: $store_src"
+    sha256_matches_file "$gms_src" "$gms_sha256" || fail 3 "SHA-256 do microG diverge dos metadados confiáveis: $gms_src"
+    sha256_matches_file "$store_src" "$store_sha256" || fail 3 "SHA-256 do Companion diverge dos metadados confiáveis: $store_src"
+    check_payload_storage "$gms_src" "$store_src" || fail 3 "espaço livre insuficiente para APKs, snapshot e máscaras"
 
     if pm list packages -d 2>/dev/null | grep -q "$STORE_PKG"; then
         STORE_WAS_DISABLED=1
@@ -1855,6 +2026,8 @@ prepare()
     store_now="$(pm_path "$STORE_PKG")"
     path_under_target "$gms_now" "$TARGET_GMS" || _prep_fail 3 "GMS não voltou ao alvo de sistema após remover o update (atual: ${gms_now:-ausente})."
     path_under_target "$store_now" "$TARGET_STORE" || _prep_fail 3 "Play Store não voltou ao alvo de sistema após remover o update (atual: ${store_now:-ausente})."
+    sha256_matches_file "$gms_src" "$gms_sha256" || _prep_fail 3 "SHA-256 do microG mudou após a validação inicial."
+    sha256_matches_file "$store_src" "$store_sha256" || _prep_fail 3 "SHA-256 do Companion mudou após a validação inicial."
 
     snapshot_state || _prep_fail 4 "não foi possível criar snapshot/journal antes da alteração"
 
@@ -1867,11 +2040,11 @@ prepare()
 
     say "[1/3] Aplicando máscaras (namespace global)"
     DEGOOGLE_FAIL_MOUNT="${DEGOOGLE_FAIL_MOUNT_GMS:-0}"
-    mount_mask "$TARGET_GMS" "$MASK_GMS" "$GMS_APK" "$gms_src"
+    mount_mask "$TARGET_GMS" "$MASK_GMS" "$GMS_APK" "$gms_src" "$gms_sha256"
     DEGOOGLE_FAIL_MOUNT="${DEGOOGLE_FAIL_MOUNT_GSF:-0}"
     mount_mask "$TARGET_GSF" "$MASK_GSF" "" ""
     DEGOOGLE_FAIL_MOUNT="${DEGOOGLE_FAIL_MOUNT_STORE:-0}"
-    mount_mask "$TARGET_STORE" "$MASK_STORE" "$STORE_APK" "$store_src"
+    mount_mask "$TARGET_STORE" "$MASK_STORE" "$STORE_APK" "$store_src" "$store_sha256"
 
     # 4) SELinux — sempre no namespace global; sucesso só com validação
     say "[2/3] SELinux (restorecon no namespace global)"
@@ -1880,16 +2053,26 @@ prepare()
     global restorecon -R "$TARGET_GSF" 2>/dev/null || _prep_fail 4 "restorecon GSF falhou"
     global restorecon -R "$TARGET_STORE" 2>/dev/null || _prep_fail 4 "restorecon Store falhou"
 
-    local ctx
-    ctx="$(global ls -Zd "$TARGET_GMS" 2>/dev/null | awk '{print $1}')"
-    case "$ctx" in
-        u:object_r:system_file:s0|u:object_r:system_file:s0:*)
-            say "  contexto GMS ok: $ctx"
-            ;;
-        *)
-            _prep_fail 4 "SELINUX_CONTEXT_INVALID: contexto GMS inesperado (${ctx:-<sem contexto>}). Rollback aplicado."
-            ;;
-    esac
+    local ctx gms_owner gms_mode gms_context gsf_owner gsf_mode gsf_context store_owner store_mode store_context
+    gms_owner="$(global stat -c %u:%g "$TARGET_GMS" 2>/dev/null)"
+    gms_mode="$(global stat -c %a "$TARGET_GMS" 2>/dev/null)"
+    gms_context="$(global ls -Zd "$TARGET_GMS" 2>/dev/null | awk '{print $1}')"
+    gsf_owner="$(global stat -c %u:%g "$TARGET_GSF" 2>/dev/null)"
+    gsf_mode="$(global stat -c %a "$TARGET_GSF" 2>/dev/null)"
+    gsf_context="$(global ls -Zd "$TARGET_GSF" 2>/dev/null | awk '{print $1}')"
+    store_owner="$(global stat -c %u:%g "$TARGET_STORE" 2>/dev/null)"
+    store_mode="$(global stat -c %a "$TARGET_STORE" 2>/dev/null)"
+    store_context="$(global ls -Zd "$TARGET_STORE" 2>/dev/null | awk '{print $1}')"
+    [ "$gms_owner" = "$ORIGINAL_GMS_OWNER" ] && [ "$gms_mode" = "$ORIGINAL_GMS_MODE" ] && \
+        [ "$gms_context" = "$ORIGINAL_GMS_CONTEXT" ] || \
+        _prep_fail 4 "metadados GMS divergiram do diretório original após mount"
+    [ "$gsf_owner" = "$ORIGINAL_GSF_OWNER" ] && [ "$gsf_mode" = "$ORIGINAL_GSF_MODE" ] && \
+        [ "$gsf_context" = "$ORIGINAL_GSF_CONTEXT" ] || \
+        _prep_fail 4 "metadados GSF divergiram do diretório original após mount"
+    [ "$store_owner" = "$ORIGINAL_STORE_OWNER" ] && [ "$store_mode" = "$ORIGINAL_STORE_MODE" ] && \
+        [ "$store_context" = "$ORIGINAL_STORE_CONTEXT" ] || \
+        _prep_fail 4 "metadados Store divergiram do diretório original após mount"
+    say "  metadados owner/mode/context reproduzidos para GMS, GSF e Store"
 
     if [ -n "$GMS_MAPBOX_LIB" ]; then
         local so_mode so_ctx
@@ -1897,10 +2080,8 @@ prepare()
         so_ctx="$(global ls -Zd "$TARGET_GMS/$GMS_MAPBOX_LIB" 2>/dev/null | awk '{print $1}')"
         [ "$so_mode" = "444" ] || \
             _prep_fail 4 "GMS_MAPBOX_LIB_MODE_INVALID: modo ${so_mode:-<ausente>} em $GMS_MAPBOX_LIB. Rollback aplicado."
-        case "$so_ctx" in
-            u:object_r:system_file:s0|u:object_r:system_file:s0:*) ;;
-            *) _prep_fail 4 "GMS_MAPBOX_LIB_CONTEXT_INVALID: ${so_ctx:-<sem contexto>} em $GMS_MAPBOX_LIB. Rollback aplicado." ;;
-        esac
+        [ "$so_ctx" = "$ORIGINAL_GMS_CONTEXT" ] || \
+            _prep_fail 4 "GMS_MAPBOX_LIB_CONTEXT_INVALID: ${so_ctx:-<sem contexto>} em $GMS_MAPBOX_LIB. Rollback aplicado."
         say "  libmapbox-gl.so ok: modo $so_mode, contexto $so_ctx"
     fi
 
@@ -2166,15 +2347,59 @@ snapshot_top_field()
 {
     local field="$1"
     [ -f "$SNAPSHOT_FILE" ] || return 1
-    sed -n "s/.*\"$field\":\"\([^\"]*\)\".*/\1/p" "$SNAPSHOT_FILE" 2>/dev/null | head -n 1
+    sed -n "s/.*\"$field\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$SNAPSHOT_FILE" 2>/dev/null | head -n 1
+}
+
+validate_snapshot()
+{
+    local schema operation timestamp fingerprint model component target original active owner mode context hash
+    [ -f "$SNAPSHOT_FILE" ] || return 1
+    awk '
+        NF { if (first == "") first=$0; last=$0 }
+        /"gms"[[:space:]]*:/ { gms++ }
+        /"gsf"[[:space:]]*:/ { gsf++ }
+        /"store"[[:space:]]*:/ { store++ }
+        END { exit !(first ~ /^\{/ && last ~ /^\}/ && gms == 1 && gsf == 1 && store == 1) }
+    ' "$SNAPSHOT_FILE" || return 1
+    schema="$(sed -n 's/.*"schemaVersion"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$SNAPSHOT_FILE" | head -n 1)"
+    operation="$(snapshot_top_field operationId)"
+    timestamp="$(snapshot_top_field timestamp)"
+    fingerprint="$(snapshot_top_field deviceFingerprint)"
+    model="$(snapshot_top_field model)"
+    [ "$schema" = "1" ] && [ -n "$operation" ] && [ -n "$timestamp" ] && [ -n "$fingerprint" ] && [ -n "$model" ] || return 1
+    [ "$fingerprint" = "$FINGERPRINT" ] && [ "$model" = "$MODEL" ] || return 1
+    for component in gms gsf store; do
+        target="$(snapshot_field "$component" targetDirectory)"
+        original="$(snapshot_field "$component" originalSystemPath)"
+        active="$(snapshot_field "$component" activeCodePath)"
+        owner="$(snapshot_field "$component" owner)"
+        mode="$(snapshot_field "$component" mode)"
+        context="$(snapshot_field "$component" selinuxContext)"
+        hash="$(snapshot_field "$component" sha256)"
+        is_safe_target_directory "$target" || return 1
+        [ -n "$original" ] && is_allowed_system_path "$original" || return 1
+        [ -n "$active" ] || return 1
+        if [ -n "$hash" ]; then
+            case "$hash" in *[!0-9a-fA-F]*) return 1 ;; esac
+            [ "${#hash}" -eq 64 ] || return 1
+        fi
+        case "$owner" in *[!0-9:]*|:*|*:) return 1 ;; esac
+        case "$owner" in *:*) ;; *) return 1 ;; esac
+        case "$owner" in *:*:*) return 1 ;; esac
+        case "$mode" in ''|*[!0-7]*) return 1 ;; esac
+        [ -n "$context" ] || return 1
+    done
+    targets_are_distinct \
+        "$(snapshot_field gms targetDirectory)" \
+        "$(snapshot_field gsf targetDirectory)" \
+        "$(snapshot_field store targetDirectory)"
 }
 
 rollback_target_from_snapshot()
 {
     # rollback_target_from_snapshot <component> <profileTarget>
-    # Snapshot é preferido. O perfil só é fallback para uma combinação Samsung
-    # conhecida; em aparelho desconhecido, package ausente + target ausente é
-    # uma condição de bloqueio, nunca um convite para adivinhar.
+    # Perfil é fallback somente quando não existe snapshot e o aparelho bate
+    # com a exceção legacy conhecida.
     local component="$1" profile_target="$2" target original snapshot_seen=0
     target="$(snapshot_field "$component" targetDirectory)"
     original="$(snapshot_field "$component" originalSystemPath)"
@@ -2191,13 +2416,74 @@ rollback_target_from_snapshot()
         profile_check || return 1
         target="$profile_target"
     fi
-    is_allowed_system_path "$target" || return 1
+    is_safe_target_directory "$target" || return 1
     printf '%s' "$target"
 }
 
 resolve_rollback_targets()
 {
-    local snapshot_fp snapshot_model
+    local allow_empty="${1:-0}" snapshot_fp snapshot_model snapshot_operation journal_operation journal_state_value journal_model journal_fp journal_gms journal_gsf journal_store
+    if [ -f "$SNAPSHOT_FILE" ]; then
+        validate_snapshot || {
+            say "ERRO: snapshot presente, mas inválido ou incompatível; não vou usar caminhos alternativos."
+            return 1
+        }
+        snapshot_operation="$(snapshot_top_field operationId)"
+        [ "$(sed -n 's/^schemaVersion=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)" = "1" ] || {
+            say "ERRO: journal ausente ou com schema incompatível; recuperação bloqueada."
+            return 1
+        }
+        journal_operation="$(sed -n 's/^operationId=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_state_value="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_model="$(sed -n 's/^model=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_fp="$(sed -n 's/^fingerprint=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_gms="$(sed -n 's/^targetGms=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_gsf="$(sed -n 's/^targetGsf=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_store="$(sed -n 's/^targetStore=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        [ -n "$journal_operation" ] && [ "$snapshot_operation" = "$journal_operation" ] && \
+            [ -n "$journal_state_value" ] && [ "$journal_model" = "$MODEL" ] && [ "$journal_fp" = "$FINGERPRINT" ] || {
+            say "ERRO: journal ausente ou de outra transação; recuperação bloqueada."
+            return 1
+        }
+        if [ -n "$journal_gms$journal_gsf$journal_store" ]; then
+            [ "$journal_gms" = "$(snapshot_field gms targetDirectory)" ] && \
+                [ "$journal_gsf" = "$(snapshot_field gsf targetDirectory)" ] && \
+                [ "$journal_store" = "$(snapshot_field store targetDirectory)" ] || return 1
+        fi
+    else
+        if [ -f "$JOURNAL_FILE" ]; then
+            journal_operation="$(sed -n 's/^operationId=//p' "$JOURNAL_FILE" | head -n 1)"
+            journal_state_value="$(sed -n 's/^state=//p' "$JOURNAL_FILE" | head -n 1)"
+            journal_model="$(sed -n 's/^model=//p' "$JOURNAL_FILE" | head -n 1)"
+            journal_fp="$(sed -n 's/^fingerprint=//p' "$JOURNAL_FILE" | head -n 1)"
+            [ "$(sed -n 's/^schemaVersion=//p' "$JOURNAL_FILE" | head -n 1)" = "1" ] && \
+                [ -n "$journal_operation" ] && [ -n "$journal_state_value" ] && \
+                [ "$journal_model" = "$MODEL" ] && [ "$journal_fp" = "$FINGERPRINT" ] || return 1
+        fi
+        if [ "$allow_empty" = "1" ] && [ ! -f "$JOURNAL_FILE" ]; then
+            refresh_mount_facts
+            if [ "$MOUNT_GMS" = "0" ] && [ "$MOUNT_GSF" = "0" ] && [ "$MOUNT_STORE" = "0" ]; then
+                return 0
+            fi
+        fi
+        journal_gms="$(sed -n 's/^targetGms=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_gsf="$(sed -n 's/^targetGsf=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        journal_store="$(sed -n 's/^targetStore=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+        if [ -n "$journal_gms$journal_gsf$journal_store" ]; then
+            [ -n "$journal_gms" ] && [ -n "$journal_gsf" ] && [ -n "$journal_store" ] || return 1
+            is_safe_target_directory "$journal_gms" && is_safe_target_directory "$journal_gsf" && \
+                is_safe_target_directory "$journal_store" || return 1
+            targets_are_distinct "$journal_gms" "$journal_gsf" "$journal_store" || return 1
+            TARGET_GMS="$journal_gms"; TARGET_GSF="$journal_gsf"; TARGET_STORE="$journal_store"
+            return 0
+        fi
+        if [ "$allow_empty" = "1" ]; then
+            refresh_mount_facts
+            if [ "$MOUNT_GMS" = "0" ] && [ "$MOUNT_GSF" = "0" ] && [ "$MOUNT_STORE" = "0" ]; then
+                return 0
+            fi
+        fi
+    fi
     snapshot_fp="$(snapshot_top_field deviceFingerprint)"
     snapshot_model="$(snapshot_top_field model)"
     if [ -n "$snapshot_fp" ] && [ "$snapshot_fp" != "$FINGERPRINT" ]; then
@@ -2221,6 +2507,16 @@ resolve_rollback_targets()
         say "ERRO: alvo Store de rollback não pôde ser resolvido com segurança."
         return 1
     }
+    if [ ! -f "$SNAPSHOT_FILE" ]; then
+        refresh_mount_facts
+        if [ "$allow_empty" = "1" ] && [ "$MOUNT_GMS" = "0" ] && [ "$MOUNT_GSF" = "0" ] && [ "$MOUNT_STORE" = "0" ]; then
+            return 0
+        fi
+        [ "$MOUNT_GMS" = "1" ] || [ "$MOUNT_GSF" = "1" ] || [ "$MOUNT_STORE" = "1" ] || {
+            say "ERRO: snapshot ausente e nenhum mount de recuperação conhecido confirma os alvos legacy."
+            return 1
+        }
+    fi
     return 0
 }
 
@@ -2249,6 +2545,7 @@ pm_enable_or_defer()
         return 0
     fi
     if global test -d "$target" 2>/dev/null; then
+        REINDEX_REGISTRATIONS_STALE=1
         say "  $label ainda não está registrado no PM; enable pendente até o re-scan pós-boot."
         return 0
     fi
@@ -2377,7 +2674,10 @@ restore_stock()
     # estão ativos. Resolva os alvos antes de qualquer mutação, usando snapshot
     # ou perfil known-good, nunca dirname de uma string vazia.
     collect_facts
+    [ ! -e "$PM_CACHE_DIR" ] || [ "$CAP_PACKAGE_MANAGER_CACHE_ACCESS_STATUS" = "PASS" ] || \
+        fail 3 "cache do Package Manager existe, mas não pode ser inspecionado ou modificado"
     resolve_rollback_targets || fail 3 "não foi possível resolver os três alvos de rollback sem adivinhação"
+    [ -f "$SNAPSHOT_FILE" ] && DEGOOGLE_OPERATION_ID="$(snapshot_top_field operationId)"
     refresh_mount_facts
 
     [ "$MOUNT_GMS" = "1" ] && [ "$MOUNT_GMS_IS_KNOWN" != "1" ] && foreign="$foreign GMS"
@@ -2498,9 +2798,13 @@ reindex_stock()
     require_lock
 
     local cache_backup failed=""
+    REINDEX_REGISTRATIONS_STALE=0
 
     collect_facts
+    [ ! -e "$PM_CACHE_DIR" ] || [ "$CAP_PACKAGE_MANAGER_CACHE_ACCESS_STATUS" = "PASS" ] || \
+        fail 3 "cache do Package Manager existe, mas não pode ser inspecionado ou modificado"
     resolve_rollback_targets || fail 3 "não foi possível resolver os alvos sem adivinhação"
+    [ -f "$SNAPSHOT_FILE" ] && DEGOOGLE_OPERATION_ID="$(snapshot_top_field operationId)"
     refresh_mount_facts
 
     [ "$MOUNT_GMS" = "0" ] || failed="$failed GMS"
@@ -2537,6 +2841,18 @@ reindex_stock()
         fail 4 "não consegui reabilitar o GMS"
     }
 
+    path_under_target "$(pm_path "$GMS_PKG")" "$TARGET_GMS" || REINDEX_REGISTRATIONS_STALE=1
+    path_under_target "$(pm_path "$GSF_PKG")" "$TARGET_GSF" || REINDEX_REGISTRATIONS_STALE=1
+    path_under_target "$(pm_path "$STORE_PKG")" "$TARGET_STORE" || REINDEX_REGISTRATIONS_STALE=1
+
+    if [ "$REINDEX_REGISTRATIONS_STALE" = "1" ]; then
+        journal_state "REINDEX_PENDING" || fail 4 "registros stock ainda estão pendentes, mas não consegui persistir REINDEX_PENDING"
+        say "REINDEX-STOCK INCOMPLETO. Package Manager ainda não registrou todos os pacotes stock."
+        emit REINDEX_PENDING "1"
+        return 0
+    fi
+
+    journal_state "STOCK_CONFIRMED" || fail 4 "pacotes stock confirmados, mas não consegui persistir o estado"
     say "REINDEX-STOCK CONCLUÍDO."
     emit REINDEX_OK "1"
     return 0
@@ -2581,7 +2897,17 @@ cleanup_residue()
 
     local foreign=""
     collect_facts
-    resolve_rollback_targets || fail 3 "não foi possível resolver os alvos de recuperação"
+    if [ -e "$SNAPSHOT_FILE" ] || [ -e "$JOURNAL_FILE" ]; then
+        resolve_rollback_targets || fail 3 "não foi possível resolver os alvos de recuperação"
+    else
+        is_safe_target_directory "$TARGET_GMS" && \
+            is_safe_target_directory "$TARGET_GSF" && \
+            is_safe_target_directory "$TARGET_STORE" && \
+            targets_are_distinct "$TARGET_GMS" "$TARGET_GSF" "$TARGET_STORE" || \
+            fail 3 "não foi possível resolver três alvos seguros para limpeza"
+        refresh_mount_facts
+    fi
+    [ -f "$SNAPSHOT_FILE" ] && DEGOOGLE_OPERATION_ID="$(snapshot_top_field operationId)"
     refresh_mount_facts
 
     [ "$MOUNT_GMS" = "1" ] && foreign="$foreign GMS"
@@ -2618,7 +2944,18 @@ post_boot_validate()
         return $?
     fi
 
-    local boot_completed server_pid boot_reason
+    local boot_completed server_pid boot_reason restart_identity old_boot old_pid old_start new_boot new_pid new_start
+    [ -f "$REBOOT_BASELINE_FILE" ] || { post_boot_failure "restart baseline is missing"; return $?; }
+    old_boot="$(sed -n 's/^kernelBootId=//p' "$REBOOT_BASELINE_FILE" | head -n 1)"
+    old_pid="$(sed -n 's/^systemServerPid=//p' "$REBOOT_BASELINE_FILE" | head -n 1)"
+    old_start="$(sed -n 's/^systemServerStart=//p' "$REBOOT_BASELINE_FILE" | head -n 1)"
+    restart_identity="$(framework_identity)" || { post_boot_failure "could not read current restart identity"; return $?; }
+    new_boot="$(printf '%s\n' "$restart_identity" | sed -n '1p')"
+    new_pid="$(printf '%s\n' "$restart_identity" | sed -n '2p')"
+    new_start="$(printf '%s\n' "$restart_identity" | sed -n '3p')"
+    [ -n "$old_boot" ] && [ -n "$old_pid" ] && [ -n "$old_start" ] || { post_boot_failure "restart baseline is incomplete"; return $?; }
+    [ "$new_boot" = "$old_boot" ] || { post_boot_failure "kernel boot identity changed; full reboot is not accepted"; return $?; }
+    [ "$new_pid:$new_start" != "$old_pid:$old_start" ] || { post_boot_failure "system_server identity did not change after restart request"; return $?; }
     boot_completed="$(getprop sys.boot_completed 2>/dev/null)"
     case "$boot_completed" in
         1) ;;
@@ -2635,6 +2972,13 @@ post_boot_validate()
         *rescueparty*|*rescue_party*)
             post_boot_failure "boot reason indica Rescue Party: $boot_reason"; return $? ;;
     esac
+    [ "$MOUNT_GMS_IS_OURS" = "1" ] || { post_boot_failure "GMS mask mount ownership is not verified"; return $?; }
+    [ "$MOUNT_GSF_IS_OURS" = "1" ] || { post_boot_failure "GSF mask mount ownership is not verified"; return $?; }
+    [ "$MOUNT_STORE_IS_OURS" = "1" ] || { post_boot_failure "Store mask mount ownership is not verified"; return $?; }
+    [ -z "$(find "$MASK_GSF" -mindepth 1 -print -quit 2>/dev/null)" ] || {
+        post_boot_failure "GSF mask is not empty"
+        return $?
+    }
     path_under_target "$GMS_PATH" "$TARGET_GMS" || { post_boot_failure "GMS não resolve para a máscara"; return $?; }
     [ -z "$GSF_PATH" ] || { post_boot_failure "GSF stock ainda está ativo"; return $?; }
     path_under_target "$STORE_PATH" "$TARGET_STORE" || { post_boot_failure "Companion não resolve para a máscara"; return $?; }
@@ -2658,8 +3002,12 @@ post_boot_validate()
 soft_reboot()
 {
     check_root
-    local source now last attempts cooldown elapsed remaining previous_state
-    local ksud_output ksud_status power_output power_status
+    local source now last attempts cooldown elapsed remaining previous_state restart_identity method selected_identity current_identity
+    local power_output power_status
+    collect_facts
+    [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "PASS" ] || fail_en 5 "No applicable userspace restart mechanism is confirmed."
+    method="$REBOOT_STRATEGY_METHOD"
+    [ "$method" = "SYS_POWERCTL_USERSPACE" ] || fail_en 5 "The selected userspace restart mechanism is unresolved or unsupported."
     source="${DEGOOGLE_REBOOT_SOURCE:-manual}"
     case "$source" in
         automatic|manual) ;;
@@ -2670,6 +3018,13 @@ soft_reboot()
     now="$(date +%s 2>/dev/null || echo 0)"
     last=0; attempts=0
     previous_state="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
+    restart_identity="$(framework_identity)" || fail_en 3 "Could not capture kernel and system_server identity before userspace restart."
+    if [ "$previous_state" = "REBOOT_REQUESTED" ] && [ -f "$REBOOT_BASELINE_FILE" ]; then
+        selected_identity="$(sed -n 's/^kernelBootId=//p' "$REBOOT_BASELINE_FILE" | head -n 1):$(sed -n 's/^systemServerPid=//p' "$REBOOT_BASELINE_FILE" | head -n 1):$(sed -n 's/^systemServerStart=//p' "$REBOOT_BASELINE_FILE" | head -n 1)"
+        current_identity="$(printf '%s\n' "$restart_identity" | sed -n '1p'):$(printf '%s\n' "$restart_identity" | sed -n '2p'):$(printf '%s\n' "$restart_identity" | sed -n '3p')"
+        [ "$selected_identity" != "$current_identity" ] || \
+            fail_en 5 "The previous userspace restart request has not been observed; refusing to request it again."
+    fi
     if [ "$source" = "automatic" ] && [ -f "$RESCUE_STATE_FILE" ]; then
         last="$(sed -n 's/^last=//p' "$RESCUE_STATE_FILE" 2>/dev/null | head -n 1)"
         attempts="$(sed -n 's/^attempts=//p' "$RESCUE_STATE_FILE" 2>/dev/null | head -n 1)"
@@ -2686,6 +3041,7 @@ soft_reboot()
         fi
     fi
     journal_state "REBOOT_REQUESTED" || fail_en 4 "Could not record the reboot request."
+    persist_reboot_baseline "$restart_identity" || fail_en 4 "Could not persist restart validation evidence."
     if [ "$source" = "automatic" ]; then
         mkdir -p "$TRANSACTION_BASE" 2>/dev/null || {
             [ -n "$previous_state" ] && journal_state "$previous_state" >/dev/null 2>&1 || true
@@ -2700,23 +3056,7 @@ soft_reboot()
         }
     fi
     say "Requesting userspace reboot..."
-    # Método 1: ksud soft-reboot (KernelSU) — o mecanismo do KernelSU Manager;
-    # emula um reboot de sistema preservando o kernel (root via exploit) e os
-    # mounts. É o método comprovado no fluxo do microg-session.sh.
-    if [ -x "$KSUD_PATH" ]; then
-        ksud_output="$($KSUD_PATH soft-reboot 2>&1)"
-        ksud_status=$?
-        if [ "$ksud_status" -eq 0 ]; then
-            say "KernelSU userspace reboot accepted."
-            return 0
-        fi
-        say "KernelSU userspace reboot failed (exit ${ksud_status})."
-        [ -n "$ksud_output" ] && say "KernelSU detail: $ksud_output"
-    else
-        say "KernelSU userspace reboot binary is unavailable."
-    fi
-    # Método 2: sys.powerctl (AOSP userspace reboot) — pode falhar por SELinux
-    # no domínio do shell; vale a tentativa.
+    # AOSP userspace restart is used only when init advertises support.
     power_output="$(setprop sys.powerctl reboot,userspace 2>&1)"
     power_status=$?
     if [ "$power_status" -eq 0 ]; then
@@ -2734,7 +3074,7 @@ soft_reboot()
     else
         journal_state "FAILED" >/dev/null 2>&1 || true
     fi
-    fail_en 5 "No supported userspace reboot method succeeded; no reboot was started."
+    fail_en 5 "The confirmed AOSP userspace restart request failed; no fallback was attempted."
 }
 
 # ===========================================================================
@@ -2791,7 +3131,7 @@ case "${1:-}" in
         probe
         ;;
     prepare)
-        prepare "${2:-}" "${3:-}"
+        prepare "${2:-}" "${3:-}" "${4:-}" "${5:-}"
         ;;
     finalize)
         finalize
@@ -2839,6 +3179,6 @@ case "${1:-}" in
         self_test
         ;;
     *)
-        fail_usage "probe|dry-run|preflight|prepare <gms> <companion>|finalize|cleanup|cleanup-residue|backup|restore-backup|restore-stock [--wipe-data]|reindex-stock|rollback [--wipe-data]|post-boot-validate|soft-reboot|unlock|status|test"
+        fail_usage "probe|dry-run|preflight|prepare <gms> <companion> <gms-sha256> <companion-sha256>|finalize|cleanup|cleanup-residue|backup|restore-backup|restore-stock [--wipe-data]|reindex-stock|rollback [--wipe-data]|post-boot-validate|soft-reboot|unlock|status|test"
         ;;
 esac

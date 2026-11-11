@@ -22,7 +22,6 @@ data class CompatibilityReport(
     val compatibility: DeviceCompatibility,
     val knownGoodMatch: KnownGoodMatch,
     val canExecuteNormally: Boolean,
-    val canExecuteExperimental: Boolean,
     val reasons: List<String> = emptyList(),
 )
 
@@ -33,7 +32,6 @@ data class CompatibilityDecision(
     val device: DeviceFacts,
     val rebootStrategy: RebootStrategy?,
     val canExecuteNormally: Boolean,
-    val canExecuteExperimental: Boolean,
     val reasons: List<String>,
 ) {
     fun report(facts: SystemFacts): CompatibilityReport = CompatibilityReport(
@@ -49,7 +47,6 @@ data class CompatibilityDecision(
         compatibility = compatibility,
         knownGoodMatch = knownGood.level,
         canExecuteNormally = canExecuteNormally,
-        canExecuteExperimental = canExecuteExperimental,
         reasons = reasons,
     )
 
@@ -61,7 +58,6 @@ data class CompatibilityDecision(
             device = DeviceFacts(),
             rebootStrategy = null,
             canExecuteNormally = false,
-            canExecuteExperimental = false,
             reasons = listOf("probe not run yet"),
         )
     }
@@ -76,13 +72,9 @@ object CompatibilityEngine {
         val backend = rootBackendTypeFrom(facts.rootManager)
         val rawMatrix = CapabilityEngine.evaluate(facts)
         val knownGood = database.match(device, backend)
-        val matrix = promoteFirmwareValidatedStrategy(rawMatrix, knownGood, facts)
-        val expectedPathMismatch = expectedPathMismatch(knownGood.profile, facts)
+        val matrix = rawMatrix
         val reasons = buildList {
             addAll(knownGood.evidence)
-            if (expectedPathMismatch.isNotEmpty()) {
-                addAll(expectedPathMismatch)
-            }
             CapabilityMatrix.CRITICAL_CAPABILITIES.forEach { capability ->
                 val result = matrix[capability]
                 when (result.status) {
@@ -104,23 +96,12 @@ object CompatibilityEngine {
 
         val compatibility = when {
             rootFailed -> DeviceCompatibility.UNSUPPORTED
-            expectedPathMismatch.isNotEmpty() -> DeviceCompatibility.UNSUPPORTED
             recoveryUnsafe -> DeviceCompatibility.UNSAFE
             hasFail -> DeviceCompatibility.UNSUPPORTED
             hasUnknown -> DeviceCompatibility.REQUIRES_PROFILE
-            knownGood.level == KnownGoodMatch.EXACT_MATCH -> DeviceCompatibility.SUPPORTED
-            else -> DeviceCompatibility.PROBABLY_SUPPORTED
+            hasWarn -> DeviceCompatibility.PROBABLY_SUPPORTED
+            else -> DeviceCompatibility.SUPPORTED
         }
-
-        // Firmware não homologado: estratégia de soft reboot existe mas sem
-        // validação de campo. Com opt-in experimental explícito isso vira
-        // aviso assumido pelo usuário, não bloqueio. FAIL/UNKNOWN continuam
-        // bloqueando; WARN nas demais críticas também.
-        val softRebootStatus = matrix[Capability.SAFE_SOFT_REBOOT].status
-        val canExperimental = compatibility == DeviceCompatibility.PROBABLY_SUPPORTED &&
-            matrix.allPass(CapabilityMatrix.CRITICAL_CAPABILITIES - Capability.SAFE_SOFT_REBOOT) &&
-            (softRebootStatus == CapabilityStatus.PASS || softRebootStatus == CapabilityStatus.WARN) &&
-            matrix[Capability.SAFE_RESTORE].status == CapabilityStatus.PASS
 
         return CompatibilityDecision(
             compatibility = compatibility,
@@ -129,68 +110,8 @@ object CompatibilityEngine {
             device = device,
             rebootStrategy = facts.rebootStrategy,
             canExecuteNormally = compatibility == DeviceCompatibility.SUPPORTED,
-            canExecuteExperimental = canExperimental,
             reasons = reasons.distinct(),
         )
-    }
-
-    private fun promoteFirmwareValidatedStrategy(
-        matrix: CapabilityMatrix,
-        knownGood: KnownGoodMatchResult,
-        facts: SystemFacts,
-    ): CapabilityMatrix {
-        val profile = knownGood.profile ?: return matrix
-        val strategy = facts.rebootStrategy ?: return matrix
-        if (knownGood.level != KnownGoodMatch.EXACT_MATCH ||
-            !profile.firmwareValidated ||
-            profile.rebootStrategy != strategy.method ||
-            matrix[Capability.SAFE_SOFT_REBOOT].status != CapabilityStatus.WARN
-        ) return matrix
-        return CapabilityMatrix(
-            matrix.results + (
-                Capability.SAFE_SOFT_REBOOT to CapabilityResult.pass(
-                    "strategy ${strategy.method} homologated in Known-Good DB for this firmware",
-                )
-            ),
-        )
-    }
-
-    private fun expectedPathMismatch(profile: KnownGoodProfile?, facts: SystemFacts): List<String> {
-        if (profile == null || profile.expectedPaths.isEmpty()) return emptyList()
-        val observed = mapOf(
-            "gms" to (facts.gmsPackage?.targetDirectory ?: facts.gmsPath?.substringBeforeLast('/')),
-            "gsf" to (facts.gsfPackage?.targetDirectory ?: facts.gsfPath?.substringBeforeLast('/')),
-            "store" to (facts.storePackage?.targetDirectory ?: facts.storePath?.substringBeforeLast('/')),
-        )
-        val packages = mapOf(
-            "gms" to facts.gmsPackage,
-            "gsf" to facts.gsfPackage,
-            "store" to facts.storePackage,
-        )
-        val maskedByUs = mapOf(
-            "gms" to (facts.mountGms && facts.mountGmsIsOurs),
-            "gsf" to (facts.mountGsf && facts.mountGsfIsOurs),
-            "store" to (facts.mountStore && facts.mountStoreIsOurs),
-        )
-        return profile.expectedPaths.mapNotNull { (name, expected) ->
-            val actual = observed[name]
-            val packageInfo = packages[name]
-            val activeDataUpdate = packageInfo?.hasDataUpdate == true &&
-                packageInfo.activeCodePath?.startsWith("/data/app/") == true
-            val intentionallyHiddenByMask = maskedByUs[name] == true && actual == null
-            // Enquanto um update está ativo, o Package Manager expõe apenas
-            // o path em /data/app. Isso não invalida o target stock conhecido;
-            // o cleanup explícito ainda será revalidado pelo backend.
-            // Depois do soft reboot, o GSF também pode desaparecer da resposta
-            // do PackageManager porque a máscara vazia está cobrindo o alvo.
-            // Ausência nesse caso é evidência do estado operacional, não um
-            // path mismatch.
-            if (actual == expected || activeDataUpdate || intentionallyHiddenByMask) {
-                null
-            } else {
-                "$name: expected=$expected actual=${actual ?: "UNKNOWN"}"
-            }
-        }
     }
 
 }

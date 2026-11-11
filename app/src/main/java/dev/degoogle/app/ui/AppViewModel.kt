@@ -7,8 +7,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.degoogle.app.backup.BackupManager
 import dev.degoogle.app.data.Prefs
-import dev.degoogle.app.domain.DeviceProfile
-import dev.degoogle.app.domain.DeviceProfiles
 import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.domain.CompatibilityEngine
 import dev.degoogle.app.domain.KnownGoodDatabase
@@ -61,7 +59,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         BackendRunner(
             executor = executor,
             backendPath = it.absolutePath,
-            experimentalOptIn = { experimentalOptIn.value },
             transactionBase = File(app.filesDir, "transaction").absolutePath,
             operationId = { activeOperationId ?: transactionJournal.read()?.operationId },
             onProgress = ::appendOperationLog,
@@ -86,10 +83,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _notificationsEnabled = MutableStateFlow(true)
     val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
 
-    private val _experimentalOptIn = MutableStateFlow(false)
-    val experimentalOptIn: StateFlow<Boolean> = _experimentalOptIn.asStateFlow()
-
-    private var currentProfile: DeviceProfile? = null
     private var activeOperationId: String? = null
 
     /**
@@ -108,7 +101,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch(Dispatchers.IO) {
             _notificationsEnabled.value = prefs.notificationsEnabled.first()
-            _experimentalOptIn.value = prefs.experimentalOptIn.first()
         }
         refresh(clearError = true)
     }
@@ -161,8 +153,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     )
                 ),
             )
-            currentProfile = DeviceProfiles.matching(facts.manufacturer, facts.model, facts.androidSdk)
-            val state = StateDetector.detect(facts, currentProfile)
+            val state = StateDetector.detect(facts, profile = null)
             val compatibility = CompatibilityEngine.evaluate(facts, knownGoodDatabase)
 
             var journal = transactionJournal.read()
@@ -295,13 +286,8 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     fun degoogle() {
         val m = microg ?: return
         val decision = _ui.value.compatibility
-        val experimental = _experimentalOptIn.value
-        val allowed = decision.canExecuteNormally ||
-            (experimental && decision.canExecuteExperimental)
-        if (!allowed) {
+        if (!decision.canExecuteNormally) {
             val message = when {
-                decision.compatibility == dev.degoogle.app.domain.DeviceCompatibility.PROBABLY_SUPPORTED && !experimental ->
-                    app.getString(R.string.compat_err_not_homologated)
                 decision.compatibility == dev.degoogle.app.domain.DeviceCompatibility.SUPPORTED ->
                     app.getString(R.string.compat_err_preflight_blocked)
                 else ->
@@ -712,13 +698,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     fun setNotificationsEnabled(enabled: Boolean) {
         _notificationsEnabled.value = enabled
         viewModelScope.launch(Dispatchers.IO) { prefs.setNotificationsEnabled(enabled) }
-    }
-
-    /** Habilita o opt-in; a decisão final continua sendo do CompatibilityEngine. */
-    fun setExperimentalOptIn(enabled: Boolean) {
-        _experimentalOptIn.value = enabled
-        viewModelScope.launch(Dispatchers.IO) { prefs.setExperimentalOptIn(enabled) }
-        refresh()
     }
 
     fun clearError() = _ui.update { it.copy(error = null) }

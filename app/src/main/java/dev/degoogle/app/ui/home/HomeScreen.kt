@@ -151,7 +151,7 @@ fun HomeScreen(
 
         when (ui.state) {
             DeviceState.NO_ROOT -> NoRootCard()
-            DeviceState.UNSUPPORTED -> UnsupportedCard(ui) { vm.degoogle() }
+            DeviceState.UNSUPPORTED -> UnsupportedCard(ui)
             DeviceState.STOCK -> StockContent(ui, vm, onNavigate, { vm.degoogle() })
             DeviceState.PREPARED -> PreparedContent(ui, vm, onNavigate)
             DeviceState.MICROG_BOOTED -> BootedContent(ui, vm)
@@ -241,7 +241,7 @@ private fun NoRootCard() {
 }
 
 @Composable
-private fun UnsupportedCard(ui: UiState, onExperimental: () -> Unit) {
+private fun UnsupportedCard(ui: UiState) {
     InfoCard(stringResource(R.string.home_unsupported_title)) {
         Text(
             text = stringResource(R.string.home_unsupported_desc),
@@ -268,10 +268,12 @@ private fun UnsupportedCard(ui: UiState, onExperimental: () -> Unit) {
             },
             if (ui.compatibility.compatibility.name == "PROBABLY_SUPPORTED") Status.UNKNOWN else Status.FAIL,
         )
-        if (ui.compatibility.compatibility.name == "PROBABLY_SUPPORTED") {
-            SlideToExecute(
-                label = "[ >>> ACKNOWLEDGE RISK & CONTINUE >>> ]",
-                onExecute = onExperimental,
+        ui.compatibility.reasons.forEach { reason ->
+            Text(
+                text = reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
     }
