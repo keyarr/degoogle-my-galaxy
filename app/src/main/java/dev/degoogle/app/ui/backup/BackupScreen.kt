@@ -52,7 +52,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
     ) {
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "03 // FCM TOKEN VAULT",
+                text = "03 FCM TOKEN VAULT",
                 style = MaterialTheme.typography.titleMedium,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -87,12 +87,6 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
                     status = Status.UNKNOWN,
                     showStatus = false,
                     inlineValue = true,
-                )
-                TechnicalStatusRow(
-                    label = "FILE_MODE",
-                    value = "chmod 0600",
-                    status = Status.UNKNOWN,
-                    showStatus = false,
                 )
             }
         }
@@ -158,21 +152,21 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
             modifier = Modifier.padding(bottom = 24.dp),
         ) {
             SlideToExecute(
-                label = if (f.backupPresent) "[ >>> SLIDE TO UPDATE TOKEN VAULT >>> ]"
-                else "[ >>> SLIDE TO CREATE TOKEN VAULT >>> ]",
+                label = if (f.backupPresent) "SLIDE TO UPDATE TOKEN VAULT"
+                else "SLIDE TO CREATE TOKEN VAULT",
                 enabled = !ui.operationInProgress && !pureMode,
                 onExecute = { vm.createBackup() },
             )
 
             if (f.backupPresent) {
                 SlideToExecute(
-                    label = "[ >>> SLIDE TO RESTORE TOKENS >>> ]",
+                    label = "SLIDE TO RESTORE TOKENS",
                     enabled = !ui.operationInProgress && !pureMode,
                     onExecute = { vm.restoreBackup() },
                 )
 
                 SlideToExecute(
-                    label = "[ >>> SLIDE TO DELETE VAULT >>> ]",
+                    label = "SLIDE TO DELETE VAULT",
                     enabled = !ui.operationInProgress,
                     onExecute = { vm.deleteBackup() },
                 )

@@ -16,7 +16,6 @@ enum class Screen {
     HOME,
     DIAGNOSTICS,
     BACKUP,
-    SETTINGS,
 }
 
 data class UiState(

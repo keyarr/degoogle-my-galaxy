@@ -28,10 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.degoogle.app.R
-import dev.degoogle.app.domain.CapabilityStatus
-import dev.degoogle.app.domain.DeviceCompatibility
 import dev.degoogle.app.domain.DeviceProfiles
-import dev.degoogle.app.domain.KnownGoodMatch
 import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
@@ -55,7 +52,7 @@ fun DiagnosticsScreen(ui: UiState) {
     ) {
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "02 // SYSFACTS DUMP",
+                text = "02 SYSFACTS DUMP",
                 style = MaterialTheme.typography.titleMedium,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -110,8 +107,6 @@ fun DiagnosticsScreen(ui: UiState) {
             }
         }
 
-        val isPortuguese = context.resources.configuration.locales[0].language.startsWith("pt")
-
         if (pureMode) {
             InfoCard(stringResource(R.string.diag_card_pure_mode)) {
                 Column(modifier = Modifier.padding(top = 8.dp)) {
@@ -126,75 +121,6 @@ fun DiagnosticsScreen(ui: UiState) {
                         value = f.postBootStatus ?: stringResource(R.string.pending),
                         status = if (f.postBootValidated) Status.OK else Status.UNKNOWN,
                         showStatus = !f.postBootValidated,
-                    )
-                }
-            }
-        } else InfoCard(stringResource(R.string.diag_card_compatibility)) {
-            Column(modifier = Modifier.padding(top = 8.dp)) {
-                val compatStatus = when (ui.compatibility.compatibility) {
-                    DeviceCompatibility.SUPPORTED -> Status.OK
-                    DeviceCompatibility.PROBABLY_SUPPORTED -> Status.UNKNOWN
-                    else -> Status.FAIL
-                }
-                StatusRow(
-                    label = stringResource(R.string.diag_compatibility),
-                    value = when (ui.compatibility.compatibility) {
-                        DeviceCompatibility.SUPPORTED -> stringResource(R.string.compat_supported)
-                        DeviceCompatibility.PROBABLY_SUPPORTED -> stringResource(R.string.compat_probably_supported)
-                        DeviceCompatibility.REQUIRES_PROFILE -> stringResource(R.string.compat_requires_profile)
-                        DeviceCompatibility.UNSAFE -> stringResource(R.string.compat_unsafe)
-                        DeviceCompatibility.UNSUPPORTED -> stringResource(R.string.compat_unsupported)
-                    },
-                    status = compatStatus,
-                    showStatus = compatStatus != Status.OK,
-                )
-                val matchStatus = if (ui.compatibility.knownGood.level == KnownGoodMatch.EXACT_MATCH) Status.OK else Status.UNKNOWN
-                StatusRow(
-                    label = stringResource(R.string.diag_known_good_match),
-                    value = when (ui.compatibility.knownGood.level) {
-                        KnownGoodMatch.EXACT_MATCH -> stringResource(R.string.match_exact)
-                        KnownGoodMatch.FIRMWARE_FAMILY_MATCH -> stringResource(R.string.match_family)
-                        KnownGoodMatch.MODEL_ONLY_MATCH -> stringResource(R.string.match_model_only)
-                        KnownGoodMatch.NO_MATCH -> stringResource(R.string.match_none)
-                    },
-                    status = matchStatus,
-                    showStatus = matchStatus != Status.OK,
-                )
-                if (f.preparationInfo.isNotBlank()) {
-                    Text(
-                        text = stringResource(R.string.diag_preparation_info),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                    )
-                }
-                Text(
-                    text = stringResource(R.string.diag_capabilities),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(top = 10.dp, bottom = 4.dp),
-                )
-                ui.compatibility.matrix.results.forEach { (capability, result) ->
-                    val status = when (result.status) {
-                        CapabilityStatus.PASS -> Status.OK
-                        CapabilityStatus.WARN -> Status.UNKNOWN
-                        CapabilityStatus.FAIL -> Status.FAIL
-                        CapabilityStatus.UNKNOWN -> Status.UNKNOWN
-                    }
-                    val rawDetail = result.evidence.ifBlank { result.reason }.ifBlank {
-                        when (result.status) {
-                            CapabilityStatus.PASS -> stringResource(R.string.diag_capability_pass)
-                            CapabilityStatus.WARN -> stringResource(R.string.diag_capability_warn)
-                            CapabilityStatus.FAIL -> stringResource(R.string.diag_capability_fail)
-                            CapabilityStatus.UNKNOWN -> stringResource(R.string.diag_capability_unknown)
-                        }
-                    }
-                    val detail = localizeDetail(rawDetail, isPortuguese)
-                    TechnicalStatusRow(
-                        label = capability.name,
-                        value = detail,
-                        status = status,
-                        showStatus = status != Status.OK,
                     )
                 }
             }
@@ -249,7 +175,7 @@ fun DiagnosticsScreen(ui: UiState) {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             flagsList.forEach { flag ->
                                 Text(
-                                    text = "[ $flag ]",
+                                    text = flag,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -428,57 +354,6 @@ private fun copyDiagnostics(context: Context, ui: UiState) {
     sb.appendLine("${context.getString(R.string.diag_store_path)}: ${f.storePath ?: context.getString(R.string.absent)} v${f.storeVersion ?: "?"}")
     sb.appendLine("Mounts: GMS=${f.mountGms} GSF=${f.mountGsf} Store=${f.mountStore} ${context.getString(R.string.diag_mount_gms_source)}=${f.mountGmsSource ?: "—"}")
     sb.appendLine("${context.getString(R.string.diag_backup_present)}: ${f.backupPresent} ${context.getString(R.string.diag_export_format)}=MicroG Session ${context.getString(R.string.diag_local_dir)}=/data/local/tmp/microg-backup")
-    sb.appendLine("${context.getString(R.string.diag_compatibility)}: ${ui.compatibility.compatibility} match=${ui.compatibility.knownGood.level}")
-    sb.appendLine("\n===== COMPATIBILITY REPORT JSON =====")
-    sb.appendLine(
-        kotlinx.serialization.json.Json {
-            prettyPrint = true
-            encodeDefaults = true
-        }.encodeToString(
-            dev.degoogle.app.domain.CompatibilityReport.serializer(),
-            ui.compatibility.report(f),
-        ),
-    )
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     cm.setPrimaryClip(ClipData.newPlainText("DeGoogle Diagnostics", sb.toString()))
-}
-
-private fun localizeDetail(detail: String, isPt: Boolean): String {
-    if (detail.isBlank()) return detail
-    if (isPt) return detail
-
-    var text = detail
-    text = text.replace("bind temporário global criado, lido e desmontado", "Global temporary bind created, read and unmounted")
-    text = text.replace("GMS mascarado via microG", "GMS masked via microG")
-    text = text.replace("GSF mascarado (vazio)", "GSF masked (empty)")
-    text = text.replace("Store mascarada via Companion", "Play Store masked via Companion")
-    text = text.replace("alvo=", "target=")
-    text = text.replace("máscara microG ativa", "microG mask active")
-    text = text.replace("máscara vazia ativa", "empty mask active")
-    text = text.replace("máscara companion ativa", "companion mask active")
-    text = text.replace("origem=", "source=")
-    text = text.replace("alvo restaurado=", "restored target=")
-    text = text.replace("microG ativo com assinatura oficial ou FakeGApps verificado", "microG active with official verified signature")
-    text = text.replace("microG ativo com assinatura verificada", "microG active with verified signature")
-    text = text.replace("cache legível e diretório pai gravável", "cache readable and parent directory writable")
-    text = text.replace("MicroG ativo com flag PRIVILEGED", "microG active with PRIVILEGED flag")
-    text = text.replace("microG ativo com flag PRIVILEGED", "microG active with PRIVILEGED flag")
-    text = text.replace("estratégia existe, mas firmware não foi homologado", "reboot strategy exists, but firmware is unhomologated")
-    text = text.replace("estratégia KSUD_SOFT_REBOOT homologada no Known-Good DB para este firmware", "KSUD_SOFT_REBOOT strategy validated in Known-Good DB")
-    text = text.replace("homologada no Known-Good DB para este firmware", "validated in Known-Good DB for this firmware")
-    text = text.replace("snapshot/journal persistentes podem ser criados em", "persistent snapshot/journal can be created in")
-    text = text.replace("modelo, SDK, fingerprint, root e metadados do firmware conferem", "model, SDK, fingerprint, root and firmware metadata match")
-    text = text.replace("somente modelo Samsung conhecido; isso não prova compatibilidade", "only Samsung model known; does not prove compatibility")
-    text = text.replace("modelo, SDK e backend conferem; fingerprint não homologado", "model, SDK and backend match; fingerprint unhomologated")
-    text = text.replace("dumpsys package reporta FAKE_PACKAGE_SIGNATURE concedida ao GMS", "dumpsys package reports FAKE_PACKAGE_SIGNATURE granted to GMS")
-    text = text.replace("permissão especial mencionada, mas concessão não foi confirmada", "special permission mentioned, but grant not confirmed")
-    text = text.replace("detectados; validação funcional pendente", "detected; functional validation pending")
-    text = text.replace("PackageManager retornou a assinatura FakeGApps para GMS e Play Store; verificação funcional concluída", "PackageManager returned FakeGApps signature for GMS and Play Store; functional check passed")
-    text = text.replace("PackageManager ainda não retorna a assinatura spoofada para GMS e Play Store", "PackageManager does not yet return spoofed signature for GMS and Play Store")
-    text = text.replace("nenhuma evidência funcional de signature spoofing", "no functional evidence of signature spoofing")
-    text = text.replace("mecanismo de root ausente ou recusado", "root mechanism absent or denied")
-    text = text.replace("firmware Samsung reconhecido", "Samsung firmware recognized")
-    text = text.replace("não foi possível reproduzir o contexto SELinux do alvo", "could not reproduce target SELinux context")
-    text = text.replace("nsenter validado contra", "nsenter validated against")
-    return text
 }

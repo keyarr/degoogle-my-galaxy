@@ -4,9 +4,8 @@
     <!-- download dos APKs do microG -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- notificação de operação pendente após boot -->
+    <!-- reconciliação pós-boot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".DeGoogleApp"

@@ -26,7 +26,6 @@ class Prefs(private val context: Context) {
         val SETUP_PROMPT_SEEN = booleanPreferencesKey("setup_prompt_seen")
         val PENDING_OPERATION = stringPreferencesKey("pending_operation")
         val PENDING_SINCE = longPreferencesKey("pending_since")
-        val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val RESCUE_PARTY_NOTICE_DISMISSED = stringPreferencesKey("rescue_party_notice_dismissed_op")
         val SELECTED_MODE = stringPreferencesKey("selected_operation_mode")
     }
@@ -36,9 +35,6 @@ class Prefs(private val context: Context) {
 
     val pendingOperation: Flow<String?> =
         context.dataStore.data.map { it[Keys.PENDING_OPERATION] }
-
-    val notificationsEnabled: Flow<Boolean> =
-        context.dataStore.data.map { it[Keys.NOTIFICATIONS_ENABLED] ?: true }
 
     val selectedMode: Flow<OperationMode?> =
         context.dataStore.data.map { prefs ->
@@ -52,10 +48,6 @@ class Prefs(private val context: Context) {
 
     suspend fun markSetupPromptSeen() {
         context.dataStore.edit { it[Keys.SETUP_PROMPT_SEEN] = true }
-    }
-
-    suspend fun setNotificationsEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.NOTIFICATIONS_ENABLED] = enabled }
     }
 
     suspend fun setSelectedMode(mode: OperationMode?) {

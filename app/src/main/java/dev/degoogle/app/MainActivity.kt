@@ -1,13 +1,9 @@
 package dev.degoogle.app
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,41 +34,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import dev.degoogle.app.data.Prefs
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.Screen
 import dev.degoogle.app.ui.backup.BackupScreen
 import dev.degoogle.app.ui.diagnostics.DiagnosticsScreen
 import dev.degoogle.app.ui.home.HomeScreen
-import dev.degoogle.app.ui.settings.SettingsScreen
 import dev.degoogle.app.ui.theme.DeGoogleTheme
 
 class MainActivity : ComponentActivity() {
 
     private val vm: AppViewModel by viewModels()
 
-    private val notifPermission = registerForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-
-        // Notificação de operação pendente pós-boot (Android 13+). Só pedimos
-        // quando o usuário mantém as notificações habilitadas nas Configurações.
-        val notificationsOn = runBlocking { Prefs(this@MainActivity).notificationsEnabled.first() }
-        if (Build.VERSION.SDK_INT >= 33 &&
-            notificationsOn &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
 
         setContent {
             DeGoogleTheme {
@@ -93,14 +69,14 @@ class MainActivity : ComponentActivity() {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    "[DEGOOGLE://SAMSUNG-SECURITY-NULL]",
+                                    "DEGOOGLE",
                                     modifier = Modifier.weight(1f),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 8.sp,
                                     maxLines = 1,
                                 )
                                 Text(
-                                    "ROOT:${if (ui.facts.rootOk) "AVAILABLE" else "ABSENT"} // SELINUX:${ui.facts.selinux.uppercase()}",
+                                    "ROOT:${if (ui.facts.rootOk) "AVAILABLE" else "ABSENT"} SELINUX:${ui.facts.selinux.uppercase()}",
                                     modifier = Modifier.weight(1f),
                                     color = MaterialTheme.colorScheme.primary,
                                     fontSize = 8.sp,
@@ -129,7 +105,6 @@ class MainActivity : ComponentActivity() {
                                     Triple(Screen.HOME, R.drawable.ic_nav_home, R.string.nav_home),
                                     Triple(Screen.DIAGNOSTICS, R.drawable.ic_nav_diagnostics, R.string.nav_diagnostics),
                                     Triple(Screen.BACKUP, R.drawable.ic_nav_backup, R.string.nav_backup),
-                                    Triple(Screen.SETTINGS, R.drawable.ic_nav_settings, R.string.nav_settings),
                                 ).forEach { (target, icon, label) ->
                                     val selected = screen == target
                                     Column(
@@ -175,9 +150,6 @@ class MainActivity : ComponentActivity() {
                             )
                             Screen.BACKUP -> BackupScreen(
                                 ui = ui,
-                                vm = vm,
-                            )
-                            Screen.SETTINGS -> SettingsScreen(
                                 vm = vm,
                             )
                         }

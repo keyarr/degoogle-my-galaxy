@@ -6,29 +6,11 @@
     <string name="nav_home">Home</string>
     <string name="nav_diagnostics">Diagnostics</string>
     <string name="nav_backup">Backup</string>
-    <string name="nav_settings">Settings</string>
 
-    <!-- Settings -->
-    <string name="settings_title">Settings</string>
-    <string name="settings_subtitle">Behavior and device compatibility options</string>
-    <string name="settings_notifications_title">Notifications</string>
-    <string name="settings_notifications_label">Recovery alerts</string>
-    <string name="settings_notifications_desc">Notify after boot about automatic recovery or a failure that needs attention.</string>
-    <string name="settings_profile_title">Device compatibility</string>
-    <string name="settings_profile_label">Experimental opt-in</string>
-    <string name="settings_profile_desc">Allow an unhomologated firmware only when every critical capability passes. The compatibility engine still blocks unsafe states.</string>
-    <string name="settings_profile_warning">Experimental mode never overrides FAIL or UNKNOWN. Review the compatibility report before every operation.</string>
-    <string name="settings_footer">The known-good database is versioned with the app. An unknown device is never approved by model similarity alone.</string>
-    <string name="diag_card_compatibility">Compatibility engine</string>
     <string name="diag_card_pure_mode">Pure DeGoogle validation</string>
     <string name="diag_compatibility">Classification</string>
-    <string name="diag_known_good_match">Known-good match</string>
-    <string name="diag_preparation_info">Active GMS/Play Store updates are removable during preparation; the target stock paths are revalidated afterward.</string>
-    <string name="diag_capabilities">Capabilities</string>
     <string name="diag_capability_pass">PASS</string>
-    <string name="diag_capability_warn">WARN</string>
     <string name="diag_capability_fail">FAIL</string>
-    <string name="diag_capability_unknown">UNKNOWN</string>
 
     <!-- Device States -->
     <string name="state_no_root">No Root</string>
@@ -45,16 +27,12 @@
     <string name="state_restore_prepared">Restore Prepared</string>
     <string name="state_error">Error</string>
 
-    <!-- Compatibility Decisions & Match Levels -->
+    <!-- Compatibility Decisions -->
     <string name="compat_supported">Supported</string>
     <string name="compat_probably_supported">Probably Supported</string>
     <string name="compat_requires_profile">Requires Profile</string>
     <string name="compat_unsafe">Unsafe</string>
     <string name="compat_unsupported">Unsupported</string>
-    <string name="match_exact">Exact Match</string>
-    <string name="match_family">Firmware Family</string>
-    <string name="match_model_only">Model Only</string>
-    <string name="match_none">No Match</string>
 
     <!-- Operation Status & Step Logs -->
     <string name="op_preparing_env">Preparing environment…</string>
@@ -154,11 +132,6 @@
     <string name="compat_err_preflight_blocked">Preflight has not authorized this operation yet. Refresh diagnostics.</string>
     <string name="compat_err_execution_blocked">Execution blocked: %1$s. Check diagnostics before modifying the system.</string>
 
-    <!-- Notifications -->
-    <string name="notif_pending_title">DeGoogle</string>
-    <string name="notif_pending_text">microG configuration is ready to be completed.</string>
-    <string name="notif_recovery_failed_title">DeGoogle recovery needs attention</string>
-    <string name="notif_recovery_failed_text">The app could not safely restore the stock environment automatically.</string>
     <string name="error_backend_not_installed">Backend is not installed.</string>
     <string name="error_probe_failed">Probe failed: %1$s</string>
 
@@ -222,11 +195,11 @@
     <string name="home_complete_setup_btn">Complete configuration</string>
     <string name="home_microg_active_title">microG</string>
     <string name="home_badge_active">active</string>
-    <string name="home_btn_update_token_backup">Update Token Backup</string>
-    <string name="home_btn_create_token_backup">Create Token Backup</string>
     <string name="home_btn_restore_google_stock">Restore Google Stock</string>
     <string name="home_restore_prepared_title">Rollback ready</string>
     <string name="home_restore_prepared_desc">Masks were removed and the original Google environment will be revealed after a soft reboot.</string>
+    <string name="home_restore_needed_title">Stock restore required</string>
+    <string name="home_restore_needed_desc">Masks are no longer mounted after a reboot, but microG is still cached in Package Manager. Restore Google stock to clear the cache and residue before performing a soft reboot.</string>
     <string name="home_reindex_stock_desc">The userspace restart is verified. Reindex stock packages to finish restoring the original Google environment.</string>
     <string name="home_reindex_stock_btn">Reindex stock packages</string>
     <string name="home_error_state_title">Inconsistent state</string>
@@ -312,7 +285,7 @@
 
     <!-- Backup Screen -->
     <string name="backup_title">Backup &amp; Tokens</string>
-    <string name="backup_card_snapshot_state">Local backup</string>
+    <string name="backup_card_snapshot_state">Backup</string>
     <string name="backup_created_at">created at %1$s</string>
     <string name="backup_structure_label">Structure</string>
     <string name="backup_structure_value">user0 + user_de</string>

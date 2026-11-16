@@ -1,19 +1,9 @@
 package dev.degoogle.app.boot
 
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
-import dev.degoogle.app.MainActivity
-import dev.degoogle.app.R
 import dev.degoogle.app.data.Prefs
 import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.domain.StateDetector
@@ -27,15 +17,14 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
  * Reconciles state after a full reboot without changing installed packages.
  *
  * Restoring stock is deliberately restricted to the explicit action in the
- * UI. This receiver may confirm an already restored stock state or notify the
- * user that an operation is pending; it must never start rollback itself.
+ * UI. This receiver may confirm an already restored stock state; it must
+ * never start rollback itself.
  */
 class BootReceiver : BroadcastReceiver() {
 
@@ -57,12 +46,7 @@ class BootReceiver : BroadcastReceiver() {
 
     private suspend fun recover(context: Context) {
         val prefs = Prefs(context)
-        val pending = runCatching { prefs.hasPendingOperation() }.getOrDefault(false)
-        val backendPath = BackendInstaller(context).ensureInstalled()
-        if (backendPath == null) {
-            if (pending) notifyPending(context)
-            return
-        }
+        val backendPath = BackendInstaller(context).ensureInstalled() ?: return
 
         val journal = TransactionJournalStore.forAppFiles(context.filesDir)
         val backend = BackendRunner(
@@ -73,21 +57,11 @@ class BootReceiver : BroadcastReceiver() {
             onProgress = { line -> Log.i(TAG, line) },
         )
         val probe = backend.probe()
-        if (!probe.raw.succeeded) {
-            if (pending) notifyPending(context)
-            return
-        }
+        if (!probe.raw.succeeded) return
 
         val state = StateDetector.detect(probe.facts, profile = null)
-        if (state == DeviceState.STOCK) {
-            val stockConfirmed = confirmStock(journal, probe.facts)
-            if (stockConfirmed) {
-                runCatching { prefs.clearPendingOperation() }
-            } else if (pending) {
-                notifyPending(context)
-            }
-        } else if (pending) {
-            notifyPending(context)
+        if (state == DeviceState.STOCK && confirmStock(journal, probe.facts)) {
+            runCatching { prefs.clearPendingOperation() }
         }
     }
 
@@ -114,59 +88,7 @@ class BootReceiver : BroadcastReceiver() {
         )
     }
 
-    private fun notifyPending(context: Context) {
-        notify(
-            context = context,
-            title = context.getString(R.string.notif_pending_title),
-            text = context.getString(R.string.notif_pending_text),
-        )
-    }
-
-    private fun notify(context: Context, title: String, text: String) {
-        val notificationsOn = runCatching {
-            kotlinx.coroutines.runBlocking { Prefs(context).notificationsEnabled.first() }
-        }.getOrDefault(true)
-        if (!notificationsOn) return
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) return
-
-        createChannel(context)
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setContentIntent(
-                android.app.PendingIntent.getActivity(
-                    context,
-                    0,
-                    Intent(context, MainActivity::class.java),
-                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or
-                        android.app.PendingIntent.FLAG_IMMUTABLE,
-                ),
-            )
-            .build()
-
-        runCatching { NotificationManagerCompat.from(context).notify(NOTIF_ID, notification) }
-    }
-
-    private fun createChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < 26) return
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "DeGoogle",
-            NotificationManager.IMPORTANCE_DEFAULT,
-        )
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-    }
-
     companion object {
         private const val TAG = "DeGoogle.BootRecovery"
-        private const val CHANNEL_ID = "degoogle_pending"
-        private const val NOTIF_ID = 1
     }
 }

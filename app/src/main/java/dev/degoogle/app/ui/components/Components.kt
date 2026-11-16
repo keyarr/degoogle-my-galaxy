@@ -17,6 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -110,9 +113,9 @@ fun OperationLog(
             }
             visibleSteps.forEach { step ->
                 val status = when (step.ok) {
-                    true -> "[x]"
-                    false -> "[!]"
-                    null -> "[>]"
+                    true -> "x"
+                    false -> "!"
+                    null -> ">"
                 }
                 Text(
                     text = "$status ${step.text}",
@@ -407,7 +410,12 @@ fun SlideToExecute(
                     .background(activeColor),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("[ > ]", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }

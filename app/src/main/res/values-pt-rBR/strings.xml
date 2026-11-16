@@ -6,29 +6,11 @@
     <string name="nav_home">Início</string>
     <string name="nav_diagnostics">Diagnóstico</string>
     <string name="nav_backup">Backup</string>
-    <string name="nav_settings">Configurações</string>
 
-    <!-- Configurações -->
-    <string name="settings_title">Configurações</string>
-    <string name="settings_subtitle">Comportamento e compatibilidade de dispositivo</string>
-    <string name="settings_notifications_title">Notificações</string>
-    <string name="settings_notifications_label">Alertas de recuperação</string>
-    <string name="settings_notifications_desc">Notificar após o boot sobre recuperação automática ou falha que exija atenção.</string>
-    <string name="settings_profile_title">Compatibilidade de dispositivo</string>
-    <string name="settings_profile_label">Opt-in experimental</string>
-    <string name="settings_profile_desc">Permite firmware não homologado somente quando todas as capabilities críticas passam. O motor ainda bloqueia estados inseguros.</string>
-    <string name="settings_profile_warning">O modo experimental nunca ignora FAIL ou UNKNOWN. Revise o relatório de compatibilidade antes de cada operação.</string>
-    <string name="settings_footer">O banco known-good é versionado com o app. Um aparelho desconhecido nunca é aprovado apenas por semelhança de modelo.</string>
-    <string name="diag_card_compatibility">Motor de compatibilidade</string>
     <string name="diag_card_pure_mode">Validação DeGoogle pura</string>
     <string name="diag_compatibility">Classificação</string>
-    <string name="diag_known_good_match">Match no known-good</string>
-    <string name="diag_preparation_info">Os updates ativos do GMS/Play Store podem ser removidos durante a preparação; os caminhos stock serão revalidados depois.</string>
-    <string name="diag_capabilities">Capabilities</string>
     <string name="diag_capability_pass">PASS</string>
-    <string name="diag_capability_warn">WARN</string>
     <string name="diag_capability_fail">FAIL</string>
-    <string name="diag_capability_unknown">UNKNOWN</string>
 
     <!-- Device States -->
     <string name="state_no_root">Sem Root</string>
@@ -45,16 +27,12 @@
     <string name="state_restore_prepared">Restauração Preparada</string>
     <string name="state_error">Erro</string>
 
-    <!-- Decisões de Compatibilidade e Níveis de Match -->
+    <!-- Decisões de Compatibilidade -->
     <string name="compat_supported">Suportado</string>
     <string name="compat_probably_supported">Provavelmente Suportado</string>
     <string name="compat_requires_profile">Requer Perfil</string>
     <string name="compat_unsafe">Inseguro</string>
     <string name="compat_unsupported">Não Suportado</string>
-    <string name="match_exact">Match Exato</string>
-    <string name="match_family">Família de Firmware</string>
-    <string name="match_model_only">Apenas Modelo</string>
-    <string name="match_none">Sem Match</string>
 
     <!-- Status de Operação e Logs de Passos -->
     <string name="op_preparing_env">Iniciando preparação do ambiente…</string>
@@ -154,11 +132,6 @@
     <string name="compat_err_preflight_blocked">O preflight ainda não autorizou a operação. Atualize o diagnóstico.</string>
     <string name="compat_err_execution_blocked">Execução bloqueada: %1$s. Consulte o diagnóstico antes de alterar o sistema.</string>
 
-    <!-- Notificações -->
-    <string name="notif_pending_title">DeGoogle</string>
-    <string name="notif_pending_text">A configuração do microG está pronta para ser concluída.</string>
-    <string name="notif_recovery_failed_title">A recuperação do DeGoogle precisa de atenção</string>
-    <string name="notif_recovery_failed_text">O app não conseguiu restaurar o ambiente stock com segurança automaticamente.</string>
     <string name="error_backend_not_installed">O backend não está instalado.</string>
     <string name="error_probe_failed">Falha na verificação: %1$s</string>
 
@@ -180,7 +153,7 @@
     <string name="continue_btn">Continuar</string>
     <string name="understand_btn">Entendi</string>
     <string name="operation_log_live">Log da operação em tempo real</string>
-    <string name="operation_log_last">Log da última operação</string>
+    <string name="operation_log_last">Logs</string>
     <string name="technical_details">Detalhes técnicos</string>
     <string name="status_ok">OK</string>
     <string name="status_fail">FALHA</string>
@@ -222,11 +195,11 @@
     <string name="home_complete_setup_btn">Concluir configuração</string>
     <string name="home_microg_active_title">microG</string>
     <string name="home_badge_active">ativo</string>
-    <string name="home_btn_update_token_backup">Atualizar Backup dos Tokens</string>
-    <string name="home_btn_create_token_backup">Criar Backup dos Tokens</string>
     <string name="home_btn_restore_google_stock">Restaurar Google Stock</string>
     <string name="home_restore_prepared_title">Rollback pronto</string>
     <string name="home_restore_prepared_desc">As máscaras foram removidas e o ambiente Google original será revelado após o soft reboot.</string>
+    <string name="home_restore_needed_title">Restauração necessária</string>
+    <string name="home_restore_needed_desc">As máscaras não estão mais montadas após o reboot, mas o microG continua em cache do Package Manager. Restaure o Google stock para limpar o cache e os resíduos antes de fazer o soft reboot.</string>
     <string name="home_reindex_stock_desc">O soft reboot foi confirmado. Reindexe os pacotes stock para concluir a restauração do ambiente Google original.</string>
     <string name="home_reindex_stock_btn">Reindexar pacotes stock</string>
     <string name="home_error_state_title">Estado inconsistente</string>
@@ -312,7 +285,7 @@
 
     <!-- Backup Screen -->
     <string name="backup_title">Backup &amp; Tokens</string>
-    <string name="backup_card_snapshot_state">Backup local</string>
+    <string name="backup_card_snapshot_state">Backup</string>
     <string name="backup_created_at">criado em %1$s</string>
     <string name="backup_structure_label">Estrutura</string>
     <string name="backup_structure_value">user0 + user_de</string>

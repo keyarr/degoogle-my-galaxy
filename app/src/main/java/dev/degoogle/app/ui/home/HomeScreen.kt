@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import dev.degoogle.app.R
 import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.domain.OperationMode
+import dev.degoogle.app.domain.SystemFacts
 import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.Screen
 import dev.degoogle.app.ui.UiState
@@ -71,7 +72,7 @@ fun HomeScreen(
         // Cabeçalho One UI
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "01 // ROOT_AUTH",
+                text = "01 ROOT_AUTH",
                 style = MaterialTheme.typography.titleMedium,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -143,7 +144,7 @@ fun HomeScreen(
                     TechnicalBlock(text = ui.recoveryDetail)
                 }
                 SlideToExecute(
-                    label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
+                    label = "SLIDE TO RESTORE STOCK",
                     enabled = !ui.operationInProgress,
                     onExecute = { vm.restoreGoogle() },
                 )
@@ -160,7 +161,7 @@ fun HomeScreen(
             DeviceState.MICROG_BOOTED -> BootedContent(ui, vm)
             DeviceState.MICROG_NEEDS_SETUP, DeviceState.MICROG_ACTIVE,
             DeviceState.MICROG_ACTIVE_BACKED_UP -> ActiveContent(
-                ui, vm, onNavigate, { vm.restoreGoogle() },
+                ui, { vm.restoreGoogle() },
             )
             DeviceState.RESTORE_PREPARED -> RestorePreparedContent(ui, vm)
             DeviceState.ERROR -> ErrorContent(ui, vm, onNavigate)
@@ -432,7 +433,7 @@ private fun PurePreparedContent(ui: UiState, vm: AppViewModel) {
         shape = RoundedCornerShape(0.dp),
     ) { Text(stringResource(R.string.home_soft_reboot_btn), fontWeight = FontWeight.Bold) }
     SlideToExecute(
-        label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
+        label = "SLIDE TO RESTORE STOCK",
         enabled = !ui.operationInProgress,
         onExecute = { vm.restoreGoogle() },
     )
@@ -458,7 +459,7 @@ private fun PureActiveContent(ui: UiState, vm: AppViewModel) {
         }
     }
     SlideToExecute(
-        label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
+        label = "SLIDE TO RESTORE STOCK",
         enabled = !ui.operationInProgress && !ui.recoveryRequired,
         onExecute = { vm.restoreGoogle() },
     )
@@ -498,7 +499,7 @@ private fun PreparedContent(
     }
 
     SlideToExecute(
-        label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
+        label = "SLIDE TO RESTORE STOCK",
         onExecute = { vm.restoreGoogle() },
     )
 }
@@ -523,13 +524,13 @@ private fun IsolationStages(ui: UiState) {
     )
     val identityVerified = ui.state in setOf(DeviceState.MICROG_ACTIVE, DeviceState.MICROG_ACTIVE_BACKED_UP)
     InfoCard("NAMESPACE INTEGRITY") {
-        StageLine("STAGE_00: STOCK GOOGLE SURVEILLANCE", if (stockRemoved) "[x] REMOVED" else "[>] PRESENT")
-        StageLine("STAGE_01: KERNEL NAMESPACE MASKING", if (namespaceActive) "[>] ACTIVE" else "[ ] PENDING")
+        StageLine("STAGE_00: STOCK GOOGLE", if (stockRemoved) "REMOVED" else "PRESENT")
+        StageLine("STAGE_01: KERNEL NAMESPACE MASKING", if (namespaceActive) "ACTIVE" else "PENDING")
         if (pureMode) {
-            StageLine("STAGE_02: PURE DEGOOGLE VALIDATION", if (ui.state == DeviceState.DEGOOGLE_ACTIVE) "[x] VERIFIED" else "[ ] PENDING")
+            StageLine("STAGE_02: PURE DEGOOGLE VALIDATION", if (ui.state == DeviceState.DEGOOGLE_ACTIVE) "VERIFIED" else "PENDING")
         } else {
-            StageLine("STAGE_02: MICROG IDENTITY SPOOFING", if (identityVerified) "[x] VERIFIED" else "[ ] PENDING")
-            StageLine("STAGE_03: FCM TOKEN AIRGAP ARCHIVE", if (ui.facts.backupPresent) "[x] SEALED" else "[ ] PENDING")
+            StageLine("STAGE_02: MICROG IDENTITY SPOOFING", if (identityVerified) "VERIFIED" else "PENDING")
+            StageLine("STAGE_03: FCM TOKEN AIRGAP ARCHIVE", if (ui.facts.backupPresent) "SEALED" else "PENDING")
         }
     }
 }
@@ -579,12 +580,9 @@ private fun BootedContent(ui: UiState, vm: AppViewModel) {
 @Composable
 private fun ActiveContent(
     ui: UiState,
-    vm: AppViewModel,
-    onNavigate: (Screen) -> Unit,
     onRestoreGoogle: () -> Unit,
 ) {
     val f = ui.facts
-    val isBackedUp = ui.state == DeviceState.MICROG_ACTIVE_BACKED_UP
 
     InfoCard(
         title = stringResource(R.string.home_microg_active_title),
@@ -642,8 +640,70 @@ private fun ActiveContent(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button(
-            onClick = { vm.createBackup() },
+        Text(
+            text = "EMERGENCY RESTORE",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SlideToExecute(
+            label = "SLIDE TO RESTORE STOCK",
+            enabled = !ui.operationInProgress && !ui.recoveryRequired,
+            onExecute = onRestoreGoogle,
+        )
+    }
+}
+
+internal enum class RestorePreparedAction {
+    RESTORE_STOCK,
+    SOFT_REBOOT,
+    REINDEX_STOCK,
+}
+
+internal fun resolveRestorePreparedAction(facts: SystemFacts): RestorePreparedAction = when {
+    facts.stockReindexPending && facts.stockReindexReady -> RestorePreparedAction.REINDEX_STOCK
+    facts.stockReindexPending -> RestorePreparedAction.SOFT_REBOOT
+    else -> RestorePreparedAction.RESTORE_STOCK
+}
+
+@Composable
+private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
+    val action = resolveRestorePreparedAction(ui.facts)
+    InfoCard(
+        title = stringResource(
+            when (action) {
+                RestorePreparedAction.RESTORE_STOCK -> R.string.home_restore_needed_title
+                RestorePreparedAction.SOFT_REBOOT,
+                RestorePreparedAction.REINDEX_STOCK -> R.string.home_restore_prepared_title
+            },
+        ),
+    ) {
+        Text(
+            text = stringResource(
+                when (action) {
+                    RestorePreparedAction.RESTORE_STOCK -> R.string.home_restore_needed_desc
+                    RestorePreparedAction.SOFT_REBOOT -> R.string.home_restore_prepared_desc
+                    RestorePreparedAction.REINDEX_STOCK -> R.string.home_reindex_stock_desc
+                },
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+
+    when (action) {
+        RestorePreparedAction.RESTORE_STOCK -> if (!ui.recoveryRequired) {
+            SlideToExecute(
+                label = "SLIDE TO RESTORE STOCK",
+                enabled = !ui.operationInProgress,
+                onExecute = { vm.restoreGoogle() },
+            )
+        }
+        RestorePreparedAction.SOFT_REBOOT,
+        RestorePreparedAction.REINDEX_STOCK -> Button(
+            onClick = {
+                if (action == RestorePreparedAction.REINDEX_STOCK) vm.reindexStock()
+                else vm.softReboot()
+            },
             enabled = !ui.operationInProgress && !ui.recoveryRequired,
             modifier = Modifier
                 .fillMaxWidth()
@@ -651,56 +711,14 @@ private fun ActiveContent(
             shape = RoundedCornerShape(0.dp),
         ) {
             Text(
-                text = if (isBackedUp) stringResource(R.string.home_btn_update_token_backup) else stringResource(R.string.home_btn_create_token_backup),
+                stringResource(
+                    if (action == RestorePreparedAction.REINDEX_STOCK) R.string.home_reindex_stock_btn
+                    else R.string.home_soft_reboot_btn,
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
         }
-
-        Text(
-            text = "EMERGENCY RESTORE VECTOR",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        SlideToExecute(
-            label = "[ >>> SLIDE TO RESTORE STOCK >>> ]",
-            enabled = !ui.operationInProgress && !ui.recoveryRequired,
-            onExecute = onRestoreGoogle,
-        )
-    }
-}
-
-@Composable
-private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
-    InfoCard(
-        title = stringResource(R.string.home_restore_prepared_title),
-    ) {
-        Text(
-            text = stringResource(
-                if (ui.facts.stockReindexReady) R.string.home_reindex_stock_desc
-                else R.string.home_restore_prepared_desc,
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-    }
-
-    Button(
-        onClick = { if (ui.facts.stockReindexReady) vm.reindexStock() else vm.softReboot() },
-        enabled = !ui.operationInProgress && !ui.recoveryRequired,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        shape = RoundedCornerShape(0.dp),
-    ) {
-        Text(
-            stringResource(
-                if (ui.facts.stockReindexReady) R.string.home_reindex_stock_btn
-                else R.string.home_soft_reboot_btn,
-            ),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-        )
     }
 }
 

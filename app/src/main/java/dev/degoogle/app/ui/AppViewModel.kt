@@ -32,7 +32,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import dev.degoogle.app.R
 import kotlinx.coroutines.flow.update
@@ -81,9 +80,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(UiState.INITIAL)
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
-    private val _notificationsEnabled = MutableStateFlow(true)
-    val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
-
     private var activeOperationId: String? = null
 
     /**
@@ -101,7 +97,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            _notificationsEnabled.value = prefs.notificationsEnabled.first()
             _ui.update { it.copy(selectedMode = prefs.selectedMode.firstOrNull()) }
         }
         refresh(clearError = true)
@@ -288,7 +283,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                         TransactionState.REBOOT_REQUESTED,
                         TransactionState.POST_BOOT_VALIDATING,
                     ) } == true
-                DeviceState.RESTORE_PREPARED -> journal?.state in setOf(
+                DeviceState.RESTORE_PREPARED -> facts.stockReindexPending && journal?.state in setOf(
                     TransactionState.REBOOT_REQUESTED,
                     TransactionState.REINDEX_PENDING,
                 )
@@ -724,6 +719,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         val r = reboot ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val stateBeforeReboot = _ui.value.state
+            val reindexPendingBeforeReboot = _ui.value.facts.stockReindexPending
             val journalStateBeforeReboot = transactionJournal.read()?.state
             _ui.update {
                 it.copy(
@@ -744,7 +740,8 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             if (!ok) {
                 val stateAfterRefusal = when {
                     stateBeforeReboot == DeviceState.PREPARED -> TransactionState.STORE_MASKED
-                    stateBeforeReboot == DeviceState.RESTORE_PREPARED -> TransactionState.REINDEX_PENDING
+                    stateBeforeReboot == DeviceState.RESTORE_PREPARED && reindexPendingBeforeReboot ->
+                        TransactionState.REINDEX_PENDING
                     journalStateBeforeReboot != null && journalStateBeforeReboot != TransactionState.REBOOT_REQUESTED ->
                         journalStateBeforeReboot
                     else -> TransactionState.FAILED
@@ -816,12 +813,6 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             prefs.markRescuePartyNoticeDismissed(operationId)
         }
-    }
-
-    /** Liga/desliga as notificações de operação pendente (pós-boot). */
-    fun setNotificationsEnabled(enabled: Boolean) {
-        _notificationsEnabled.value = enabled
-        viewModelScope.launch(Dispatchers.IO) { prefs.setNotificationsEnabled(enabled) }
     }
 
     fun clearError() = _ui.update { it.copy(error = null) }
