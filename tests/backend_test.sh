@@ -1179,8 +1179,8 @@ EOF
 chmod +x "$KSUD_STUB"
 FAKE_USERSPACE_REBOOT_SUPPORTED=0 DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
     run_script 0 "soft-reboot usa ksud validado" soft-reboot >/dev/null || true
-grep -q '^reboot$' "$ROOT/ksud.called" && \
-    ok "ksud reboot ran after checking help output" || bad "verified ksud was not executed"
+grep -q '^soft-reboot$' "$ROOT/ksud.called" && \
+    ok "ksud soft-reboot ran after checking help output" || bad "verified ksud was not executed"
 [ -s "$BACKUP_BASE/transaction/reboot-baseline" ] && \
     ok "baseline persistido antes do ksud reboot" || bad "baseline do ksud restart ausente"
 teardown_root

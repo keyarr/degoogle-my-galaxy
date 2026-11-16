@@ -3497,6 +3497,11 @@ soft_reboot()
     local source now last attempts cooldown elapsed remaining previous_state restart_identity method selected_identity current_identity
     local power_output power_status
     collect_facts
+    source="${DEGOOGLE_REBOOT_SOURCE:-manual}"
+    case "$source" in
+        automatic|manual) ;;
+        *) source="manual" ;;
+    esac
     [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "PASS" ] || {
         [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "WARN" ] &&
             { [ "${DEGOOGLE_ALLOW_FALLBACK_REBOOT:-0}" = "1" ] || [ "${DEGOOGLE_ALLOW_ZYGOTE_RESTART:-0}" = "1" ]; } ||
@@ -3504,11 +3509,6 @@ soft_reboot()
     }
     method="$REBOOT_STRATEGY_METHOD"
     case "$method" in SYS_POWERCTL_USERSPACE|KSUD_SOFT_REBOOT|ZYGOTE_RESTART) ;; *) fail_en 5 "The selected userspace restart mechanism is unresolved or unsupported." ;; esac
-    source="${DEGOOGLE_REBOOT_SOURCE:-manual}"
-    case "$source" in
-        automatic|manual) ;;
-        *) source="manual" ;;
-    esac
     cooldown="${DEGOOGLE_REBOOT_COOLDOWN_SECONDS:-3600}"
     case "$cooldown" in ''|*[!0-9]*) cooldown=3600 ;; esac
     now="$(date +%s 2>/dev/null || echo 0)"
@@ -3552,11 +3552,10 @@ soft_reboot()
         }
     fi
     say "Requesting userspace reboot..."
-    # AOSP userspace restart is used only when init advertises support.
     case "$method" in
         SYS_POWERCTL_USERSPACE) power_output="$(setprop sys.powerctl reboot,userspace 2>&1)"; power_status=$? ;;
         KSUD_SOFT_REBOOT)
-            power_output="$("$KSUD_PATH" reboot 2>&1)"; power_status=$?
+            power_output="$("$KSUD_PATH" soft-reboot 2>&1)"; power_status=$?
             ;;
         ZYGOTE_RESTART)
             if command -v setprop >/dev/null 2>&1; then
@@ -3570,8 +3569,8 @@ soft_reboot()
         say "$method accepted."
         return 0
     fi
-    say "AOSP userspace reboot rejected (exit ${power_status})."
-    [ -n "$power_output" ] && say "AOSP detail: $power_output"
+    say "$method rejected (exit ${power_status})."
+    [ -n "$power_output" ] && say "Restart detail: $power_output"
     # IMPORTANT: devices with root via exploit must NEVER use a full reboot;
     # a kernel reboot loses root and microG. Abort with a safe instruction
     # instead of suggesting a full reboot.
@@ -3581,7 +3580,7 @@ soft_reboot()
     else
         journal_state "FAILED" >/dev/null 2>&1 || true
     fi
-    fail_en 5 "The confirmed AOSP userspace restart request failed; no fallback was attempted."
+    fail_en 5 "The userspace restart request failed; no fallback was attempted."
 }
 
 # ===========================================================================
