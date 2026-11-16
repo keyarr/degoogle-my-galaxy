@@ -59,7 +59,7 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
     ) {
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "03 FCM TOKEN VAULT",
+                text = stringResource(R.string.backup_screen_header),
                 style = MaterialTheme.typography.titleMedium,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,

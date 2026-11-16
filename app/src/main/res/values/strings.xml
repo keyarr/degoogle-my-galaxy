@@ -154,7 +154,9 @@
     <string name="understand_btn">Got it</string>
     <string name="operation_log_live">Live operation log</string>
     <string name="operation_log_last">Last operation log</string>
+    <string name="operation_log_waiting">Awaiting execution</string>
     <string name="technical_details">Technical details</string>
+    <string name="slide_restore_stock">Slide to restore stock</string>
     <string name="status_ok">OK</string>
     <string name="status_fail">FAIL</string>
     <string name="status_absent">ABSENT</string>
@@ -223,9 +225,27 @@
     <string name="home_dialog_setup_title">microG installed successfully</string>
     <string name="home_dialog_setup_text">Open microG settings and complete initial setup, including your account, Cloud Messaging, and other desired options.\n\nWhen finished, return to this application and create a backup.</string>
     <string name="home_dialog_open_microg">Open microG</string>
+    <string name="home_screen_header">01 ROOT AUTH</string>
+    <string name="home_root_available">AVAILABLE</string>
+    <string name="home_root_absent">ABSENT</string>
+    <string name="home_root_status">ROOT: %1$s SELINUX: %2$s</string>
+    <string name="home_emergency_restore">Emergency restore</string>
+    <string name="home_namespace_integrity">Namespace integrity</string>
+    <string name="home_stage_stock_google">STAGE_00: STOCK GOOGLE</string>
+    <string name="home_stage_namespace_masking">STAGE_01: KERNEL NAMESPACE MASKING</string>
+    <string name="home_stage_pure_validation">STAGE_02: PURE DEGOOGLE VALIDATION</string>
+    <string name="home_stage_microg_identity">STAGE_02: MICROG IDENTITY SPOOFING</string>
+    <string name="home_stage_fcm_archive">STAGE_03: FCM TOKEN AIRGAP ARCHIVE</string>
+    <string name="home_stage_removed">REMOVED</string>
+    <string name="home_stage_present">PRESENT</string>
+    <string name="home_stage_active">ACTIVE</string>
+    <string name="home_stage_pending">PENDING</string>
+    <string name="home_stage_verified">VERIFIED</string>
+    <string name="home_stage_sealed">SEALED</string>
 
     <!-- Diagnostics Screen -->
     <string name="diag_title">Diagnostics</string>
+    <string name="diag_screen_header">02 SYSFACTS DUMP</string>
     <string name="diag_card_system">System &amp; Environment</string>
     <string name="diag_card_gms">Google Play Services (GMS)</string>
     <string name="diag_card_framework">Framework &amp; Store</string>
@@ -285,6 +305,7 @@
 
     <!-- Backup Screen -->
     <string name="backup_title">Backup &amp; Tokens</string>
+    <string name="backup_screen_header">03 FCM TOKEN VAULT</string>
     <string name="backup_card_snapshot_state">Backup</string>
     <string name="backup_created_at">created at %1$s</string>
     <string name="backup_structure_label">Structure</string>

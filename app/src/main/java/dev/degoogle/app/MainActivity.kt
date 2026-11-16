@@ -69,14 +69,18 @@ class MainActivity : ComponentActivity() {
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
-                                    "DEGOOGLE",
+                                    stringResource(R.string.app_name).uppercase(),
                                     modifier = Modifier.weight(1f),
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 8.sp,
                                     maxLines = 1,
                                 )
                                 Text(
-                                    "ROOT:${if (ui.facts.rootOk) "AVAILABLE" else "ABSENT"} SELINUX:${ui.facts.selinux.uppercase()}",
+                                    stringResource(
+                                        R.string.home_root_status,
+                                        stringResource(if (ui.facts.rootOk) R.string.home_root_available else R.string.home_root_absent),
+                                        ui.facts.selinux.uppercase(),
+                                    ),
                                     modifier = Modifier.weight(1f),
                                     color = MaterialTheme.colorScheme.primary,
                                     fontSize = 8.sp,

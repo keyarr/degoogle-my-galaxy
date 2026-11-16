@@ -52,7 +52,7 @@ fun DiagnosticsScreen(ui: UiState) {
     ) {
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "02 SYSFACTS DUMP",
+                text = stringResource(R.string.diag_screen_header),
                 style = MaterialTheme.typography.titleMedium,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,

@@ -106,7 +106,7 @@ fun OperationLog(
         ) {
             if (visibleSteps.isEmpty()) {
                 Text(
-                    text = "AWAITING EXECUTION",
+                    text = stringResource(R.string.operation_log_waiting),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

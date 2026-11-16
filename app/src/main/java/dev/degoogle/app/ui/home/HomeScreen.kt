@@ -72,7 +72,7 @@ fun HomeScreen(
         // Cabeçalho One UI
         Column(modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
             Text(
-                text = "01 ROOT_AUTH",
+                text = stringResource(R.string.home_screen_header),
                 style = MaterialTheme.typography.titleMedium,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -144,7 +144,7 @@ fun HomeScreen(
                     TechnicalBlock(text = ui.recoveryDetail)
                 }
                 SlideToExecute(
-                    label = "SLIDE TO RESTORE STOCK",
+                    label = stringResource(R.string.slide_restore_stock),
                     enabled = !ui.operationInProgress,
                     onExecute = { vm.restoreGoogle() },
                 )
@@ -433,7 +433,7 @@ private fun PurePreparedContent(ui: UiState, vm: AppViewModel) {
         shape = RoundedCornerShape(0.dp),
     ) { Text(stringResource(R.string.home_soft_reboot_btn), fontWeight = FontWeight.Bold) }
     SlideToExecute(
-        label = "SLIDE TO RESTORE STOCK",
+        label = stringResource(R.string.slide_restore_stock),
         enabled = !ui.operationInProgress,
         onExecute = { vm.restoreGoogle() },
     )
@@ -459,7 +459,7 @@ private fun PureActiveContent(ui: UiState, vm: AppViewModel) {
         }
     }
     SlideToExecute(
-        label = "SLIDE TO RESTORE STOCK",
+        label = stringResource(R.string.slide_restore_stock),
         enabled = !ui.operationInProgress && !ui.recoveryRequired,
         onExecute = { vm.restoreGoogle() },
     )
@@ -499,7 +499,7 @@ private fun PreparedContent(
     }
 
     SlideToExecute(
-        label = "SLIDE TO RESTORE STOCK",
+        label = stringResource(R.string.slide_restore_stock),
         onExecute = { vm.restoreGoogle() },
     )
 }
@@ -523,14 +523,14 @@ private fun IsolationStages(ui: UiState) {
         DeviceState.RESTORE_PREPARED,
     )
     val identityVerified = ui.state in setOf(DeviceState.MICROG_ACTIVE, DeviceState.MICROG_ACTIVE_BACKED_UP)
-    InfoCard("NAMESPACE INTEGRITY") {
-        StageLine("STAGE_00: STOCK GOOGLE", if (stockRemoved) "REMOVED" else "PRESENT")
-        StageLine("STAGE_01: KERNEL NAMESPACE MASKING", if (namespaceActive) "ACTIVE" else "PENDING")
+    InfoCard(stringResource(R.string.home_namespace_integrity)) {
+        StageLine(stringResource(R.string.home_stage_stock_google), stringResource(if (stockRemoved) R.string.home_stage_removed else R.string.home_stage_present))
+        StageLine(stringResource(R.string.home_stage_namespace_masking), stringResource(if (namespaceActive) R.string.home_stage_active else R.string.home_stage_pending))
         if (pureMode) {
-            StageLine("STAGE_02: PURE DEGOOGLE VALIDATION", if (ui.state == DeviceState.DEGOOGLE_ACTIVE) "VERIFIED" else "PENDING")
+            StageLine(stringResource(R.string.home_stage_pure_validation), stringResource(if (ui.state == DeviceState.DEGOOGLE_ACTIVE) R.string.home_stage_verified else R.string.home_stage_pending))
         } else {
-            StageLine("STAGE_02: MICROG IDENTITY SPOOFING", if (identityVerified) "VERIFIED" else "PENDING")
-            StageLine("STAGE_03: FCM TOKEN AIRGAP ARCHIVE", if (ui.facts.backupPresent) "SEALED" else "PENDING")
+            StageLine(stringResource(R.string.home_stage_microg_identity), stringResource(if (identityVerified) R.string.home_stage_verified else R.string.home_stage_pending))
+            StageLine(stringResource(R.string.home_stage_fcm_archive), stringResource(if (ui.facts.backupPresent) R.string.home_stage_sealed else R.string.home_stage_pending))
         }
     }
 }
@@ -641,12 +641,12 @@ private fun ActiveContent(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            text = "EMERGENCY RESTORE",
+            text = stringResource(R.string.home_emergency_restore),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         SlideToExecute(
-            label = "SLIDE TO RESTORE STOCK",
+            label = stringResource(R.string.slide_restore_stock),
             enabled = !ui.operationInProgress && !ui.recoveryRequired,
             onExecute = onRestoreGoogle,
         )
@@ -693,7 +693,7 @@ private fun RestorePreparedContent(ui: UiState, vm: AppViewModel) {
     when (action) {
         RestorePreparedAction.RESTORE_STOCK -> if (!ui.recoveryRequired) {
             SlideToExecute(
-                label = "SLIDE TO RESTORE STOCK",
+                label = stringResource(R.string.slide_restore_stock),
                 enabled = !ui.operationInProgress,
                 onExecute = { vm.restoreGoogle() },
             )
