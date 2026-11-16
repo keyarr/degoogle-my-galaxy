@@ -2078,7 +2078,7 @@ _prep_fail()
         say "Rolling back masks applied by this run:"
         for mp in $NEW_MOUNTS; do
             if global umount "$mp" 2>/dev/null; then
-                say "  desmontado: $mp"
+                say "  unmounted: $mp"
             else
                 say "  ERROR unmounting $mp — device is in a partial state. Run restore-stock."
             fi
@@ -2451,7 +2451,7 @@ appop_ok()
         say "  appops ok: $op"
         return 0
     fi
-    say "  appops ignorado (op inexistente): $op"
+    say "  appops skipped (nonexistent op): $op"
     return 0
 }
 
@@ -2976,7 +2976,7 @@ pm_enable_or_defer()
                 say "ERROR: could not re-enable $label ($pkg), which is already registered with PM."
                 return 1
             }
-            say "  $label reabilitado ($pkg)."
+            say "  $label re-enabled ($pkg)."
         else
             # Avoid emitting PACKAGE_CHANGED unnecessarily. With a still-stale PM,
             # this could immediately start the APK that was just
@@ -3085,7 +3085,7 @@ rollback_unmount()
         return 1
     }
     if ! global umount "$target" 2>/dev/null; then
-        say "  $label ocupado; tentando umount -l (lazy)…"
+        say "  $label busy; trying umount -l (lazy)..."
         global umount -l "$target" 2>/dev/null || {
             say "ERROR: could not unmount $label at $target."
             return 1
@@ -3095,7 +3095,7 @@ rollback_unmount()
         say "ERROR: mount $label still appears in mountinfo after unmount."
         return 1
     fi
-    say "  $label desmontado: $target"
+    say "  $label unmounted: $target"
     return 0
 }
 
