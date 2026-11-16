@@ -536,6 +536,13 @@ pm_package_absent()
     [ -z "$output" ]
 }
 
+pm_package_enabled()
+{
+    local output
+    output="$(with_timeout 15 pm list packages -e --user 0 "$1" 2>/dev/null)" || return 1
+    printf '%s\n' "$output" | grep -Fxq "package:$1"
+}
+
 pm_paths()
 {
     pm path "$1" 2>/dev/null | sed -n 's/^package://p'
@@ -601,8 +608,8 @@ locate_package()
     paths="$(pm_paths "$pkg")"
     active="$(printf '%s\n' "$paths" | sed '/^$/d' | head -n 1)"
     case "$prefix" in
-        GMS) GMS_PACKAGE_DUMP="$(dumpsys package "$pkg" 2>/dev/null || true)"; package_dump="$GMS_PACKAGE_DUMP" ;;
-        GSF|STORE) package_dump="$(dumpsys package "$pkg" 2>/dev/null || true)" ;;
+        GMS) GMS_PACKAGE_DUMP="$(dumpsys package "$pkg" 2>/dev/null | grep -iE 'versionName=|versionCode=|pkgFlags=|privateFlags=|appId=|userId=|fake_package_signature|UPDATED_SYSTEM_APP|systemCodePath=|^Hidden system packages:|^[[:space:]]+codePath=' || true)"; package_dump="$GMS_PACKAGE_DUMP" ;;
+        GSF|STORE) package_dump="$(dumpsys package "$pkg" 2>/dev/null | grep -E 'UPDATED_SYSTEM_APP|systemCodePath=|^Hidden system packages:|^[[:space:]]+codePath=' || true)" ;;
     esac
     original="$(printf '%s\n' "$paths" | while IFS= read -r p; do
         [ -n "$p" ] || continue
@@ -610,6 +617,13 @@ locate_package()
     done)"
     if [ -z "$original" ] && printf '%s\n' "$package_dump" | grep -q 'UPDATED_SYSTEM_APP'; then
         original="$(printf '%s\n' "$package_dump" | sed -n 's/.*systemCodePath=\([^[:space:]]*\).*/\1/p' | head -n 1)"
+        if [ -z "$original" ]; then
+            discovered="$(printf '%s\n' "$package_dump" | awk '/^Hidden system packages:/ { hidden=1; next } hidden && /codePath=/ { sub(/^.*codePath=/, ""); print; exit }')"
+            if is_allowed_system_path "$discovered" && [ -d "$discovered" ]; then
+                set -- "$discovered"/*.apk
+                [ "$#" = 1 ] && [ -f "$1" ] && original="$1"
+            fi
+        fi
         is_allowed_system_path "$original" || original=""
     fi
     if [ -z "$original" ] && printf '%s\n' "$paths" | grep -q '^/data/app/' && [ -r /data/system/packages.xml ]; then
@@ -1589,7 +1603,7 @@ collect_facts()
         if [ "$OPERATION_MODE" = "PURE" ] && verify_pure_masks; then PURE_MASKS_VALID=1; fi
         emit_progress transaction_masks CONFIRMED
 
-        if cmd deviceidle whitelist 2>/dev/null | grep -q "$GMS_PKG"; then FINALIZE_DONE=1; fi
+        if cmd deviceidle whitelist 2>/dev/null | grep -q "$GMS_PKG" && pm_package_enabled "$STORE_PKG"; then FINALIZE_DONE=1; fi
     fi
 
     # Backup uses the microg-session.sh format: directories are copied directly.
@@ -2477,7 +2491,7 @@ finalize()
     path_under_target "$store_now" "$TARGET_STORE" || fail 3 "Companion is not registered from the mask (current: ${store_now:-missing})."
 
     # Validate that this is a real priv-app (not just the path)
-    flags="$(gms_flags)"
+    flags="$GMS_FLAGS"
     case "$flags" in
         *PRIVILEGED*) say "  GMS priv-app OK (flags=$flags)" ;;
         *) fail 3 "GMS is not PRIVILEGED (flags=$flags). The mask/context failed." ;;
@@ -2499,7 +2513,8 @@ finalize()
     grant_ok "$GMS_PKG" android.permission.WRITE_EXTERNAL_STORAGE
 
     # Re-enable the Store (masked with Companion) if it was disabled during prepare.
-    pm enable --user 0 "$STORE_PKG" >/dev/null 2>&1 || true
+    pm enable --user 0 "$STORE_PKG" >/dev/null 2>&1 || fail 4 "could not enable Companion"
+    pm_package_enabled "$STORE_PKG" || fail 4 "Companion is not enabled for user 0"
 
     say "[background / Doze]"
     cmd deviceidle whitelist +"$GMS_PKG" >/dev/null 2>&1 || true
@@ -3474,6 +3489,7 @@ post_boot_validate()
     [ -z "$GSF_PATH" ] || { post_boot_failure "stock GSF is still active"; return $?; }
     path_under_target "$STORE_PATH" "$TARGET_STORE" || { post_boot_failure "Companion does not resolve to the mask"; return $?; }
     [ "$GMS_PRIVILEGED" = "1" ] || { post_boot_failure "GMS is not PRIVILEGED"; return $?; }
+    pm_package_enabled "$STORE_PKG" || { post_boot_failure "Companion is not enabled for user 0"; return $?; }
 
     journal_state "COMMITTED" || {
         post_boot_failure "could not record COMMITTED"

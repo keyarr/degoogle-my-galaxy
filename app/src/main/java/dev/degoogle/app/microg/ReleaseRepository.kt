@@ -1,5 +1,6 @@
 package dev.degoogle.app.microg
 
+import android.util.Log
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -62,10 +63,42 @@ class ReleaseRepository(
     data class MicrogReleases(val gms: Release, val companion: Release)
 
     suspend fun latestPair(): MicrogReleases? {
-        val index = fetchVerifiedIndexV2() ?: return null
-        val gms = parseIndexV2(index, MicrogPackages.GMS) ?: return null
-        val companion = parseIndexV2(index, MicrogPackages.VENDING) ?: return null
-        return MicrogReleases(gms, companion)
+        val github = fetchGithubRelease() ?: return null.also { Log.e("DeGoogle.Release", "GitHub release unavailable") }
+        val index = fetchVerifiedIndexV2() ?: return null.also { Log.e("DeGoogle.Release", "Signed index unavailable") }
+        val gms = parseIndexV2(index, MicrogPackages.GMS) ?: return null.also { Log.e("DeGoogle.Release", "GMS missing from index") }
+        val companion = parseIndexV2(index, MicrogPackages.VENDING) ?: return null.also { Log.e("DeGoogle.Release", "Companion missing from index") }
+        return MicrogReleases(
+            githubRelease(github, gms) ?: return null.also { Log.e("DeGoogle.Release", "GMS does not match GitHub") },
+            githubRelease(github, companion) ?: return null.also { Log.e("DeGoogle.Release", "Companion does not match GitHub") },
+        )
+    }
+
+    @Serializable
+    private data class GithubRelease(
+        @SerialName("assets") val assets: List<GithubAsset> = emptyList(),
+    )
+
+    @Serializable
+    private data class GithubAsset(
+        @SerialName("name") val name: String = "",
+        @SerialName("digest") val digest: String? = null,
+        @SerialName("browser_download_url") val url: String = "",
+    )
+
+    private fun fetchGithubRelease(): GithubRelease? = runCatching {
+        val c = http("https://api.github.com/repos/microg/GmsCore/releases/latest")
+        if (c.responseCode !in 200..299) return null
+        val data = c.inputStream.use { readBytesAtMost(it, 1_000_000) } ?: return null
+        json.decodeFromString(GithubRelease.serializer(), data.decodeToString())
+    }.getOrNull()
+
+    private fun githubRelease(github: GithubRelease, release: Release): Release? {
+        val asset = github.assets.singleOrNull { it.name == release.apkName } ?: return null
+        if (asset.digest != "sha256:${release.sha256}" ||
+            !asset.url.startsWith("https://github.com/microg/GmsCore/releases/download/") ||
+            !asset.url.endsWith("/${release.apkName}")
+        ) return null
+        return release.copy(apkUrl = asset.url)
     }
 
     /** Downloads a release APK to [targetFile], periodically reporting progress in bytes and total bytes. */
@@ -204,7 +237,8 @@ class ReleaseRepository(
             versionName = best.manifest.versionName,
             apkName = apkName,
             sha256 = best.file.sha256.lowercase(),
-            certSha256 = best.manifest.signer.sha256.first().lowercase(),
+            // The manifest signer can be the spoofed Google certificate, not the APK signer.
+            certSha256 = REPOSITORY_CERT_SHA256,
             minSdk = best.manifest.usesSdk?.minSdk,
             apkUrl = baseUrl + apkName,
         )

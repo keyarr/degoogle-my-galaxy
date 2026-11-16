@@ -14,7 +14,7 @@ import java.security.MessageDigest
  *  1. it is an APK file parseable by PackageManager;
  *  2. packageName confere;
  *  3. versionCode/versionName match the queried release;
- *  4. its signature (certificate SHA-256) matches the value published in the index;
+ *  4. its signature (certificate SHA-256) matches the trusted certificate;
  *  5. the full-file SHA-256 hash matches;
  *  6. minSdk is compatible with the device.
  *

@@ -95,9 +95,7 @@ abstract class CommandRootBackend(
                 "if [ \"$(getprop init.userspace_reboot.is_supported 2>/dev/null)\" = \"1\" ] && " +
                     "command -v setprop >/dev/null 2>&1; then printf SYS_POWERCTL_USERSPACE; " +
                     "elif [ -x /data/adb/ksud ]; then " +
-                    "help=\$(/data/adb/ksud --help 2>&1; /data/adb/ksud reboot --help 2>&1); " +
-                    "case \"\$help\" in *soft-reboot*|*soft_reboot*|*userspace*) printf KSUD_SOFT_REBOOT ;; " +
-                    "*) printf KSUD_UNVERIFIED ;; esac; " +
+                    "printf KSUD_SOFT_REBOOT; " +
                     "elif command -v setprop >/dev/null 2>&1 || " +
                     "{ command -v stop >/dev/null 2>&1 && command -v start >/dev/null 2>&1; }; " +
                     "then printf ZYGOTE_RESTART; fi",
@@ -105,8 +103,7 @@ abstract class CommandRootBackend(
         )
         return when (result.stdout.trim()) {
             "SYS_POWERCTL_USERSPACE" -> CapabilityResult.pass("init.userspace_reboot.is_supported=1; AOSP userspace restart selected")
-            "KSUD_SOFT_REBOOT" -> CapabilityResult.pass("KernelSU advertises a userspace soft-reboot command")
-            "KSUD_UNVERIFIED" -> CapabilityResult.warn("KernelSU soft reboot is present but unverified", "/data/adb/ksud")
+            "KSUD_SOFT_REBOOT" -> CapabilityResult.pass("KernelSU reboot command is available")
             "ZYGOTE_RESTART" -> CapabilityResult.warn("Zygote restart requires explicit user opt-in", "kernel reboot is not used")
             else -> CapabilityResult.fail(
                 "no userspace or framework restart mechanism is available",
@@ -133,7 +130,7 @@ abstract class CommandRootBackend(
                 "-c",
                 "if [ \"$(getprop init.userspace_reboot.is_supported 2>/dev/null)\" = 1 ] && command -v setprop >/dev/null 2>&1; then " +
                     "setprop sys.powerctl reboot,userspace; " +
-                    "elif [ -x /data/adb/ksud ]; then /data/adb/ksud reboot; " +
+                    "elif [ -x /data/adb/ksud ]; then /data/adb/ksud soft-reboot; " +
                     "elif command -v setprop >/dev/null 2>&1; then setprop ctl.restart zygote; " +
                     "else stop && start; fi",
             ),

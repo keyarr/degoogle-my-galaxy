@@ -63,18 +63,22 @@ class MicrogManager(
         val gmsApk = File(downloads, gms.downloadFileName)
         val companionApk = File(downloads, companion.downloadFileName)
 
-        val gmsLabel = context.getString(R.string.op_downloading_gms)
-        onStep(gmsLabel)
-        if (!downloadWithProgress(gmsLabel, gms, gmsApk)) {
-            gmsApk.delete()
-            return PrepareResult(false, gms, companion, context.getString(R.string.op_download_gms_failed))
+        if (!isCachedReleaseValid(gmsApk, gms)) {
+            val gmsLabel = context.getString(R.string.op_downloading_gms)
+            onStep(gmsLabel)
+            if (!downloadWithProgress(gmsLabel, gms, gmsApk)) {
+                gmsApk.delete()
+                return PrepareResult(false, gms, companion, context.getString(R.string.op_download_gms_failed))
+            }
         }
 
-        val companionLabel = context.getString(R.string.op_downloading_companion)
-        onStep(companionLabel)
-        if (!downloadWithProgress(companionLabel, companion, companionApk)) {
-            gmsApk.delete(); companionApk.delete()
-            return PrepareResult(false, gms, companion, context.getString(R.string.op_download_companion_failed))
+        if (!isCachedReleaseValid(companionApk, companion)) {
+            val companionLabel = context.getString(R.string.op_downloading_companion)
+            onStep(companionLabel)
+            if (!downloadWithProgress(companionLabel, companion, companionApk)) {
+                companionApk.delete()
+                return PrepareResult(false, gms, companion, context.getString(R.string.op_download_companion_failed))
+            }
         }
 
         onStep(context.getString(R.string.op_validating_apks))
@@ -248,6 +252,16 @@ class MicrogManager(
         val r = backend.softReboot()
         return r.succeeded
     }
+
+    private fun isCachedReleaseValid(file: File, release: Release): Boolean =
+        file.exists() && validator.validate(
+            file = file,
+            expectedPackage = release.packageName,
+            expectedVersionCode = release.versionCode,
+            expectedVersionName = release.versionName,
+            expectedSha256 = release.sha256,
+            expectedCertSha256 = release.certSha256,
+        ) is ApkValidator.ValidationResult.Ok
 
     private fun downloadWithProgress(baseLabel: String, release: Release, targetFile: File): Boolean {
         val startMs = System.currentTimeMillis()

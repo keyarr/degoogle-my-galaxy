@@ -50,7 +50,7 @@
     <string name="validator_unexpected_package">packageName inesperado: %1$s</string>
     <string name="validator_unexpected_version_code">versionCode inesperado: %1$d (esperado %2$d)</string>
     <string name="validator_unexpected_version_name">versionName inesperado: %1$s (esperado %2$s)</string>
-    <string name="validator_signature_mismatch">Assinatura não confere com o índice (%1$s)</string>
+    <string name="validator_signature_mismatch">Assinatura não confere com o certificado oficial (%1$s)</string>
     <string name="validator_signature_missing">Não foi possível ler o certificado de assinatura do APK</string>
     <string name="validator_sha256_mismatch">SHA-256 não confere (%1$s != %2$s)</string>
     <string name="validator_sha256_missing">SHA-256 confiável ausente ou inválido</string>

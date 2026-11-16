@@ -258,7 +258,12 @@ EOF
 #!/bin/sh
 case "$1" in
     list)
-        if [ "$2" = "packages" ] && [ "$3" = "-d" ] && [ "${FAKE_PM_GMS_DISABLED:-0}" = "1" ]; then
+        if [ "$2" = "packages" ] && [ "$3" = "-e" ]; then
+            [ "${FAKE_PM_LIST_ERROR:-0}" = "1" ] && exit 1
+            if [ "${FAKE_STORE_DISABLED:-0}" != "1" ] || { [ -n "${FAKE_STORE_ENABLED_FILE:-}" ] && [ -f "$FAKE_STORE_ENABLED_FILE" ]; }; then
+                echo "package:com.android.vending"
+            fi
+        elif [ "$2" = "packages" ] && [ "$3" = "-d" ] && [ "${FAKE_PM_GMS_DISABLED:-0}" = "1" ]; then
             echo "package:com.google.android.gms"
         elif [ "$2" = "packages" ] && [ "$3" = "com.google.android.gms" ]; then
             [ "${FAKE_PM_LIST_ERROR:-0}" = "1" ] && { echo "Package Manager unavailable" >&2; exit 1; }
@@ -307,7 +312,9 @@ case "$1" in
             com.google.android.gsf)
                 [ "${PM_GSF_MISSING:-0}" = "1" ] && exit 1 ;;
             com.android.vending)
-                [ "${PM_STORE_MISSING:-0}" = "1" ] && exit 1 ;;
+                [ "${FAKE_STORE_ENABLE_FAIL:-0}" = "1" ] && exit 1
+                [ "${PM_STORE_MISSING:-0}" = "1" ] && exit 1
+                [ -n "${FAKE_STORE_ENABLED_FILE:-}" ] && touch "$FAKE_STORE_ENABLED_FILE" ;;
         esac
         exit 0
         ;;
@@ -359,6 +366,7 @@ EOF
 
     cat > "$FAKEBIN/cmd" <<'EOF'
 #!/bin/sh
+[ "$1 $2" = "deviceidle whitelist" ] && [ "${FAKE_WHITELIST:-0}" = "1" ] && echo "user,com.google.android.gms,10123"
 exit 0
 EOF
 
@@ -442,6 +450,10 @@ run_script()
         DEGOOGLE_TEST_SYSTEM_SERVER_START="${DEGOOGLE_TEST_SYSTEM_SERVER_START:-}" \
         FAKE_SELINUX_MODE="${FAKE_SELINUX_MODE:-}" \
         FAKE_PM_GMS_DISABLED="${FAKE_PM_GMS_DISABLED:-}" \
+        FAKE_STORE_DISABLED="${FAKE_STORE_DISABLED:-}" \
+        FAKE_STORE_ENABLE_FAIL="${FAKE_STORE_ENABLE_FAIL:-}" \
+        FAKE_STORE_ENABLED_FILE="${FAKE_STORE_ENABLED_FILE:-}" \
+        FAKE_WHITELIST="${FAKE_WHITELIST:-}" \
         PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE="${PM_REQUIRE_GMS_DATA_CLEARED_BEFORE_ENABLE:-}" \
         FAKE_PM_MUTATION_MARKER="${FAKE_PM_MUTATION_MARKER:-}" \
         FAKEGAPPS_PRESENT="${FAKEGAPPS_PRESENT:-}" \
@@ -1241,6 +1253,32 @@ PM_STORE_PATH="/data/app/other/base.apk" FAKE_GMS_PRIVILEGED=1 \
     run_script 4 "post-boot rejeita Store fora do target" post-boot-validate > "$ROOT/store_path.out" || true
 grep -q 'Companion does not resolve to the mask' "$ROOT/store_path.out" && \
     ok "path Store inesperado bloqueou conclusão" || bad "path Store inesperado foi aceito"
+
+PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
+FAKE_GMS_PRIVILEGED=1 FAKE_STORE_DISABLED=1 \
+    run_script 4 "post-boot rejeita companion desativado" post-boot-validate > "$ROOT/store_disabled.out" || true
+grep -q 'Companion is not enabled for user 0' "$ROOT/store_disabled.out" && \
+    ok "companion desativado bloqueou conclusão" || bad "companion desativado foi aceito"
+
+PM_GSF_MISSING=1 FAKE_GMS_PRIVILEGED=1 FAKE_STORE_DISABLED=1 FAKE_WHITELIST=1 \
+    run_script 0 "probe nao considera companion desativado finalizado" probe > "$ROOT/store_probe.out" || true
+grep -q '^DEGOOGLE_FINALIZE_DONE=0$' "$ROOT/store_probe.out" && \
+    ok "whitelist antiga nao confirmou finalização" || bad "whitelist antiga confirmou finalização"
+
+PM_GSF_MISSING=1 FAKE_GMS_PRIVILEGED=1 FAKE_STORE_ENABLE_FAIL=1 \
+    run_script 4 "finalize rejeita falha ao ativar companion" finalize > "$ROOT/store_enable_failed.out" || true
+grep -q 'could not enable Companion' "$ROOT/store_enable_failed.out" && \
+    ok "falha de ativação bloqueou finalização" || bad "falha de ativação foi ignorada"
+
+PM_GSF_MISSING=1 FAKE_GMS_PRIVILEGED=1 FAKE_STORE_DISABLED=1 \
+    run_script 4 "finalize confirma estado do companion" finalize > "$ROOT/store_still_disabled.out" || true
+grep -q 'Companion is not enabled for user 0' "$ROOT/store_still_disabled.out" && \
+    ok "companion ainda desativado bloqueou finalização" || bad "finalização aceitou companion desativado"
+
+PM_GSF_MISSING=1 FAKE_GMS_PRIVILEGED=1 FAKE_STORE_DISABLED=1 FAKE_STORE_ENABLED_FILE="$ROOT/store-enabled" \
+    run_script 0 "finalize ativa companion" finalize > "$ROOT/store_enabled.out" || true
+[ -f "$ROOT/store-enabled" ] && grep -q 'FINALIZE COMPLETE' "$ROOT/store_enabled.out" && \
+    ok "companion ativado permitiu finalização" || bad "finalização com companion ativado falhou"
 
 PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
     run_script 4 "post-boot exige GMS privilegiado" post-boot-validate > "$ROOT/gms_privilege.out" || true

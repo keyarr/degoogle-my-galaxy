@@ -40,7 +40,7 @@ class ReleaseRepositoryDownloadTest {
         val release = ReleaseRepository().parseIndexV2(index, MicrogPackages.GMS)
 
         assertEquals("a".repeat(64), release?.sha256)
-        assertEquals("b".repeat(64), release?.certSha256)
+        assertEquals("9bd06727e62796c0130eb6dab39b73157451582cbd138e86c468acc395d14165", release?.certSha256)
         assertEquals(21, release?.minSdk)
     }
 
