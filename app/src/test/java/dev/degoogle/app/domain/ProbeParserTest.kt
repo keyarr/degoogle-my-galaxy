@@ -129,6 +129,14 @@ class ProbeParserTest {
     }
 
     @Test
+    fun `fact newline sanitizado permanece um valor de protocolo`() {
+        val facts = ProbeParser.parse("DEGOOGLE_PREPARATION_INFO=first second\nDEGOOGLE_MODEL=SM-S928B line")
+
+        assertEquals("first second", facts.preparationInfo)
+        assertEquals("SM-S928B line", facts.model)
+    }
+
+    @Test
     fun `parse de post-boot-validate com falha por rescue party extrai status e reason`() {
         val out = """
             DEGOOGLE_ROOT_OK=1

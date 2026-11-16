@@ -323,6 +323,7 @@ EOF
 
 cat > "$FAKEBIN/dumpsys" <<'EOF'
 #!/bin/sh
+[ -n "${FAKE_DUMPSYS_MARKER:-}" ] && echo "$2" >> "$FAKE_DUMPSYS_MARKER"
 if [ "$1" = "package" ]; then
     case "$2" in
         com.google.android.gms|com.android.vending)
@@ -338,6 +339,11 @@ if [ "$1" = "package" ]; then
             fi
             if [ "$2" = "com.google.android.gms" ] && [ "${FAKE_GMS_PRIVILEGED:-0}" = "1" ]; then
                 echo "  pkgFlags=[ PRIVILEGED SYSTEM ]"
+            fi
+            if [ "$2" = "com.google.android.gms" ]; then
+                echo "  versionCode=23484 minSdk=23"
+                echo "  versionName=0.3.4.240913"
+                echo "    userId=10123"
             fi
             exit 0
             ;;
@@ -410,6 +416,9 @@ run_script()
         DEGOOGLE_PM_SYSTEM_DIR="$PM_SYSTEM" \
         DEGOOGLE_PM_CACHE="$PM_CACHE" \
         FAKE_MANUFACTURER="${FAKE_MANUFACTURER:-}" \
+        FAKE_MODEL="${FAKE_MODEL:-}" \
+        FAKE_DUMPSYS_MARKER="${FAKE_DUMPSYS_MARKER:-}" \
+        DEGOOGLE_PROGRESS="${DEGOOGLE_PROGRESS:-}" \
         DEGOOGLE_REBOOT_SOURCE="${DEGOOGLE_REBOOT_SOURCE:-}" \
         DEGOOGLE_MODE="${DEGOOGLE_MODE:-}" \
         DEGOOGLE_REBOOT_COOLDOWN_SECONDS="${DEGOOGLE_REBOOT_COOLDOWN_SECONDS:-}" \
@@ -745,6 +754,23 @@ out="$(PATH="$FAKEBIN:/usr/bin:/bin" \
 echo "$out" | grep -q "DEGOOGLE_STATE=STOCK" && ok "STATE=STOCK detectado" || bad "STATE!=STOCK: $(echo "$out" | grep DEGOOGLE_STATE)"
 echo "$out" | grep -q "DEGOOGLE_PROFILE_MATCH=1" && ok "PROFILE_MATCH=1" || bad "PROFILE_MATCH!=1"
 echo "$out" | grep -q "DEGOOGLE_ROOT_OK=1" && ok "ROOT_OK=1" || bad "ROOT_OK!=1"
+teardown_root
+
+echo "== cenário 8b: probe reaproveita detalhes do GMS e emite progresso"
+setup_root
+FAKE_DUMPSYS_MARKER="$ROOT/dumpsys.log" run_script 0 "probe com progresso" probe > "$ROOT/probe.out" 2>&1 || true
+[ "$(grep -c '^com.google.android.gms$' "$ROOT/dumpsys.log")" = "1" ] && \
+    ok "GMS consultado uma vez por probe" || bad "dumpsys do GMS foi repetido"
+grep -Fxq 'DEGOOGLE_GMS_VERSION=0.3.4.240913' "$ROOT/probe.out" && \
+    grep -Fxq 'DEGOOGLE_GMS_VERSION_CODE=23484' "$ROOT/probe.out" && \
+    ok "detalhes GMS vieram do dump reutilizado" || bad "detalhes GMS ausentes"
+FAKE_MODEL="$(printf 'SM-S928B\nextra')" DEGOOGLE_PROGRESS=1 \
+    run_script 0 "probe sanitiza newline e emite eventos" probe > "$ROOT/progress.out" 2>&1 || true
+grep -Fxq 'DEGOOGLE_MODEL=SM-S928B extra' "$ROOT/progress.out" && \
+    ok "newline em fact continua sanitizado no protocolo" || bad "newline alterou o protocolo de facts"
+grep -q '^DEGOOGLE_PROGRESS=device_properties:CONFIRMED$' "$ROOT/progress.out" && \
+    grep -q '^DEGOOGLE_PROGRESS=transaction_masks:CONFIRMED$' "$ROOT/progress.out" && \
+    ok "progresso confirma verificações concluídas" || bad "faltou evento de progresso"
 teardown_root
 
 echo "== cenário 9: backup/restauração no formato do MicroG Session"

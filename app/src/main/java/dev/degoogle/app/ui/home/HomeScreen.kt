@@ -43,6 +43,8 @@ import dev.degoogle.app.domain.DeviceState
 import dev.degoogle.app.domain.OperationMode
 import dev.degoogle.app.domain.SystemFacts
 import dev.degoogle.app.ui.AppViewModel
+import dev.degoogle.app.ui.CheckStatus
+import dev.degoogle.app.ui.DeviceCheck
 import dev.degoogle.app.ui.Screen
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
@@ -80,9 +82,18 @@ fun HomeScreen(
             )
         }
 
-        IsolationStages(ui)
+        if (ui.hasResult && !ui.resultCurrent) {
+            Text(
+                text = stringResource(R.string.home_result_stale),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.error,
+            )
+            IsolationStages(ui)
+        } else if (ui.resultCurrent) {
+            IsolationStages(ui)
+        }
 
-        if (ui.refreshing) {
+        if (ui.refreshing || !ui.resultCurrent) {
             Surface(
                 shape = RoundedCornerShape(0.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -93,12 +104,20 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    if (ui.refreshing) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
                     Text(
-                        text = stringResource(R.string.home_checking_state),
+                        text = stringResource(
+                            if (ui.refreshing) R.string.home_checking_state else R.string.home_check_incomplete,
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+            }
+            CheckProgressList(ui.checks)
+            ui.error?.let { error ->
+                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             return@Column
         }
@@ -254,6 +273,58 @@ fun HomeScreen(
             },
         )
     }
+}
+
+@Composable
+private fun CheckProgressList(checks: List<DeviceCheck>) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            checks.forEach { check ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(stringResource(check.labelResource()), style = MaterialTheme.typography.bodySmall)
+                    val (statusText, color) = when (check.status) {
+                        CheckStatus.PENDING -> R.string.check_pending to MaterialTheme.colorScheme.onSurfaceVariant
+                        CheckStatus.CONFIRMED -> R.string.check_confirmed to MaterialTheme.colorScheme.primary
+                        CheckStatus.FAILED -> R.string.check_failed to MaterialTheme.colorScheme.error
+                    }
+                    Text(
+                        stringResource(statusText),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = color,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun DeviceCheck.labelResource(): Int = when (id) {
+    "root" -> R.string.check_root
+    "device_properties" -> R.string.check_device_properties
+    "transaction_snapshot" -> R.string.check_transaction_snapshot
+    "package_locations" -> R.string.check_package_locations
+    "mounts" -> R.string.check_mounts
+    "gms_details" -> R.string.check_gms_details
+    "transaction_masks" -> R.string.check_transaction_masks
+    "mount_namespace" -> R.string.check_mount_namespace
+    "bind_mount" -> R.string.check_bind_mount
+    "selinux_mode" -> R.string.check_selinux_mode
+    "selinux_context" -> R.string.check_selinux_context
+    "signature_spoofing" -> R.string.check_signature_spoofing
+    "post_boot_validation" -> R.string.check_post_boot_validation
+    "transaction_reconciliation" -> R.string.check_transaction_reconciliation
+    else -> R.string.check_compatibility
 }
 
 // ---------------------------------------------------------------------------

@@ -60,6 +60,16 @@ fun DiagnosticsScreen(ui: UiState) {
             )
         }
 
+        if (!ui.resultCurrent) {
+            Text(
+                text = stringResource(
+                    if (ui.hasResult) R.string.home_result_stale else R.string.home_checking_state,
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
         InfoCard(title = stringResource(R.string.diag_card_system)) {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 StatusRow(

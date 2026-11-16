@@ -164,6 +164,27 @@
 
     <!-- Home Screen -->
     <string name="home_checking_state">Checking device state…</string>
+    <string name="home_check_incomplete">Device check is incomplete.</string>
+    <string name="home_result_stale">Showing the previous result as stale.</string>
+    <string name="check_pending">Pending</string>
+    <string name="check_confirmed">Confirmed</string>
+    <string name="check_failed">Failed</string>
+    <string name="check_root">Root access</string>
+    <string name="check_device_properties">Device properties</string>
+    <string name="check_transaction_snapshot">Transaction snapshot</string>
+    <string name="check_package_locations">System package locations</string>
+    <string name="check_mounts">Active mounts</string>
+    <string name="check_gms_details">GMS details</string>
+    <string name="check_transaction_masks">Transaction and masks</string>
+    <string name="check_mount_namespace">Global mount namespace</string>
+    <string name="check_bind_mount">Bind mount</string>
+    <string name="check_selinux_mode">SELinux mode</string>
+    <string name="check_selinux_context">SELinux contexts</string>
+    <string name="check_signature_spoofing">Signature spoofing</string>
+    <string name="check_post_boot_validation">Post-boot validation</string>
+    <string name="check_transaction_reconciliation">Transaction reconciliation</string>
+    <string name="check_compatibility">Compatibility</string>
+    <string name="error_refresh_incomplete">The device check could not be fully reconciled. Refresh before using device operations.</string>
     <string name="home_no_root_title">Root not available</string>
     <string name="home_no_root_desc">This application requires root access and will make no changes without it.\nInstall KernelSU, Magisk, or APatch and grant root permissions.</string>
     <string name="home_unsupported_title">Unsupported device</string>

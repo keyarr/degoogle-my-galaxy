@@ -164,6 +164,27 @@
 
     <!-- Home Screen -->
     <string name="home_checking_state">Verificando o estado do aparelho…</string>
+    <string name="home_check_incomplete">A verificação do aparelho está incompleta.</string>
+    <string name="home_result_stale">O resultado anterior está desatualizado.</string>
+    <string name="check_pending">Pendente</string>
+    <string name="check_confirmed">Confirmado</string>
+    <string name="check_failed">Falhou</string>
+    <string name="check_root">Acesso root</string>
+    <string name="check_device_properties">Propriedades do aparelho</string>
+    <string name="check_transaction_snapshot">Snapshot da transação</string>
+    <string name="check_package_locations">Localização dos pacotes do sistema</string>
+    <string name="check_mounts">Montagens ativas</string>
+    <string name="check_gms_details">Detalhes do GMS</string>
+    <string name="check_transaction_masks">Transação e máscaras</string>
+    <string name="check_mount_namespace">Namespace global de montagens</string>
+    <string name="check_bind_mount">Bind mount</string>
+    <string name="check_selinux_mode">Modo SELinux</string>
+    <string name="check_selinux_context">Contextos SELinux</string>
+    <string name="check_signature_spoofing">Falsificação de assinatura</string>
+    <string name="check_post_boot_validation">Validação após inicialização</string>
+    <string name="check_transaction_reconciliation">Reconciliação da transação</string>
+    <string name="check_compatibility">Compatibilidade</string>
+    <string name="error_refresh_incomplete">A verificação do aparelho não foi reconciliada por completo. Atualize antes de usar as operações.</string>
     <string name="home_no_root_title">Root não disponível</string>
     <string name="home_no_root_desc">Este aplicativo requer acesso root e não fará nenhuma alteração sem ele.\nInstale KernelSU, Magisk ou APatch e conceda root.</string>
     <string name="home_unsupported_title">Dispositivo não suportado</string>

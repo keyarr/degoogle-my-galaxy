@@ -15,6 +15,7 @@ class BackendRunner(
     private val transactionBase: String? = null,
     private val operationId: () -> String? = { null },
     private val onProgress: (String) -> Unit = {},
+    private val onCheckProgress: (String, String) -> Unit = { _, _ -> },
 ) {
     private var fallbackRebootOptIn = false
 
@@ -38,7 +39,18 @@ class BackendRunner(
         listOf("sh", backendPath) + args.toList()
 
     suspend fun probe(): BackendProbeResult {
-        val result = executor.execute(script("probe"), env = environment())
+        val result = executor.executeStreaming(
+            script("probe"),
+            env = environment(mapOf("DEGOOGLE_PROGRESS" to "1")),
+            onStderrLine = { line ->
+                val progress = PROBE_PROGRESS.matchEntire(line)
+                if (progress != null) {
+                    onCheckProgress(progress.groupValues[1], progress.groupValues[2])
+                } else {
+                    onProgress(line)
+                }
+            },
+        )
         val facts = ProbeParser.parse(result.stdout)
         return BackendProbeResult(
             facts = facts,
@@ -147,6 +159,10 @@ class BackendRunner(
             put("DEGOOGLE_ALLOW_FALLBACK_REBOOT", "1")
             put("DEGOOGLE_ALLOW_ZYGOTE_RESTART", "1")
         }
+    }
+
+    private companion object {
+        val PROBE_PROGRESS = Regex("^DEGOOGLE_PROGRESS=([a-z_]+):(CONFIRMED|FAILED)$")
     }
 
 }

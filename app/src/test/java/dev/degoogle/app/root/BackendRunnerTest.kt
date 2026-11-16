@@ -58,6 +58,35 @@ class BackendRunnerTest {
     }
 
     @Test
+    fun `probe encaminha eventos de check sem misturar com logs`() = runTest {
+        val checks = mutableListOf<Pair<String, String>>()
+        val logs = mutableListOf<String>()
+        val fake = FakeExecutor(
+            ArrayDeque(
+                listOf(
+                    RootResult.Ok(
+                        0,
+                        "DEGOOGLE_STATE=STOCK\n",
+                        "DEGOOGLE_PROGRESS=mounts:CONFIRMED\nprobe warning\n",
+                    ),
+                ),
+            ),
+        )
+        val runner = BackendRunner(
+            executor = fake,
+            backendPath = "/data/local/tmp/degoogle.sh",
+            onProgress = logs::add,
+            onCheckProgress = { id, status -> checks += id to status },
+        )
+
+        runner.probe()
+
+        assertEquals(listOf("mounts" to "CONFIRMED"), checks)
+        assertEquals(listOf("probe warning"), logs)
+        assertEquals("1", fake.environments.single()["DEGOOGLE_PROGRESS"])
+    }
+
+    @Test
     fun `prepare passa argv correto com os APKs`() = runTest {
         val fake = FakeExecutor(
             ArrayDeque(

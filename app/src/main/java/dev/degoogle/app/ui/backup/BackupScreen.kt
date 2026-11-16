@@ -65,6 +65,16 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
             )
         }
 
+        if (!ui.resultCurrent) {
+            Text(
+                text = stringResource(
+                    if (ui.hasResult) R.string.home_result_stale else R.string.home_checking_state,
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
         InfoCard(
             title = stringResource(R.string.backup_card_snapshot_state),
             titleFontWeight = FontWeight.Normal,

@@ -142,6 +142,10 @@ GMS_VERSION=""
 GMS_VERSION_CODE=""
 GMS_UID=""
 GMS_FLAGS=""
+GMS_PACKAGE_DUMP=""
+GMS_DUMP_UID=""
+GMS_SIGNATURE_GRANTED=0
+GMS_SIGNATURE_MENTIONED=0
 GMS_PRIVILEGED=0
 GMS_MAPS_LIB_PRESENT=0
 GMS_MAPS_LIB_RELPATH=""
@@ -240,8 +244,24 @@ say()
 
 emit()
 {
-    # KEY VALUE (no newline in value)
-    printf 'DEGOOGLE_%s=%s\n' "$1" "$(printf '%s' "$2" | tr '\n' ' ')"
+    if [ "${FACT_EMIT_MODE:-0}" = "1" ]; then
+        printf 'DEGOOGLE_%s=%s\000' "$1" "$2"
+    else
+        printf 'DEGOOGLE_%s=%s\n' "$1" "$(printf '%s' "$2" | tr '\n' ' ')"
+    fi
+}
+
+emit_progress()
+{
+    [ "${DEGOOGLE_PROGRESS:-0}" = "1" ] || return 0
+    printf 'DEGOOGLE_PROGRESS=%s:%s\n' "$1" "$2" >&2
+}
+
+emit_probe_result()
+{
+    FACT_EMIT_MODE=1
+    emit_facts
+    emit STATE "$STATE"
 }
 
 fail()
@@ -580,7 +600,10 @@ locate_package()
     esac
     paths="$(pm_paths "$pkg")"
     active="$(printf '%s\n' "$paths" | sed '/^$/d' | head -n 1)"
-    package_dump="$(dumpsys package "$pkg" 2>/dev/null || true)"
+    case "$prefix" in
+        GMS) GMS_PACKAGE_DUMP="$(dumpsys package "$pkg" 2>/dev/null || true)"; package_dump="$GMS_PACKAGE_DUMP" ;;
+        GSF|STORE) package_dump="$(dumpsys package "$pkg" 2>/dev/null || true)" ;;
+    esac
     original="$(printf '%s\n' "$paths" | while IFS= read -r p; do
         [ -n "$p" ] || continue
         if is_allowed_system_path "$p"; then printf '%s' "$p"; break; fi
@@ -867,33 +890,45 @@ gms_uid_current()
         ''|*[!0-9]*) ;;
         *) echo "$u"; return 0 ;;
     esac
-    u="$(dumpsys package "$GMS_PKG" 2>/dev/null | sed -n 's/.*appId=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
-    case "$u" in
-        ''|*[!0-9]*) ;;
-        *) echo "$u"; return 0 ;;
-    esac
-    u="$(dumpsys package "$GMS_PKG" 2>/dev/null | sed -n 's/.*userId=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+    u="$GMS_DUMP_UID"
     [ -n "$u" ] || return 1
     echo "$u"
 }
 
-gms_version()
+read_gms_details()
 {
-    dumpsys package "$GMS_PKG" 2>/dev/null | grep -m 1 "versionName=" | sed -n 's/.*versionName=\([^ ]*\).*/\1/p'
-}
-
-gms_version_code()
-{
-    dumpsys package "$GMS_PKG" 2>/dev/null | grep -m 1 "versionCode=" | sed -n 's/.*versionCode=\([0-9][0-9]*\).*/\1/p'
-}
-
-gms_flags()
-{
-    # PRIVILEGED is in privateFlags (not pkgFlags); combine both fields.
-    local pf priv
-    pf="$(dumpsys package "$GMS_PKG" 2>/dev/null | grep -m 1 "pkgFlags=" | sed -n 's/.*pkgFlags=\[\([^]]*\)\].*/\1/p')"
-    priv="$(dumpsys package "$GMS_PKG" 2>/dev/null | grep -m 1 "privateFlags=" | sed -n 's/.*privateFlags=\[\([^]]*\)\].*/\1/p')"
-    echo "${pf}${priv:+ $priv}"
+    # Parse the cached Package Manager response once for all GMS details and
+    # signature permission evidence used later in this probe.
+    local details
+    details="$(awk '
+        /versionName=/ && version == "" { if (match($0, /versionName=[^ ]+/)) version=substr($0, RSTART+12, RLENGTH-12) }
+        /versionCode=/ && code == "" { if (match($0, /versionCode=[0-9]+/)) code=substr($0, RSTART+12, RLENGTH-12) }
+        /pkgFlags=/ && pkg == "" { if (match($0, /pkgFlags=\[[^]]*\]/)) { pkg=substr($0, RSTART+10, RLENGTH-11) } }
+        /privateFlags=/ && priv == "" { if (match($0, /privateFlags=\[[^]]*\]/)) { priv=substr($0, RSTART+14, RLENGTH-15) } }
+        /appId=[0-9]+/ && uid == "" { if (match($0, /appId=[0-9]+/)) uid=substr($0, RSTART+6, RLENGTH-6) }
+        /userId=[0-9]+/ && uid == "" { if (match($0, /userId=[0-9]+/)) uid=substr($0, RSTART+7, RLENGTH-7) }
+        {
+            line=tolower($0)
+            if (index(line, "fake_package_signature")) {
+                mentioned=1
+                if (line ~ /granted[=:]true/ || line ~ / granted/) granted=1
+            }
+        }
+        END { printf "%s\n%s\n%s%s%s\n%s\n%d\n%d\n", version, code, pkg, (pkg != "" && priv != "" ? " " : ""), priv, uid, granted, mentioned }
+    ' <<EOF
+$GMS_PACKAGE_DUMP
+EOF
+    )"
+    {
+        IFS= read -r GMS_VERSION
+        IFS= read -r GMS_VERSION_CODE
+        IFS= read -r GMS_FLAGS
+        IFS= read -r GMS_DUMP_UID
+        IFS= read -r GMS_SIGNATURE_GRANTED
+        IFS= read -r GMS_SIGNATURE_MENTIONED
+    } <<EOF
+$details
+EOF
 }
 
 # The legacy profile remains only an operational reference for the current
@@ -980,6 +1015,19 @@ cap_emit()
     emit "CAP_${key}_STATUS" "$status"
     emit "CAP_${key}_EVIDENCE" "$evidence"
     emit "CAP_${key}_REASON" "$reason"
+}
+
+emit_capability_progress()
+{
+    local key="$1" check="$2" status
+    case "$key" in
+        ROOT) status="$CAP_ROOT_STATUS" ;;
+        GLOBAL_MOUNT_NAMESPACE) status="$CAP_GLOBAL_MOUNT_NAMESPACE_STATUS" ;;
+        BIND_MOUNT) status="$CAP_BIND_MOUNT_STATUS" ;;
+        SELINUX_CONTEXT_CLONABLE) status="$CAP_SELINUX_CONTEXT_CLONABLE_STATUS" ;;
+        SIGNATURE_SPOOFING) status="$CAP_SIGNATURE_SPOOFING_STATUS" ;;
+    esac
+    case "$status" in UNKNOWN) emit_progress "$check" FAILED ;; *) emit_progress "$check" CONFIRMED ;; esac
 }
 
 probe_global_mount_namespace()
@@ -1104,9 +1152,9 @@ probe_signature_spoofing()
         check="$(pm check-permission "$GMS_PKG" android.permission.FAKE_PACKAGE_SIGNATURE 0 2>/dev/null || true)"
     fi
     if printf '%s\n' "$check" | grep -Eiq 'granted|(^|[^0-9])1([^0-9]|$)' || \
-        dumpsys package "$GMS_PKG" 2>/dev/null | grep -Eiq 'FAKE_PACKAGE_SIGNATURE[^\n]*(granted[=:]true| granted)'; then
+        [ "$GMS_SIGNATURE_GRANTED" = "1" ]; then
         cap_set SIGNATURE_SPOOFING PASS "dumpsys package reports FAKE_PACKAGE_SIGNATURE granted to GMS"
-    elif dumpsys package "$GMS_PKG" 2>/dev/null | grep -Eiq 'FAKE_PACKAGE_SIGNATURE'; then
+    elif [ "$GMS_SIGNATURE_MENTIONED" = "1" ]; then
         cap_set SIGNATURE_SPOOFING WARN "special permission is mentioned, but the grant was not confirmed"
     elif fake_path="$(pm path "$FAKEGAPPS_PKG" 2>/dev/null | sed -n 's/^package://p' | head -n 1)" && [ -n "$fake_path" ]; then
         fake_version="$(dumpsys package "$FAKEGAPPS_PKG" 2>/dev/null | sed -n 's/.*versionName=\([^ ]*\).*/\1/p' | head -n 1)"
@@ -1314,12 +1362,17 @@ probe_capabilities()
     esac
 
     probe_global_mount_namespace
+    emit_capability_progress GLOBAL_MOUNT_NAMESPACE mount_namespace
     probe_bind_mount
+    emit_capability_progress BIND_MOUNT bind_mount
     probe_selinux_context
+    emit_capability_progress SELINUX_CONTEXT_CLONABLE selinux_context
     if [ "${DEGOOGLE_MODE:-$OPERATION_MODE}" = "PURE" ]; then
         cap_set SIGNATURE_SPOOFING UNKNOWN "" "not applicable to pure DeGoogle mode"
+        emit_progress signature_spoofing CONFIRMED
     else
         probe_signature_spoofing
+        emit_capability_progress SIGNATURE_SPOOFING signature_spoofing
     fi
     probe_package_manager_cache
     probe_reboot_strategy
@@ -1400,9 +1453,11 @@ gms_maps_lib_relpath()
 
 collect_facts()
 {
-    local transaction_state
+    local transaction_state snapshot_validated
+    snapshot_validated=0
     ROOT_OK=0; ROOT_MANAGER=""; GMS_PRIVILEGED=0; FINALIZE_DONE=0
     GMS_PATH=""; GSF_PATH=""; STORE_PATH=""; GMS_FLAGS=""; GMS_UID=""
+    GMS_PACKAGE_DUMP=""; GMS_DUMP_UID=""; GMS_SIGNATURE_GRANTED=0; GMS_SIGNATURE_MENTIONED=0
     GMS_MAPS_LIB_PRESENT=0; GMS_MAPS_LIB_RELPATH=""
     GMS_VERSION=""; GMS_VERSION_CODE=""; STORE_VERSION=""
     TARGET_GMS=""; TARGET_GSF=""; TARGET_STORE=""
@@ -1427,10 +1482,19 @@ collect_facts()
     [ -n "$ABI_LIST" ] || ABI_LIST="$ABI"
     KERNEL_VERSION="$(uname -a 2>/dev/null || true)"
     SELINUX="$(getenforce 2>/dev/null || echo unknown)"
+    case "$SELINUX" in Enforcing|Permissive|Disabled) emit_progress selinux_mode CONFIRMED ;; *) emit_progress selinux_mode FAILED ;; esac
+    if [ -n "$MODEL" ] && [ -n "$FINGERPRINT" ]; then
+        emit_progress device_properties CONFIRMED
+    else
+        emit_progress device_properties FAILED
+    fi
 
     if [ "$(id -u 2>/dev/null)" = "0" ]; then
         ROOT_OK=1
         detect_root_manager
+        emit_progress root CONFIRMED
+    else
+        emit_progress root FAILED
     fi
 
     # reads that require root (or at least namespace visibility)
@@ -1438,11 +1502,13 @@ collect_facts()
         locate_package GMS "$GMS_PKG"
         locate_package GSF "$GSF_PKG"
         locate_package STORE "$STORE_PKG"
+        emit_progress package_locations CONFIRMED
         TARGET_GMS="${GMS_TARGET_DIRECTORY:-}"
         TARGET_GSF="${GSF_TARGET_DIRECTORY:-}"
         TARGET_STORE="${STORE_TARGET_DIRECTORY:-}"
         if [ -f "$SNAPSHOT_FILE" ]; then
             if validate_snapshot; then
+                snapshot_validated=1
                 TARGET_GMS="$(snapshot_field gms targetDirectory)"
                 TARGET_GSF="$(snapshot_field gsf targetDirectory)"
                 TARGET_STORE="$(snapshot_field store targetDirectory)"
@@ -1461,12 +1527,22 @@ collect_facts()
         else
             preparable_system_update GMS && TARGET_GMS="$(dirname "$GMS_ORIGINAL_SYSTEM_PATH")"
             preparable_system_update STORE && TARGET_STORE="$(dirname "$STORE_ORIGINAL_SYSTEM_PATH")"
+            snapshot_validated=1
         fi
-        GMS_VERSION="$(gms_version)"
-        GMS_VERSION_CODE="$(gms_version_code)"
-        GMS_FLAGS="$(gms_flags)"
+        if [ "$snapshot_validated" = "1" ]; then
+            emit_progress transaction_snapshot CONFIRMED
+        else
+            emit_progress transaction_snapshot FAILED
+        fi
+        read_gms_details
+        GMS_PACKAGE_DUMP=""
         case "$GMS_FLAGS" in *PRIVILEGED*) GMS_PRIVILEGED=1 ;; esac
         GMS_UID="$(gms_uid_current 2>/dev/null || true)"
+        if [ -n "$GMS_VERSION" ] || [ -z "$GMS_PATH" ]; then
+            emit_progress gms_details CONFIRMED
+        else
+            emit_progress gms_details FAILED
+        fi
 
         # WhatsApp Mapbox fix: libmapbox-gl.so copied from the APK must
         # exist for maps to load. The mask also counts as evidence,
@@ -1480,6 +1556,7 @@ collect_facts()
         # Mounts: detect ANY active mount at profile paths and record whether
         # the source is our mask. An unknown source means an unmanaged state.
         refresh_mount_facts
+        emit_progress mounts CONFIRMED
 
         transaction_state="$(sed -n 's/^state=//p' "$JOURNAL_FILE" 2>/dev/null | head -n 1)"
         if [ -n "$TARGET_GMS" ] && [ -n "$TARGET_GSF" ] && [ -n "$TARGET_STORE" ] && \
@@ -1510,6 +1587,7 @@ collect_facts()
             POST_BOOT_REASON="pure masks, restart identity, packages, and SELinux validated"
         fi
         if [ "$OPERATION_MODE" = "PURE" ] && verify_pure_masks; then PURE_MASKS_VALID=1; fi
+        emit_progress transaction_masks CONFIRMED
 
         if cmd deviceidle whitelist 2>/dev/null | grep -q "$GMS_PKG"; then FINALIZE_DONE=1; fi
     fi
@@ -1762,8 +1840,7 @@ probe()
     collect_facts
     write_probe_baseline || say "WARNING: could not save probe baseline"
     compute_state
-    emit_facts
-    emit STATE "$STATE"
+    emit_probe_result | tr '\000\012' '\012 '
     return 0
 }
 
@@ -1772,8 +1849,7 @@ status()
     check_root
     collect_facts
     compute_state
-    emit_facts
-    emit STATE "$STATE"
+    emit_probe_result | tr '\000\012' '\012 '
     say ""
     say "===== STATUS DeGoogle ====="
     say "State: $STATE"
@@ -2593,6 +2669,84 @@ cleanup()
 # restore-stock — full rollback to the stock environment
 # ===========================================================================
 
+SNAPSHOT_CACHE_LOADED=0
+
+load_snapshot_cache()
+{
+    local values_file
+    values_file="$TRANSACTION_BASE/snapshot-fields.$$"
+    awk '
+        function value(line, key, pattern, result) {
+            pattern="\"" key "\"[[:space:]]*:[[:space:]]*\""
+            if (!match(line, pattern)) return ""
+            result=substr(line, RSTART+RLENGTH)
+            sub(/\".*/, "", result)
+            return result
+        }
+        NF { if (first == "") first=$0; last=$0 }
+        /"gms"[[:space:]]*:/ { gms++; component="gms" }
+        /"gsf"[[:space:]]*:/ { gsf++; component="gsf" }
+        /"store"[[:space:]]*:/ { store++; component="store" }
+        component != "" {
+            for (i=1; i<=7; i++) {
+                key=(i==1 ? "targetDirectory" : i==2 ? "originalSystemPath" : i==3 ? "activeCodePath" : i==4 ? "owner" : i==5 ? "mode" : i==6 ? "selinuxContext" : "sha256")
+                fields[component SUBSEP i]=value($0, key)
+            }
+            component=""
+        }
+        /"schemaVersion"[[:space:]]*:/ {
+            rest=$0; sub(/^.*"schemaVersion"[[:space:]]*:[[:space:]]*/, "", rest); sub(/[^0-9].*$/, "", rest); schema=rest
+        }
+        /"operationId"[[:space:]]*:/ { operation=value($0, "operationId") }
+        /"timestamp"[[:space:]]*:/ { timestamp=value($0, "timestamp") }
+        /"deviceFingerprint"[[:space:]]*:/ { fingerprint=value($0, "deviceFingerprint") }
+        /"model"[[:space:]]*:/ { model=value($0, "model") }
+        /"operationMode"[[:space:]]*:/ { mode=value($0, "operationMode") }
+        END {
+            if (!(first ~ /^\{/ && last ~ /^\}/ && gms == 1 && gsf == 1 && store == 1)) exit 1
+            print schema; print operation; print timestamp; print fingerprint; print model; print mode
+            for (component_index=1; component_index<=3; component_index++) {
+                component=(component_index==1 ? "gms" : component_index==2 ? "gsf" : "store")
+                for (i=1; i<=7; i++) print fields[component SUBSEP i]
+            }
+        }
+    ' "$SNAPSHOT_FILE" > "$values_file" 2>/dev/null || {
+        rm -f "$values_file"
+        return 1
+    }
+    exec 3< "$values_file"
+    IFS= read -r SNAP_SCHEMA <&3 || return 1
+    IFS= read -r SNAP_OPERATION <&3 || return 1
+    IFS= read -r SNAP_TIMESTAMP <&3 || return 1
+    IFS= read -r SNAP_FINGERPRINT <&3 || return 1
+    IFS= read -r SNAP_MODEL <&3 || return 1
+    IFS= read -r SNAP_MODE <&3 || return 1
+    IFS= read -r SNAP_GMS_TARGET <&3 || return 1
+    IFS= read -r SNAP_GMS_ORIGINAL <&3 || return 1
+    IFS= read -r SNAP_GMS_ACTIVE <&3 || return 1
+    IFS= read -r SNAP_GMS_OWNER <&3 || return 1
+    IFS= read -r SNAP_GMS_MODE <&3 || return 1
+    IFS= read -r SNAP_GMS_CONTEXT <&3 || return 1
+    IFS= read -r SNAP_GMS_HASH <&3 || return 1
+    IFS= read -r SNAP_GSF_TARGET <&3 || return 1
+    IFS= read -r SNAP_GSF_ORIGINAL <&3 || return 1
+    IFS= read -r SNAP_GSF_ACTIVE <&3 || return 1
+    IFS= read -r SNAP_GSF_OWNER <&3 || return 1
+    IFS= read -r SNAP_GSF_MODE <&3 || return 1
+    IFS= read -r SNAP_GSF_CONTEXT <&3 || return 1
+    IFS= read -r SNAP_GSF_HASH <&3 || return 1
+    IFS= read -r SNAP_STORE_TARGET <&3 || return 1
+    IFS= read -r SNAP_STORE_ORIGINAL <&3 || return 1
+    IFS= read -r SNAP_STORE_ACTIVE <&3 || return 1
+    IFS= read -r SNAP_STORE_OWNER <&3 || return 1
+    IFS= read -r SNAP_STORE_MODE <&3 || return 1
+    IFS= read -r SNAP_STORE_CONTEXT <&3 || return 1
+    IFS= read -r SNAP_STORE_HASH <&3 || return 1
+    exec 3<&-
+    rm -f "$values_file"
+    SNAPSHOT_CACHE_LOADED=1
+}
+
 snapshot_field()
 {
     # snapshot_field <component> <field>
@@ -2600,6 +2754,33 @@ snapshot_field()
     # this read accepts only values without quotes or newlines.
     local component="$1" field="$2"
     [ -f "$SNAPSHOT_FILE" ] || return 1
+    if [ "$SNAPSHOT_CACHE_LOADED" = "1" ]; then
+        case "$component:$field" in
+            gms:targetDirectory) printf '%s' "$SNAP_GMS_TARGET" ;;
+            gms:originalSystemPath) printf '%s' "$SNAP_GMS_ORIGINAL" ;;
+            gms:activeCodePath) printf '%s' "$SNAP_GMS_ACTIVE" ;;
+            gms:owner) printf '%s' "$SNAP_GMS_OWNER" ;;
+            gms:mode) printf '%s' "$SNAP_GMS_MODE" ;;
+            gms:selinuxContext) printf '%s' "$SNAP_GMS_CONTEXT" ;;
+            gms:sha256) printf '%s' "$SNAP_GMS_HASH" ;;
+            gsf:targetDirectory) printf '%s' "$SNAP_GSF_TARGET" ;;
+            gsf:originalSystemPath) printf '%s' "$SNAP_GSF_ORIGINAL" ;;
+            gsf:activeCodePath) printf '%s' "$SNAP_GSF_ACTIVE" ;;
+            gsf:owner) printf '%s' "$SNAP_GSF_OWNER" ;;
+            gsf:mode) printf '%s' "$SNAP_GSF_MODE" ;;
+            gsf:selinuxContext) printf '%s' "$SNAP_GSF_CONTEXT" ;;
+            gsf:sha256) printf '%s' "$SNAP_GSF_HASH" ;;
+            store:targetDirectory) printf '%s' "$SNAP_STORE_TARGET" ;;
+            store:originalSystemPath) printf '%s' "$SNAP_STORE_ORIGINAL" ;;
+            store:activeCodePath) printf '%s' "$SNAP_STORE_ACTIVE" ;;
+            store:owner) printf '%s' "$SNAP_STORE_OWNER" ;;
+            store:mode) printf '%s' "$SNAP_STORE_MODE" ;;
+            store:selinuxContext) printf '%s' "$SNAP_STORE_CONTEXT" ;;
+            store:sha256) printf '%s' "$SNAP_STORE_HASH" ;;
+            *) return 1 ;;
+        esac
+        return 0
+    fi
     sed -n "s/.*\"$component\".*\"$field\":\"\([^\"]*\)\".*/\1/p" "$SNAPSHOT_FILE" 2>/dev/null | head -n 1
 }
 
@@ -2607,29 +2788,29 @@ snapshot_top_field()
 {
     local field="$1"
     [ -f "$SNAPSHOT_FILE" ] || return 1
+    if [ "$SNAPSHOT_CACHE_LOADED" = "1" ]; then
+        case "$field" in
+            schemaVersion) printf '%s' "$SNAP_SCHEMA" ;;
+            operationId) printf '%s' "$SNAP_OPERATION" ;;
+            timestamp) printf '%s' "$SNAP_TIMESTAMP" ;;
+            deviceFingerprint) printf '%s' "$SNAP_FINGERPRINT" ;;
+            model) printf '%s' "$SNAP_MODEL" ;;
+            operationMode) printf '%s' "$SNAP_MODE" ;;
+            *) return 1 ;;
+        esac
+        return 0
+    fi
     sed -n "s/.*\"$field\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$SNAPSHOT_FILE" 2>/dev/null | head -n 1
 }
 
 validate_snapshot()
 {
-    local schema operation timestamp fingerprint model saved_mode component target original active owner mode context hash
+    local component target original active owner mode context hash
     [ -f "$SNAPSHOT_FILE" ] || return 1
-    awk '
-        NF { if (first == "") first=$0; last=$0 }
-        /"gms"[[:space:]]*:/ { gms++ }
-        /"gsf"[[:space:]]*:/ { gsf++ }
-        /"store"[[:space:]]*:/ { store++ }
-        END { exit !(first ~ /^\{/ && last ~ /^\}/ && gms == 1 && gsf == 1 && store == 1) }
-    ' "$SNAPSHOT_FILE" || return 1
-    schema="$(sed -n 's/.*"schemaVersion"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$SNAPSHOT_FILE" | head -n 1)"
-    operation="$(snapshot_top_field operationId)"
-    timestamp="$(snapshot_top_field timestamp)"
-    fingerprint="$(snapshot_top_field deviceFingerprint)"
-    model="$(snapshot_top_field model)"
-    saved_mode="$(snapshot_top_field operationMode)"
-    [ "$schema" = "1" ] && [ -n "$operation" ] && [ -n "$timestamp" ] && [ -n "$fingerprint" ] && [ -n "$model" ] || return 1
-    case "$saved_mode" in ""|PURE|MICROG) ;; *) return 1 ;; esac
-    [ "$fingerprint" = "$FINGERPRINT" ] && [ "$model" = "$MODEL" ] || return 1
+    load_snapshot_cache || return 1
+    [ "$SNAP_SCHEMA" = "1" ] && [ -n "$SNAP_OPERATION" ] && [ -n "$SNAP_TIMESTAMP" ] && [ -n "$SNAP_FINGERPRINT" ] && [ -n "$SNAP_MODEL" ] || return 1
+    case "$SNAP_MODE" in ""|PURE|MICROG) ;; *) return 1 ;; esac
+    [ "$SNAP_FINGERPRINT" = "$FINGERPRINT" ] && [ "$SNAP_MODEL" = "$MODEL" ] || return 1
     for component in gms gsf store; do
         target="$(snapshot_field "$component" targetDirectory)"
         original="$(snapshot_field "$component" originalSystemPath)"
@@ -2652,9 +2833,7 @@ validate_snapshot()
         [ -n "$context" ] || return 1
     done
     targets_are_distinct \
-        "$(snapshot_field gms targetDirectory)" \
-        "$(snapshot_field gsf targetDirectory)" \
-        "$(snapshot_field store targetDirectory)"
+        "$SNAP_GMS_TARGET" "$SNAP_GSF_TARGET" "$SNAP_STORE_TARGET"
 }
 
 rollback_target_from_snapshot()

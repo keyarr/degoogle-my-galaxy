@@ -62,6 +62,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             transactionBase = File(app.filesDir, "transaction").absolutePath,
             operationId = { activeOperationId ?: transactionJournal.read()?.operationId },
             onProgress = ::appendOperationLog,
+            onCheckProgress = ::updateCheckProgress,
         )
     }
     private val microg = backend?.let {
@@ -81,6 +82,25 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
     private var activeOperationId: String? = null
+
+    private fun updateCheckProgress(id: String, status: String) {
+        val checkStatus = when (status) {
+            "CONFIRMED" -> CheckStatus.CONFIRMED
+            "FAILED" -> CheckStatus.FAILED
+            else -> return
+        }
+        _ui.update { ui ->
+            ui.copy(checks = ui.checks.map { if (it.id == id) it.copy(status = checkStatus) else it })
+        }
+    }
+
+    private fun failPendingChecks() {
+        _ui.update { ui ->
+            ui.copy(checks = ui.checks.map {
+                if (it.status == CheckStatus.PENDING) it.copy(status = CheckStatus.FAILED) else it
+            })
+        }
+    }
 
     /**
      * Continua a mesma transação depois de o processo/app ser recriado. Um
@@ -108,18 +128,25 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
      * usuário ver o que falhou); use [clearError] = true no arranque.
      */
     fun refresh(clearError: Boolean = false) {
+        _ui.update {
+            it.copy(
+                refreshing = true,
+                resultCurrent = false,
+                checks = INITIAL_DEVICE_CHECKS,
+                error = if (clearError) null else it.error,
+            )
+        }
         viewModelScope.launch(Dispatchers.IO) {
-            _ui.update { it.copy(refreshing = true, error = if (clearError) null else it.error) }
-
             if (!executor.isRootAvailable()) {
-                _ui.update { it.copy(refreshing = false, state = DeviceState.NO_ROOT) }
+                failPendingChecks()
+                _ui.update { it.copy(refreshing = false) }
                 return@launch
             }
             val backend = backend ?: run {
+                failPendingChecks()
                 _ui.update {
                     it.copy(
                         refreshing = false,
-                        state = DeviceState.ERROR,
                         error = app.getString(R.string.error_backend_not_installed),
                     )
                 }
@@ -128,10 +155,10 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
             val probe = backend.probe()
             if (!probe.raw.succeeded) {
+                failPendingChecks()
                 _ui.update {
                     it.copy(
                         refreshing = false,
-                        state = DeviceState.ERROR,
                         error = app.getString(
                             R.string.error_probe_failed,
                             probe.raw.stderr,
@@ -154,6 +181,9 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     )
                 },
             )
+            if (probe.facts.operationMode != OperationMode.PURE) {
+                updateCheckProgress("signature_spoofing", "CONFIRMED")
+            }
             var journal = transactionJournal.read()
             val detectedState = StateDetector.detect(facts, profile = null)
             val modeConflict = journal?.let {
@@ -168,6 +198,8 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             )
 
             var validationSucceeded = false
+            var reconciliationSucceeded = true
+            var postBootValidationSucceeded: Boolean? = null
             val pureValidationPending = journal?.let { it.operationMode == OperationMode.PURE &&
                 it.state in setOf(
                     TransactionState.PREFLIGHT_OK,
@@ -202,19 +234,26 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                         prefs.clearPendingOperation()
                         journal = transactionJournal.read()
                         validationSucceeded = true
+                        postBootValidationSucceeded = true
+                    } else {
+                        reconciliationSucceeded = false
+                        postBootValidationSucceeded = false
                     }
                 } else {
+                    reconciliationSucceeded = false
+                    postBootValidationSucceeded = false
                     val current = journal
                     val failureDetail = postBoot.facts.postBootReason?.takeIf { it.isNotBlank() }
                         ?: postBoot.stderr.lineSequence().map(String::trim).lastOrNull(String::isNotEmpty)
                         ?: "post-boot validation failed (exit ${postBoot.exitCode})"
                     if (current != null) {
-                        transactionJournal.update(
+                        val journalUpdated = transactionJournal.update(
                             operationId = current.operationId,
                             fingerprint = facts.fingerprint,
                             state = TransactionState.ROLLBACK_REQUIRED,
                             detail = failureDetail,
                         )
+                        reconciliationSucceeded = reconciliationSucceeded && journalUpdated
                         journal = transactionJournal.read()
                     }
                     prefs.clearPendingOperation()
@@ -230,17 +269,20 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     backendOperationId = facts.stockConfirmationOperationId,
                 )
             ) {
-                prefs.setSelectedMode(null)
-                transactionJournal.update(
+                val stockJournalUpdated = transactionJournal.update(
                     operationId = journal?.operationId ?: confirmedOperationId ?: operationIdForCurrentTransaction(),
                     fingerprint = facts.fingerprint,
                     state = TransactionState.RESTORED,
                     detail = "stock state confirmed after rollback",
                     operationMode = journal?.operationMode ?: facts.operationMode,
                 )
-                prefs.clearPendingOperation()
+                reconciliationSucceeded = reconciliationSucceeded && stockJournalUpdated
+                if (stockJournalUpdated) {
+                    prefs.setSelectedMode(null)
+                    prefs.clearPendingOperation()
+                }
                 journal = transactionJournal.read()
-                stockRestored = true
+                stockRestored = stockJournalUpdated
             }
             // STORE_MASKED/PREPARED é o estado normal entre a preparação e o
             // soft reboot. Uma tentativa de reboot recusada não desfaz as
@@ -321,35 +363,65 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                 prefs.selectedMode.firstOrNull()
             }
 
+            val completedChecks = _ui.value.checks.map { check ->
+                when (check.id) {
+                    "post_boot_validation" -> check.copy(
+                        status = if (postBootValidationSucceeded == false) CheckStatus.FAILED else CheckStatus.CONFIRMED,
+                    )
+                    "transaction_reconciliation" -> check.copy(
+                        status = if (reconciliationSucceeded) CheckStatus.CONFIRMED else CheckStatus.FAILED,
+                    )
+                    "compatibility" -> check.copy(
+                        status = if (reconciliationSucceeded) CheckStatus.CONFIRMED else CheckStatus.FAILED,
+                    )
+                    else -> if (check.status == CheckStatus.PENDING) check.copy(status = CheckStatus.FAILED) else check
+                }
+            }
+            val resultCanBeCurrent = reconciliationSucceeded &&
+                completedChecks.none { it.status == CheckStatus.FAILED }
+
             _ui.update {
                 val resolvedError = if (validationSucceeded || stockRestored) null else it.error
-                it.copy(
-                    refreshing = false,
-                    facts = facts,
-                    state = state,
-                    compatibility = compatibility,
-                    recoveryRequired = recoveryRequired,
-                    recoveryMessage = recoveryMessage,
-                    recoveryDetail = recoveryDetail,
-                    rescuePartyNotice = rescuePartyNotice,
-                    needsSetupPrompt = needsPrompt,
-                    selectedMode = selectedMode,
-                    modeDialogVisible = if (stockRestored) false else it.modeDialogVisible,
-                    error = resolvedError,
-                )
+                if (resultCanBeCurrent) {
+                    it.copy(
+                        refreshing = false,
+                        hasResult = true,
+                        resultCurrent = true,
+                        checks = completedChecks,
+                        facts = facts,
+                        state = state,
+                        compatibility = compatibility,
+                        recoveryRequired = recoveryRequired,
+                        recoveryMessage = recoveryMessage,
+                        recoveryDetail = recoveryDetail,
+                        rescuePartyNotice = rescuePartyNotice,
+                        needsSetupPrompt = needsPrompt,
+                        selectedMode = selectedMode,
+                        modeDialogVisible = if (stockRestored) false else it.modeDialogVisible,
+                        error = resolvedError,
+                    )
+                } else {
+                    it.copy(
+                        refreshing = false,
+                        resultCurrent = false,
+                        checks = completedChecks,
+                        error = it.error ?: app.getString(R.string.error_refresh_incomplete),
+                    )
+                }
             }
         }
     }
 
     fun openModeDialog() {
         val current = _ui.value
-        if (current.refreshing || current.state != DeviceState.STOCK || current.operationInProgress || current.recoveryRequired) return
+        if (!current.resultCurrent || current.refreshing || current.state != DeviceState.STOCK || current.operationInProgress || current.recoveryRequired) return
         _ui.update { it.copy(modeDialogVisible = true) }
     }
 
     fun dismissModeDialog() = _ui.update { it.copy(modeDialogVisible = false) }
 
     fun allowFallbackReboot() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         _ui.update { it.copy(fallbackRebootOptIn = true) }
         backend?.setFallbackRebootOptIn(true)
         refresh()
@@ -357,7 +429,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun selectMode(mode: OperationMode) {
         val current = _ui.value
-        if (current.refreshing || current.state != DeviceState.STOCK || current.operationInProgress || current.recoveryRequired) return
+        if (!current.resultCurrent || current.refreshing || current.state != DeviceState.STOCK || current.operationInProgress || current.recoveryRequired) return
         _ui.update { it.copy(selectedMode = mode, modeDialogVisible = false) }
         viewModelScope.launch(Dispatchers.IO) { prefs.setSelectedMode(mode) }
     }
@@ -365,7 +437,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     /** Executes the selected operation after explicit slider confirmation. */
     fun degoogle() {
         val initial = _ui.value
-        if (initial.refreshing || initial.state != DeviceState.STOCK || initial.operationInProgress || initial.recoveryRequired) return
+        if (!initial.resultCurrent || initial.refreshing || initial.state != DeviceState.STOCK || initial.operationInProgress || initial.recoveryRequired) return
         val mode = initial.selectedMode ?: return
         val backend = backend ?: return
         val decision = _ui.value.compatibility
@@ -452,6 +524,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Executa a fase final pós-boot (MICROG_BOOTED → ativo). */
     fun finalizeIfNeeded() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         if (_ui.value.facts.operationMode == OperationMode.PURE) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -503,6 +576,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun createBackup() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         if (isPureModeActive()) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -534,6 +608,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Restaura manualmente o backup local no formato do MicroG Session. */
     fun restoreBackup() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         if (isPureModeActive()) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -568,6 +643,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
      * updates (volta ao base) e desabilita a Play Store para evitar re-update.
      */
     fun removeGmsUpdate() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         val b = backend ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {
@@ -593,6 +669,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteBackup() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         val bm = backupManager ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {
@@ -619,6 +696,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
 
     /** Libera o lock órfão do backend caso tenha restado de uma operação interrompida. */
     fun unlock() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         val b = backend ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {
@@ -645,6 +723,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun restoreGoogle(wipeData: Boolean = true) {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         val m = microg ?: return
         viewModelScope.launch(Dispatchers.IO) {
             _ui.update {
@@ -693,7 +772,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
      */
     fun reindexStock() {
         val current = _ui.value
-        if (current.refreshing || current.operationInProgress ||
+        if (!current.resultCurrent || current.refreshing || current.operationInProgress ||
             current.state != DeviceState.RESTORE_PREPARED || !current.facts.stockReindexReady
         ) return
         val m = microg ?: return
@@ -726,6 +805,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
      * fallback para reboot completo aqui.
      */
     fun softReboot() {
+        if (!_ui.value.resultCurrent || _ui.value.refreshing) return
         val r = reboot ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val stateBeforeReboot = _ui.value.state

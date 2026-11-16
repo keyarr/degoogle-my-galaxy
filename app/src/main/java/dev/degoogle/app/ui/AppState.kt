@@ -11,6 +11,31 @@ data class StepLog(
     val text: String,
 )
 
+enum class CheckStatus { PENDING, CONFIRMED, FAILED }
+
+data class DeviceCheck(
+    val id: String,
+    val status: CheckStatus = CheckStatus.PENDING,
+)
+
+internal val INITIAL_DEVICE_CHECKS = listOf(
+    "root",
+    "device_properties",
+    "transaction_snapshot",
+    "package_locations",
+    "mounts",
+    "gms_details",
+    "transaction_masks",
+    "mount_namespace",
+    "bind_mount",
+    "selinux_mode",
+    "selinux_context",
+    "signature_spoofing",
+    "post_boot_validation",
+    "transaction_reconciliation",
+    "compatibility",
+).map(::DeviceCheck)
+
 /** Navegação simples (sem dependência de navigation-compose). */
 enum class Screen {
     HOME,
@@ -20,6 +45,9 @@ enum class Screen {
 
 data class UiState(
     val refreshing: Boolean = true,
+    val hasResult: Boolean = false,
+    val resultCurrent: Boolean = false,
+    val checks: List<DeviceCheck> = INITIAL_DEVICE_CHECKS,
     val facts: SystemFacts = SystemFacts.EMPTY,
     val compatibility: CompatibilityDecision = CompatibilityDecision.EMPTY,
     val recoveryRequired: Boolean = false,
