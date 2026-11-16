@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -18,7 +17,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -156,27 +154,26 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         // Ações Principais com espaçamento final para não colidir com a barra inferior
         Column(
             verticalArrangement = Arrangement.spacedBy(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 24.dp),
         ) {
             Button(
                 onClick = { vm.restoreBackup() },
                 enabled = f.backupPresent && !ui.operationInProgress && !pureMode,
-                modifier = Modifier.width(240.dp),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(0.dp),
             ) { Text(stringResource(R.string.backup_btn_restore_data)) }
 
             Button(
                 onClick = { vm.createBackup() },
                 enabled = !ui.operationInProgress && !pureMode,
-                modifier = Modifier.width(240.dp),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(0.dp),
             ) { Text(stringResource(R.string.backup_btn_update_snapshot)) }
 
             Button(
                 onClick = { showDeleteConfirmation.value = true },
                 enabled = f.backupPresent && !ui.operationInProgress,
-                modifier = Modifier.width(240.dp),
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(0.dp),
             ) { Text(stringResource(R.string.backup_btn_delete_files)) }
         }
