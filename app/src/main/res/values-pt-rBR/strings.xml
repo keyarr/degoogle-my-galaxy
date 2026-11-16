@@ -295,10 +295,10 @@
     <string name="backup_why_desc">O backup preserva os dados de registro das notificações. Atualize-o depois de confirmar que elas funcionam.</string>
     <string name="backup_pure_mode_title">Ações de token microG indisponíveis</string>
     <string name="backup_pure_mode_desc">O modo DeGoogle puro não usa tokens do microG. Os arquivos de backup existentes são preservados e não indicam que o microG está ativo.</string>
-    <string name="backup_btn_update_snapshot">Atualizar Snapshot do microG</string>
+    <string name="backup_btn_update_snapshot">Atualizar backup</string>
     <string name="backup_btn_create_snapshot">Criar Snapshot do microG</string>
-    <string name="backup_btn_restore_data">Restaurar Dados do Backup</string>
-    <string name="backup_btn_delete_files">Excluir Arquivos do Backup</string>
+    <string name="backup_btn_restore_data">Restaurar backup dos tokens</string>
+    <string name="backup_btn_delete_files">Excluir backup</string>
     <string name="backup_dialog_update_title">Atualizar snapshot do microG?</string>
     <string name="backup_dialog_update_desc">Os dados atuais do backup serão substituídos pelos dados atuais do microG. O processo do microG será finalizado durante a cópia.</string>
     <string name="backup_dialog_update_btn">Atualizar</string>

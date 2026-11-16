@@ -5,13 +5,20 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -24,7 +31,6 @@ import dev.degoogle.app.ui.AppViewModel
 import dev.degoogle.app.ui.UiState
 import dev.degoogle.app.ui.components.InfoCard
 import dev.degoogle.app.ui.components.OperationLog
-import dev.degoogle.app.ui.components.SlideToExecute
 import dev.degoogle.app.ui.components.Status
 import java.text.DateFormat
 import java.util.Date
@@ -33,6 +39,7 @@ import dev.degoogle.app.ui.components.TechnicalStatusRow
 
 @Composable
 fun BackupScreen(ui: UiState, vm: AppViewModel) {
+    val showDeleteConfirmation = remember { mutableStateOf(false) }
     val f = ui.facts
     val pureMode = !f.stockRestoreConfirmed && (
         f.operationMode == OperationMode.PURE ||
@@ -149,29 +156,50 @@ fun BackupScreen(ui: UiState, vm: AppViewModel) {
         // Ações Principais com espaçamento final para não colidir com a barra inferior
         Column(
             verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 24.dp),
         ) {
-            SlideToExecute(
-                label = if (f.backupPresent) "SLIDE TO UPDATE TOKEN VAULT"
-                else "SLIDE TO CREATE TOKEN VAULT",
+            Button(
+                onClick = { vm.restoreBackup() },
+                enabled = f.backupPresent && !ui.operationInProgress && !pureMode,
+                modifier = Modifier.width(240.dp),
+                shape = RoundedCornerShape(0.dp),
+            ) { Text(stringResource(R.string.backup_btn_restore_data)) }
+
+            Button(
+                onClick = { vm.createBackup() },
                 enabled = !ui.operationInProgress && !pureMode,
-                onExecute = { vm.createBackup() },
-            )
+                modifier = Modifier.width(240.dp),
+                shape = RoundedCornerShape(0.dp),
+            ) { Text(stringResource(R.string.backup_btn_update_snapshot)) }
 
-            if (f.backupPresent) {
-                SlideToExecute(
-                    label = "SLIDE TO RESTORE TOKENS",
-                    enabled = !ui.operationInProgress && !pureMode,
-                    onExecute = { vm.restoreBackup() },
-                )
-
-                SlideToExecute(
-                    label = "SLIDE TO DELETE VAULT",
-                    enabled = !ui.operationInProgress,
-                    onExecute = { vm.deleteBackup() },
-                )
-            }
+            Button(
+                onClick = { showDeleteConfirmation.value = true },
+                enabled = f.backupPresent && !ui.operationInProgress,
+                modifier = Modifier.width(240.dp),
+                shape = RoundedCornerShape(0.dp),
+            ) { Text(stringResource(R.string.backup_btn_delete_files)) }
         }
     }
 
+    if (showDeleteConfirmation.value) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation.value = false },
+            title = { Text(stringResource(R.string.backup_dialog_delete_title)) },
+            text = { Text(stringResource(R.string.backup_dialog_delete_desc)) },
+            confirmButton = {
+                Button(onClick = {
+                    showDeleteConfirmation.value = false
+                    vm.deleteBackup()
+                }, shape = RoundedCornerShape(0.dp)) {
+                    Text(stringResource(R.string.backup_dialog_delete_btn))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation.value = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
 }
