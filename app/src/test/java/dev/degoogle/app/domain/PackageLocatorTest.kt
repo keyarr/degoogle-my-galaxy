@@ -61,4 +61,26 @@ class PackageLocatorTest {
         assertFalse(info.safeTarget)
         assertFalse(PackageLocator.isAllowedSystemPath("/product/priv-app/../foo"))
     }
+
+    @Test
+    fun `raízes OEM são aceitas e raiz de partição não`() {
+        listOf("/vendor/app/GmsCore/base.apk", "/odm/priv-app/GmsCore/base.apk", "/my_product/app/GmsCore/base.apk", "/mi_ext/priv-app/GmsCore/base.apk")
+            .forEach { assertTrue(PackageLocator.isAllowedSystemPath(it)) }
+        assertFalse(PackageLocator.isAllowedSystemPath("/vendor"))
+        assertFalse(PackageLocator.isAllowedSystemPath("/vendor/app"))
+    }
+
+    @Test
+    fun `packages xml fornece alvo de sistema quando update esconde o caminho`() {
+        val info = PackageLocator.parse(
+            packageName = "com.google.android.gms",
+            pmPathOutput = "package:/data/app/~~abc/com.google.android.gms/base.apk",
+            dumpsysOutput = "UPDATED_SYSTEM_APP codePath=/data/app/~~abc/com.google.android.gms",
+            packagesXml = "<updated-package name=\"com.google.android.gms\" codePath=\"/vendor/priv-app/GmsCore\" />",
+        )
+        assertTrue(info.hasDataUpdate)
+        assertEquals("/vendor/priv-app/GmsCore/base.apk", info.originalSystemPath)
+        assertEquals("/vendor/priv-app/GmsCore", info.targetDirectory)
+        assertTrue(info.safeTarget)
+    }
 }

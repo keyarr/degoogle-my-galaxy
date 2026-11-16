@@ -78,6 +78,8 @@ data class SystemFacts(
     val gmsMapsLibPresent: Boolean = false,
     /** Epoch timestamp (seconds) of the last local backup write, if present. */
     val backupCreatedAt: Long? = null,
+    val gsfTargetPresent: Boolean = true,
+    val storeTargetPresent: Boolean = true,
 ) {
     companion object {
         val EMPTY = SystemFacts(
@@ -227,6 +229,8 @@ object ProbeParser {
             postBootReason = str("POST_BOOT_REASON"),
             gmsMapsLibPresent = bool("GMS_MAPS_LIB_PRESENT"),
             backupCreatedAt = str("BACKUP_CREATED_AT")?.toLongOrNull(),
+            gsfTargetPresent = map["GSF_TARGET_PRESENT"] != "0",
+            storeTargetPresent = map["STORE_TARGET_PRESENT"] != "0",
         )
     }
 }

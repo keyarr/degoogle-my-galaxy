@@ -199,12 +199,12 @@ class BackendRunnerTest {
     }
 
     @Test
-    fun `KernelSU usa somente AOSP userspace quando init confirma suporte`() = runTest {
+    fun `KernelSU usa AOSP userspace quando init confirma suporte`() = runTest {
         val fake = FakeExecutor(
             ArrayDeque(
                 listOf(
                     RootResult.Ok(0, "", ""),
-                    RootResult.Ok(0, "supported\n", ""),
+                    RootResult.Ok(0, "SYS_POWERCTL_USERSPACE\n", ""),
                     RootResult.Ok(0, "", ""),
                 ),
             ),
@@ -213,7 +213,7 @@ class BackendRunnerTest {
         val result = KernelSuBackend(fake).softReboot()
 
         assertTrue(result.succeeded)
-        assertEquals(listOf("setprop", "sys.powerctl", "reboot,userspace"), fake.recorded.last())
+        assertTrue(fake.recorded.last().last().contains("setprop sys.powerctl reboot,userspace"))
         assertTrue(fake.recorded.none { it.firstOrNull() == "/data/adb/ksud" })
     }
 

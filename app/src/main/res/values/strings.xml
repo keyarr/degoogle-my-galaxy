@@ -209,6 +209,10 @@
     <string name="home_error_state_desc">The device is in an unexpected state. No operation was performed automatically.\n\nCheck the Diagnostics tab for details.</string>
     <string name="home_btn_release_lock">Release operation lock</string>
     <string name="home_btn_remove_update_stock">Remove update and return to stock</string>
+    <string name="home_clean_updates_reprobe">Clean updates &amp; re-probe</string>
+    <string name="home_fallback_reboot_title">Framework restart fallback</string>
+    <string name="home_fallback_reboot_text">Allow KernelSU soft reboot or zygote restart when the standard userspace restart is unavailable. This never requests a kernel reboot.</string>
+    <string name="home_fallback_reboot_allow">Allow fallback restart</string>
     <string name="home_dialog_degoogle_title">DeGoogle?</string>
     <string name="home_dialog_degoogle_text">The application will make temporary changes to the system environment using root and bind mounts.\n\nNo files on the /product partition will be physically modified.\n\nThe process requires a soft reboot.</string>
     <string name="home_dialog_experimental_text">This firmware is not in the known-good database. The operation will proceed only if the compatibility engine has PASS for every critical capability and experimental opt-in is enabled.</string>

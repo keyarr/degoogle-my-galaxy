@@ -34,10 +34,6 @@ object StateDetector {
             )
             if (!gmsIsStock) return DeviceState.ERROR
 
-            val gsfPresent = !facts.gsfPath.isNullOrBlank()
-            val storePresent = !facts.storePath.isNullOrBlank()
-            if (!gsfPresent || !storePresent) return DeviceState.RESTORE_PREPARED
-
             val gsfIsStock = isStockPackagePath(
                 facts.gsfPath,
                 gsfTarget,
@@ -48,16 +44,26 @@ object StateDetector {
                 storeTarget,
                 facts.storePackage,
             )
-            return if (gsfIsStock && storeIsStock) DeviceState.STOCK else DeviceState.ERROR
+            val noActiveTransaction = facts.operationMode == null && !facts.mountGms && !facts.mountGsf && !facts.mountStore
+            if (!noActiveTransaction && (facts.gsfPath.isNullOrBlank() || facts.storePath.isNullOrBlank())) {
+                return DeviceState.RESTORE_PREPARED
+            }
+            val gsfIsStockOrAbsent = gsfIsStock || (noActiveTransaction && facts.gsfPath.isNullOrBlank())
+            val storeIsStockOrAbsent = storeIsStock || (noActiveTransaction && facts.storePath.isNullOrBlank())
+            return if (gsfIsStockOrAbsent && storeIsStockOrAbsent) DeviceState.STOCK else DeviceState.ERROR
         }
 
         // An active mount exists; it must be complete and use OUR masks.
-        if (!facts.mountGms || !facts.mountGsf || !facts.mountStore) {
+        if (!facts.mountGms || (facts.gsfTargetPresent && !facts.mountGsf) ||
+            (facts.storeTargetPresent && !facts.mountStore)
+        ) {
             return DeviceState.ERROR
         }
         // Mount from an unknown source (for example, the old script microg-mask): the app
         // does not manage this state and must not modify it.
-        if (!facts.mountGmsIsOurs || !facts.mountGsfIsOurs || !facts.mountStoreIsOurs) {
+        if (!facts.mountGmsIsOurs || (facts.gsfTargetPresent && !facts.mountGsfIsOurs) ||
+            (facts.storeTargetPresent && !facts.mountStoreIsOurs)
+        ) {
             return DeviceState.ERROR
         }
 
@@ -65,10 +71,14 @@ object StateDetector {
             if (!facts.maskGmsEmpty || !facts.maskGsfEmpty || !facts.maskStoreEmpty || !facts.pureMasksValid) {
                 return DeviceState.ERROR
             }
-            val targets = listOf(gmsTarget, gsfTarget, storeTarget)
-            if (targets.any { it == null } || targets.distinct().size != targets.size ||
+            val targets = buildList {
+                gmsTarget?.let(::add)
+                if (facts.gsfTargetPresent) gsfTarget?.let(::add)
+                if (facts.storeTargetPresent) storeTarget?.let(::add)
+            }
+            if (targets.isEmpty() || targets.distinct().size != targets.size ||
                 targets.indices.any { i -> targets.indices.any { j ->
-                    i != j && targets[i]!!.startsWith("${targets[j]!!.trimEnd('/')}/")
+                    i != j && targets[i].startsWith("${targets[j].trimEnd('/')}/")
                 } }
             ) return DeviceState.ERROR
             val packagesAbsent = facts.gmsPath.isNullOrBlank() &&
@@ -89,7 +99,11 @@ object StateDetector {
         // Post-boot: GSF is gone. microG must be a real priv-app.
         if (!facts.gmsPrivileged) return DeviceState.ERROR
 
-        val storeFromMask = isUnderTarget(facts.storePath, storeTarget)
+        val storeFromMask = if (facts.storeTargetPresent) {
+            isUnderTarget(facts.storePath, storeTarget)
+        } else {
+            facts.storePath.isNullOrBlank()
+        }
         if (!storeFromMask) return DeviceState.ERROR
 
         if (!facts.finalizeDone) return DeviceState.MICROG_BOOTED

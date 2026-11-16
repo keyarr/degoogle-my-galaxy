@@ -67,6 +67,7 @@ object CompatibilityEngine {
     fun evaluate(
         facts: SystemFacts,
         database: KnownGoodDatabase = KnownGoodDatabase.fallback(),
+        allowFallbackReboot: Boolean = false,
     ): CompatibilityDecision {
         val device = DeviceFacts.fromSystemFacts(facts)
         val backend = rootBackendTypeFrom(facts.rootManager)
@@ -103,13 +104,21 @@ object CompatibilityEngine {
             else -> DeviceCompatibility.SUPPORTED
         }
 
+        val fallbackRebootWarning = matrix[Capability.SAFE_SOFT_REBOOT].status == CapabilityStatus.WARN &&
+            facts.rebootStrategy?.method in setOf("KSUD_SOFT_REBOOT", "ZYGOTE_RESTART")
+        val onlyFallbackWarning = CapabilityMatrix.CRITICAL_CAPABILITIES.all { capability ->
+            val status = matrix[capability].status
+            status == CapabilityStatus.PASS ||
+                (capability == Capability.SAFE_SOFT_REBOOT && status == CapabilityStatus.WARN)
+        }
         return CompatibilityDecision(
             compatibility = compatibility,
             knownGood = knownGood,
             matrix = matrix,
             device = device,
             rebootStrategy = facts.rebootStrategy,
-            canExecuteNormally = compatibility == DeviceCompatibility.SUPPORTED,
+            canExecuteNormally = compatibility == DeviceCompatibility.SUPPORTED ||
+                allowFallbackReboot && fallbackRebootWarning && onlyFallbackWarning,
             reasons = reasons.distinct(),
         )
     }

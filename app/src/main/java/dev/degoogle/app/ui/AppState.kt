@@ -40,6 +40,7 @@ data class UiState(
     val softRebootSupported: Boolean = true,
     val selectedMode: OperationMode? = null,
     val modeDialogVisible: Boolean = false,
+    val fallbackRebootOptIn: Boolean = false,
 ) {
     companion object {
         val INITIAL = UiState()

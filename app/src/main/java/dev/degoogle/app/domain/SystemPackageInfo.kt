@@ -28,7 +28,10 @@ data class SystemPackageInfo(
         }
 
     companion object {
-        val ALLOWED_SYSTEM_ROOTS = listOf("/system", "/system_ext", "/product")
+        val ALLOWED_SYSTEM_ROOTS = listOf(
+            "/system", "/system_ext", "/product", "/vendor", "/odm", "/oem",
+            "/my_product", "/mi_ext",
+        )
     }
 }
 
@@ -48,6 +51,7 @@ class PackageLocator(
         val realPaths = paths.associateWith { path ->
             executor.execute(listOf("readlink", "-f", path)).stdout.trim().takeIf(String::isNotBlank) ?: path
         }
+        val packagesXml = executor.execute(listOf("cat", "/data/system/packages.xml")).stdout
         val fsType = active?.let {
             executor.execute(listOf("stat", "-f", "-c", "%T", it)).stdout.trim().takeIf(String::isNotBlank)
         }
@@ -55,7 +59,7 @@ class PackageLocator(
             executor.execute(listOf("df", "-P", it)).stdout.lineSequence().lastOrNull()
                 ?.trim()?.split(Regex("\\s+"))?.firstOrNull()
         }
-        return parse(
+        val info = parse(
             packageName = packageName,
             pmPathOutput = pmResult.stdout,
             dumpsysOutput = dumpsys,
@@ -63,7 +67,37 @@ class PackageLocator(
             backingPartition = partition,
             filesystemType = fsType,
             allowedSystemRoots = allowedSystemRoots,
+            packagesXml = packagesXml,
         )
+        var resolvedInfo = info
+        if (resolvedInfo.hasDataUpdate && resolvedInfo.originalSystemPath == null) {
+            var candidate: String? = null
+            for (root in allowedSystemRoots) {
+                candidate = executor.execute(listOf("find", root, "-type", "f", "-name", "base.apk"))
+                    .stdout.lineSequence().map(String::trim)
+                    .firstOrNull { path -> isAllowedSystemPath(path, allowedSystemRoots) && dumpsys.contains(path) }
+                if (candidate != null) break
+            }
+            if (candidate != null) {
+                val candidateTarget = candidate.substringBeforeLast('/')
+                resolvedInfo = resolvedInfo.copy(
+                    originalSystemPath = candidate,
+                    targetDirectory = candidateTarget,
+                )
+            }
+        }
+        val target = resolvedInfo.targetDirectory ?: return resolvedInfo
+        val globalTarget = executor.execute(
+            listOf("nsenter", "--mount=/proc/1/ns/mnt", "--", "readlink", "-f", target),
+        ).stdout.trim()
+        val parent = target.substringBeforeLast('/', "")
+        return if (globalTarget == target && isAllowedSystemPath(globalTarget, allowedSystemRoots) &&
+            (parent.endsWith("/app") || parent.endsWith("/priv-app"))
+        ) {
+            resolvedInfo
+        } else {
+            resolvedInfo.copy(targetDirectory = null)
+        }
     }
 
     companion object {
@@ -75,6 +109,7 @@ class PackageLocator(
             backingPartition: String? = null,
             filesystemType: String? = null,
             allowedSystemRoots: List<String> = SystemPackageInfo.ALLOWED_SYSTEM_ROOTS,
+            packagesXml: String = "",
         ): SystemPackageInfo {
             val paths = parsePmPaths(pmPathOutput)
             val active = paths.firstOrNull()
@@ -82,12 +117,21 @@ class PackageLocator(
             val systemCodePath = Regex("systemCodePath=([^\\s]+)")
                 .find(dumpsysOutput)?.groupValues?.get(1)
                 ?.takeIf { updatedSystemApp && isAllowedSystemPath(it, allowedSystemRoots) }
-            val original = paths.firstOrNull { isAllowedSystemPath(it, allowedSystemRoots) } ?: systemCodePath
+            val updatedPackageTag = Regex("<updated-package\\b[^>]*>").findAll(packagesXml)
+                .firstOrNull { tag -> Regex("\\bname=\"${Regex.escape(packageName)}\"").containsMatchIn(tag.value) }
+                ?.value
+            val updatedPackagePath = updatedPackageTag?.let {
+                Regex("\\bcodePath=\"([^\"]+)\"").find(it)?.groupValues?.get(1)
+            }
+                ?.takeIf { isAllowedSystemPath(it, allowedSystemRoots) }
+                ?.let { if (it.endsWith(".apk")) it else "$it/base.apk" }
+            val original = paths.firstOrNull { isAllowedSystemPath(it, allowedSystemRoots) }
+                ?: systemCodePath ?: updatedPackagePath
             val base = paths.firstOrNull { it.substringAfterLast('/') == "base.apk" } ?: original ?: active
             val target = (original ?: active)?.substringBeforeLast('/', missingDelimiterValue = "")
                 ?.takeIf(String::isNotBlank)
             val splits = paths.filterNot { it == base }
-            val hasDataUpdate = paths.any(::isDataAppPath) && updatedSystemApp && systemCodePath != null &&
+            val hasDataUpdate = paths.any(::isDataAppPath) && updatedSystemApp &&
                 dumpsysOutput.contains("codePath=/data/app/")
             return SystemPackageInfo(
                 packageName = packageName,
@@ -113,6 +157,8 @@ class PackageLocator(
         fun isDataAppPath(path: String): Boolean = path.startsWith("/data/app/")
 
         fun isAllowedSystemPath(path: String, roots: List<String> = SystemPackageInfo.ALLOWED_SYSTEM_ROOTS): Boolean =
-            !path.contains("..") && !path.contains('\\') && roots.any { path.startsWith("$it/") }
+            !path.contains("..") && !path.contains('\\') && roots.any { root ->
+                path.startsWith("$root/") && path != root && path != "$root/app" && path != "$root/priv-app"
+            }
     }
 }

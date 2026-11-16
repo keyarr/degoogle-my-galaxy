@@ -158,6 +158,34 @@ class CompatibilityEngineTest {
     }
 
     @Test
+    fun `SELinux permissive é aviso e não falha`() {
+        val capabilities = allPassCapabilities().toMutableMap()
+        capabilities.remove(Capability.SELINUX_ENFORCING)
+        val decision = CompatibilityEngine.evaluate(
+            facts(capabilities = capabilities).copy(selinux = "Permissive"),
+        )
+        assertEquals(CapabilityStatus.WARN, decision.matrix[Capability.SELINUX_ENFORCING].status)
+        assertEquals(DeviceCompatibility.PROBABLY_SUPPORTED, decision.compatibility)
+    }
+
+    @Test
+    fun `fallback de reboot exige opt-in e mantém recovery crítico`() {
+        val capabilities = allPassCapabilities().toMutableMap()
+        capabilities[Capability.SAFE_SOFT_REBOOT] = CapabilityResult.warn("fallback selected")
+        val facts = facts(capabilities = capabilities).copy(
+            rebootStrategy = RebootStrategy(method = "ZYGOTE_RESTART"),
+        )
+        assertFalse(CompatibilityEngine.evaluate(facts).canExecuteNormally)
+        assertTrue(CompatibilityEngine.evaluate(facts, allowFallbackReboot = true).canExecuteNormally)
+
+        capabilities[Capability.SAFE_RESTORE] = CapabilityResult.fail("restore unavailable")
+        assertFalse(
+            CompatibilityEngine.evaluate(facts.copy(capabilityResults = capabilities), allowFallbackReboot = true)
+                .canExecuteNormally,
+        )
+    }
+
+    @Test
     fun `path fora das raízes permitido não passa no locator`() {
         val info = PackageLocator.parse(
             packageName = "com.google.android.gms",

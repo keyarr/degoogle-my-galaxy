@@ -117,7 +117,7 @@ EOF
 
     cat > "$FAKEBIN/setprop" <<'EOF'
 #!/bin/sh
-[ -n "${FAKE_SET_PROP_MARKER:-}" ] && echo invoked > "$FAKE_SET_PROP_MARKER"
+[ -n "${FAKE_SET_PROP_MARKER:-}" ] && echo "$*" > "$FAKE_SET_PROP_MARKER"
 exit "${FAKE_SET_PROP_EXIT:-0}"
 EOF
 
@@ -438,6 +438,8 @@ run_script()
         FAKEGAPPS_PRESENT="${FAKEGAPPS_PRESENT:-}" \
         FAKE_SET_PROP_EXIT="${FAKE_SET_PROP_EXIT:-1}" \
         FAKE_SET_PROP_MARKER="${FAKE_SET_PROP_MARKER:-}" \
+        DEGOOGLE_ALLOW_ZYGOTE_RESTART="${DEGOOGLE_ALLOW_ZYGOTE_RESTART:-}" \
+        DEGOOGLE_ALLOW_FALLBACK_REBOOT="${DEGOOGLE_ALLOW_FALLBACK_REBOOT:-}" \
         DEGOOGLE_LSPOSED_MARKER="${DEGOOGLE_LSPOSED_MARKER:-}" \
         sh "$SCRIPT" "$@" 2>&1)"
     rc=$?
@@ -600,10 +602,10 @@ grep -q 'degoogle-capability-test' "$MOUNTINFO" && ok "mount temporário permane
 [ "$(mount_count)" = "1" ] && ok "somente mount de capability permaneceu" || bad "mounts inesperados após falha de cleanup: $(mount_count)"
 teardown_root
 
-echo "== cenário 39: preflight exige SELinux Enforcing e metadados reproduzíveis"
+echo "== scenario 39: preflight accepts SELinux Permissive without changing policy"
 setup_root
-FAKE_SELINUX_MODE=Permissive run_script 3 "preflight bloqueia SELinux permissivo" preflight >/dev/null || true
-[ "$(mount_count)" = "0" ] && ok "SELinux permissivo não causou mount" || bad "SELinux permissivo alterou mounts"
+FAKE_SELINUX_MODE=Permissive run_script 0 "preflight accepts permissive SELinux" preflight >/dev/null || true
+[ "$(mount_count)" = "0" ] && ok "Permissive SELinux did not cause a mount" || bad "Permissive SELinux changed mounts"
 for target in "$PROF_GMS" "$PROF_GSF" "$PROF_STORE"; do
     FAKE_STAT_BAD_OWNER_TARGET="$target" run_script 3 "preflight bloqueia owner não reproduzível em $target" preflight >/dev/null || true
     [ "$(mount_count)" = "0" ] && ok "owner inválido em $target não causou mount" || bad "owner inválido em $target alterou mounts"
@@ -1113,17 +1115,48 @@ grep -q '^state=COMMITTED$' "$BACKUP_BASE/transaction/journal" && \
     ok "transação concluída após validação post-boot" || { bad "transação não foi concluída"; cat "$ROOT/post_boot_validation.out" >&2; }
 teardown_root
 
-echo "== cenário 42: método de restart sem suporte confirmado é recusado"
+echo "== scenario 42: restart methods without confirmed support are rejected"
 setup_root
 KSUD_STUB="$ROOT/ksud"
-printf '#!/bin/sh\necho invoked > %s\nexit 0\n' "$ROOT/ksud.called" > "$KSUD_STUB"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> %s\ncase "$*" in *help*) exit 0 ;; esac\necho invoked > %s\nexit 0\n' \
+    "$ROOT/ksud.calls" "$ROOT/ksud.called" > "$KSUD_STUB"
 chmod +x "$KSUD_STUB"
 FAKE_USERSPACE_REBOOT_SUPPORTED=0 DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
 FAKE_SET_PROP_MARKER="$ROOT/setprop.called" \
-    run_script 5 "soft-reboot bloqueia AOSP sem suporte e KernelSU não verificado" soft-reboot >/dev/null || true
+    run_script 5 "soft reboot rejects unsupported AOSP and unverified KernelSU" soft-reboot >/dev/null || true
 [ ! -e "$ROOT/ksud.called" ] && [ ! -e "$ROOT/setprop.called" ] && \
+    grep -q -- '--help' "$ROOT/ksud.calls" && \
     [ ! -e "$BACKUP_BASE/transaction/reboot-baseline" ] && \
-    ok "método não confirmado não chamou reboot nem persistiu pedido" || bad "método não confirmado tentou reiniciar"
+    ok "help was checked without rebooting or persisting a request" || bad "unverified method attempted a restart"
+teardown_root
+
+echo "== scenario 47: zygote fallback requires explicit opt-in and does not reboot the kernel"
+setup_root
+FAKE_USERSPACE_REBOOT_SUPPORTED=0 DEGOOGLE_ALLOW_ZYGOTE_RESTART=1 \
+FAKE_SET_PROP_EXIT=0 FAKE_SET_PROP_MARKER="$ROOT/zygote.called" \
+    run_script 0 "soft-reboot usa zygote com opt-in" soft-reboot >/dev/null || true
+grep -q '^ctl.restart zygote$' "$ROOT/zygote.called" && \
+    ok "zygote restart requested without kernel reboot" || bad "zygote fallback was not requested"
+[ -s "$BACKUP_BASE/transaction/reboot-baseline" ] && \
+    ok "baseline persistido antes do zygote restart" || bad "baseline do restart ausente"
+teardown_root
+
+echo "== scenario 48: ksud soft reboot passes only when its subcommand is advertised"
+setup_root
+KSUD_STUB="$ROOT/ksud"
+cat > "$KSUD_STUB" <<EOF
+#!/bin/sh
+case "\$*" in *help*) echo 'userspace soft-reboot'; exit 0 ;; esac
+echo "\$*" > "$ROOT/ksud.called"
+exit 0
+EOF
+chmod +x "$KSUD_STUB"
+FAKE_USERSPACE_REBOOT_SUPPORTED=0 DEGOOGLE_KSUD_PATH="$KSUD_STUB" \
+    run_script 0 "soft-reboot usa ksud validado" soft-reboot >/dev/null || true
+grep -q '^reboot$' "$ROOT/ksud.called" && \
+    ok "ksud reboot ran after checking help output" || bad "verified ksud was not executed"
+[ -s "$BACKUP_BASE/transaction/reboot-baseline" ] && \
+    ok "baseline persistido antes do ksud reboot" || bad "baseline do ksud restart ausente"
 teardown_root
 
 echo "== cenário 43: post-boot revalida kernel, mounts, pacotes e estado"
@@ -1190,9 +1223,9 @@ grep -q 'GMS is not PRIVILEGED' "$ROOT/gms_privilege.out" && \
 
 PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
 FAKE_GMS_PRIVILEGED=1 FAKE_SELINUX_MODE=Permissive \
-    run_script 4 "post-boot exige SELinux Enforcing" post-boot-validate > "$ROOT/selinux_post_boot.out" || true
-grep -q 'SELinux is not Enforcing' "$ROOT/selinux_post_boot.out" && \
-    ok "SELinux permissivo bloqueou conclusão" || bad "SELinux permissivo foi aceito"
+    run_script 0 "post-boot accepts permissive SELinux" post-boot-validate > "$ROOT/selinux_post_boot.out" || true
+grep -q 'DEGOOGLE_POST_BOOT_STATUS=PASS' "$ROOT/selinux_post_boot.out" && \
+    ok "Permissive SELinux did not block completion" || bad "Permissive SELinux blocked completion"
 
 PM_GSF_MISSING=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 FAKE_BOOT_COMPLETED=1 \
 FAKE_GMS_PRIVILEGED=1 FAKE_BOOT_REASON=rescueparty \

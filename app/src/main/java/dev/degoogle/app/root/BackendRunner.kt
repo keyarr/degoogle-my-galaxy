@@ -16,6 +16,11 @@ class BackendRunner(
     private val operationId: () -> String? = { null },
     private val onProgress: (String) -> Unit = {},
 ) {
+    private var fallbackRebootOptIn = false
+
+    fun setFallbackRebootOptIn(enabled: Boolean) {
+        fallbackRebootOptIn = enabled
+    }
 
     /** Backend exit codes. */
     object ExitCodes {
@@ -138,6 +143,10 @@ class BackendRunner(
             put("DEGOOGLE_OPERATION_ID", it)
         }
         putAll(extra)
+        if (fallbackRebootOptIn) {
+            put("DEGOOGLE_ALLOW_FALLBACK_REBOOT", "1")
+            put("DEGOOGLE_ALLOW_ZYGOTE_RESTART", "1")
+        }
     }
 
 }

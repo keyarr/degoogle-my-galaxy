@@ -61,7 +61,11 @@ class AutoRecoveryCoordinatorTest {
 
     @Test
     fun `rollback interrompido sem mounts solicita restore stock`() {
-        val facts = stockFacts().copy(gsfPath = null, storePath = null)
+        val facts = stockFacts().copy(
+            gsfPath = null,
+            storePath = null,
+            operationMode = dev.degoogle.app.domain.OperationMode.MICROG,
+        )
 
         val assessment = RecoveryPolicy.assess(facts, profile)
 
@@ -146,6 +150,7 @@ class AutoRecoveryCoordinatorTest {
             DEGOOGLE_GMS_TARGET_DIRECTORY=/product/priv-app/GmsCore
             DEGOOGLE_GSF_PATH=
             DEGOOGLE_STORE_PATH=
+            DEGOOGLE_OPERATION_MODE=MICROG
         """.trimIndent()
         val fake = FakeExecutor(
             ArrayDeque(

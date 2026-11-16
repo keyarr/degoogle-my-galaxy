@@ -209,6 +209,10 @@
     <string name="home_error_state_desc">O aparelho está em um estado não esperado. Nenhuma operação foi executada automaticamente.\n\nConsulte a aba de Diagnóstico para ver os detalhes.</string>
     <string name="home_btn_release_lock">Liberar bloqueio de operação pendente</string>
     <string name="home_btn_remove_update_stock">Remover update e voltar ao stock</string>
+    <string name="home_clean_updates_reprobe">Limpar updates e verificar novamente</string>
+    <string name="home_fallback_reboot_title">Alternativa de reinício do framework</string>
+    <string name="home_fallback_reboot_text">Permite soft reboot do KernelSU ou reinício do zygote quando o reinício userspace padrão não está disponível. Isso nunca solicita um reboot do kernel.</string>
+    <string name="home_fallback_reboot_allow">Permitir alternativa</string>
     <string name="home_dialog_degoogle_title">DeGoogle?</string>
     <string name="home_dialog_degoogle_text">O aplicativo fará alterações temporárias no ambiente de sistema usando root e bind mounts.\n\nNenhum arquivo da partição /product será alterado fisicamente.\n\nO processo requer um reboot (soft reboot).</string>
     <string name="home_dialog_experimental_text">Este firmware não está no banco known-good. A operação só prosseguirá se todas as capabilities críticas estiverem em PASS e o opt-in experimental estiver habilitado.</string>

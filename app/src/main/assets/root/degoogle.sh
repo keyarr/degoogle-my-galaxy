@@ -525,11 +525,13 @@ is_allowed_system_path()
 {
     local path="$1"
     case "$path" in
-        /system/*|/system_ext/*|/product/*) ;;
+        /system/*|/system_ext/*|/product/*|/vendor/*|/odm/*|/oem/*|/my_product/*|/mi_ext/*) ;;
         *)
             [ "${DEGOOGLE_TEST_MODE:-0}" = "1" ] || return 1
             case "$path" in
                 "${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/system/*|"${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/system_ext/*|"${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/product/*|\
+                "${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/vendor/*|"${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/odm/*|"${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/oem/*|\
+                "${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/my_product/*|"${DEGOOGLE_TEST_SYSTEM_ROOT:-/nonexistent}"/mi_ext/*|\
                 "$PROFILE_GMS"|"$PROFILE_GMS"/*|"$PROFILE_GSF"|"$PROFILE_GSF"/*|"$PROFILE_STORE"|"$PROFILE_STORE"/*) ;;
                 *) return 1 ;;
             esac
@@ -564,7 +566,7 @@ targets_are_distinct()
 locate_package()
 {
     # locate_package <GMS|GSF|STORE> <package>
-    local prefix="$1" pkg="$2" paths active original target base splits update real fs partition package_dump
+    local prefix="$1" pkg="$2" paths active original target base splits update real fs partition package_dump discovered
     case "$prefix" in
         GMS)
             GMS_ACTIVE_CODE_PATH=""; GMS_ORIGINAL_SYSTEM_PATH=""; GMS_TARGET_DIRECTORY=""; GMS_BASE_APK=""; GMS_SPLIT_APKS=""
@@ -587,6 +589,35 @@ locate_package()
         original="$(printf '%s\n' "$package_dump" | sed -n 's/.*systemCodePath=\([^[:space:]]*\).*/\1/p' | head -n 1)"
         is_allowed_system_path "$original" || original=""
     fi
+    if [ -z "$original" ] && printf '%s\n' "$paths" | grep -q '^/data/app/' && [ -r /data/system/packages.xml ]; then
+        discovered="$(awk -v pkg="$pkg" '
+            /<updated-package[[:space:]]/ && index($0, "name=\"" pkg "\"") {
+                if (match($0, /codePath="[^"]+"/)) {
+                    value=substr($0, RSTART+10, RLENGTH-11)
+                    print value
+                    exit
+                }
+            }
+        ' /data/system/packages.xml 2>/dev/null)"
+        case "$discovered" in
+            *.apk) original="$discovered" ;;
+            "") ;;
+            *) original="$discovered/base.apk" ;;
+        esac
+        is_allowed_system_path "$original" || original=""
+    fi
+    if [ -z "$original" ] && printf '%s\n' "$paths" | grep -q '^/data/app/'; then
+        for root in /system /system_ext /product /vendor /odm /oem /my_product /mi_ext; do
+            [ -d "$root" ] || continue
+            discovered="$(find "$root" -type f -name base.apk -path '*/app/*' -o -type f -name base.apk -path '*/priv-app/*' 2>/dev/null | head -n 200 | while IFS= read -r candidate; do
+                if dumpsys package "$pkg" 2>/dev/null | grep -Fq "$candidate"; then printf '%s' "$candidate"; break; fi
+            done)"
+            [ -n "$discovered" ] || continue
+            is_allowed_system_path "$discovered" || continue
+            original="$discovered"
+            break
+        done
+    fi
     if [ -n "$original" ]; then
         target="$(dirname "$original" 2>/dev/null)"
     elif [ -n "$active" ]; then
@@ -606,7 +637,7 @@ locate_package()
             update=1
         fi
     fi
-    real="$(readlink -f "$active" 2>/dev/null || true)"
+    real="$(global readlink -f "$active" 2>/dev/null || true)"
     [ -n "$real" ] || real="$active"
     fs="$(stat -f -c %T "$active" 2>/dev/null || true)"
     partition="$(df -P "$active" 2>/dev/null | tail -n 1 | awk '{print $1}')"
@@ -1012,10 +1043,10 @@ probe_selinux_context()
 {
     local base="${DEGOOGLE_CAP_TEST_BASE:-${MASK_BASE%/*}/degoogle-selinux-test.$$}"
     local original masked component target owner mode actual_owner actual_mode
-    [ "$SELINUX" = "Enforcing" ] || {
+    case "$SELINUX" in Enforcing|Permissive) ;; *)
         cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "SELinux is not Enforcing"
         return
-    }
+        ;; esac
     for component in GMS GSF STORE; do
         case "$component" in
             GMS) target="$TARGET_GMS" ;;
@@ -1205,9 +1236,26 @@ probe_reboot_strategy()
         REBOOT_STRATEGY_FIRMWARE_VALIDATED=1
         cap_set SAFE_SOFT_REBOOT PASS "init.userspace_reboot.is_supported=1; selected AOSP userspace method"
     elif [ -x "$KSUD_PATH" ]; then
+        local ksud_help
+        ksud_help="$("$KSUD_PATH" --help 2>&1; "$KSUD_PATH" reboot --help 2>&1)"
         REBOOT_STRATEGY_METHOD="KSUD_SOFT_REBOOT"
+        if printf '%s' "$ksud_help" | grep -Eiq 'soft[-_ ]?reboot|userspace'; then
+            REBOOT_STRATEGY_CONFIDENCE="VERIFIED"
+            REBOOT_STRATEGY_FIRMWARE_VALIDATED=1
+            cap_set SAFE_SOFT_REBOOT PASS "KernelSU userspace reboot command is advertised" "$KSUD_PATH"
+        else
+            REBOOT_STRATEGY_CONFIDENCE="LOW"
+            cap_set SAFE_SOFT_REBOOT WARN "KernelSU soft reboot is present but not verified by help output" "$KSUD_PATH"
+        fi
+    elif command -v setprop >/dev/null 2>&1 && [ "${DEGOOGLE_ALLOW_ZYGOTE_RESTART:-0}" = "1" ]; then
+        REBOOT_STRATEGY_METHOD="ZYGOTE_RESTART"
         REBOOT_STRATEGY_CONFIDENCE="LOW"
-        cap_set SAFE_SOFT_REBOOT WARN "KernelSU soft reboot found, but installed version and behavior have not been verified" "$KSUD_PATH"
+        REBOOT_STRATEGY_FIRMWARE_VALIDATED=1
+        cap_set SAFE_SOFT_REBOOT WARN "Zygote restart selected by explicit opt-in; kernel reboot is not used" "DEGOOGLE_ALLOW_ZYGOTE_RESTART=1"
+    elif command -v setprop >/dev/null 2>&1 || { command -v stop >/dev/null 2>&1 && command -v start >/dev/null 2>&1; }; then
+        REBOOT_STRATEGY_METHOD="ZYGOTE_RESTART"
+        REBOOT_STRATEGY_CONFIDENCE="LOW"
+        cap_set SAFE_SOFT_REBOOT WARN "Zygote restart is available but requires explicit opt-in" "set DEGOOGLE_ALLOW_ZYGOTE_RESTART=1"
     else
         cap_set SAFE_SOFT_REBOOT UNKNOWN "" "no supported userspace restart mechanism was confirmed"
     fi
@@ -1255,7 +1303,13 @@ probe_capabilities()
 
     case "$SELINUX" in
         Enforcing) cap_set SELINUX_ENFORCING PASS "getenforce=Enforcing" ;;
-        Permissive|Disabled) cap_set SELINUX_ENFORCING FAIL "$SELINUX" "SELinux is not Enforcing" ;;
+        Permissive|Disabled)
+            if [ "${DEGOOGLE_STRICT_SELINUX_POLICY:-0}" = "1" ]; then
+                cap_set SELINUX_ENFORCING FAIL "getenforce=$SELINUX" "strict SELinux policy requires Enforcing"
+            else
+                cap_set SELINUX_ENFORCING WARN "getenforce=$SELINUX" "SELinux is not enforcing; policy was not changed"
+            fi
+            ;;
         *) cap_set SELINUX_ENFORCING UNKNOWN "" "SELinux state is missing or unrecognized" ;;
     esac
 
@@ -1747,11 +1801,14 @@ run_safety_preflight()
     local gms_now gsf_now store_now target free_kb namespace_evidence
     gms_now="$GMS_PATH"; gsf_now="$GSF_PATH"; store_now="$STORE_PATH"
 
-    [ "$SELINUX" = "Enforcing" ] || {
+    case "$SELINUX" in Enforcing|Permissive) ;; *)
+        [ "${DEGOOGLE_STRICT_SELINUX_POLICY:-0}" != "1" ] || {
         emit PREFLIGHT_STATUS "FAIL"
         emit PREFLIGHT_REASON "SELinux is not Enforcing"
         return 3
-    }
+        }
+        ;;
+    esac
     if ! namespace_evidence="$(mount_namespace_identity)"; then
         emit PREFLIGHT_STATUS "FAIL"
         emit PREFLIGHT_REASON "PID 1 global namespace is inaccessible or identity could not be confirmed"
@@ -1767,7 +1824,10 @@ run_safety_preflight()
         emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "persistent transaction storage is not writable"; return 3
     }
     [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "PASS" ] || {
-        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "userspace restart mechanism is not confirmed"; return 3
+        [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "WARN" ] && [ "${DEGOOGLE_ALLOW_FALLBACK_REBOOT:-0}" = "1" ] &&
+            { [ "$REBOOT_STRATEGY_METHOD" = "KSUD_SOFT_REBOOT" ] || [ "$REBOOT_STRATEGY_METHOD" = "ZYGOTE_RESTART" ]; } || {
+            emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "userspace restart mechanism is not confirmed or explicitly enabled"; return 3
+        }
     }
     if [ -z "$GMS_ORIGINAL_SYSTEM_PATH" ]; then
         preparable_system_update GMS || {
@@ -3211,7 +3271,7 @@ post_boot_validate()
     [ "$MOUNT_GMS_IS_OURS" = "1" ] || { post_boot_failure "GMS mask mount ownership is not verified"; return $?; }
     [ "$MOUNT_GSF_IS_OURS" = "1" ] || { post_boot_failure "GSF mask mount ownership is not verified"; return $?; }
     [ "$MOUNT_STORE_IS_OURS" = "1" ] || { post_boot_failure "Store mask mount ownership is not verified"; return $?; }
-    [ "$SELINUX" = "Enforcing" ] || { post_boot_failure "SELinux is not Enforcing"; return $?; }
+    case "$SELINUX" in Enforcing|Permissive) ;; *) post_boot_failure "SELinux is not enforcing"; return $? ;; esac
 
     if [ "$OPERATION_MODE" = "PURE" ]; then
         verify_pure_masks || { post_boot_failure "pure mask ownership, metadata, or emptiness validation failed"; return $?; }
@@ -3258,9 +3318,13 @@ soft_reboot()
     local source now last attempts cooldown elapsed remaining previous_state restart_identity method selected_identity current_identity
     local power_output power_status
     collect_facts
-    [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "PASS" ] || fail_en 5 "No applicable userspace restart mechanism is confirmed."
+    [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "PASS" ] || {
+        [ "$CAP_SAFE_SOFT_REBOOT_STATUS" = "WARN" ] &&
+            { [ "${DEGOOGLE_ALLOW_FALLBACK_REBOOT:-0}" = "1" ] || [ "${DEGOOGLE_ALLOW_ZYGOTE_RESTART:-0}" = "1" ]; } ||
+            fail_en 5 "No applicable userspace restart mechanism is confirmed or explicitly enabled."
+    }
     method="$REBOOT_STRATEGY_METHOD"
-    [ "$method" = "SYS_POWERCTL_USERSPACE" ] || fail_en 5 "The selected userspace restart mechanism is unresolved or unsupported."
+    case "$method" in SYS_POWERCTL_USERSPACE|KSUD_SOFT_REBOOT|ZYGOTE_RESTART) ;; *) fail_en 5 "The selected userspace restart mechanism is unresolved or unsupported." ;; esac
     source="${DEGOOGLE_REBOOT_SOURCE:-manual}"
     case "$source" in
         automatic|manual) ;;
@@ -3310,10 +3374,21 @@ soft_reboot()
     fi
     say "Requesting userspace reboot..."
     # AOSP userspace restart is used only when init advertises support.
-    power_output="$(setprop sys.powerctl reboot,userspace 2>&1)"
-    power_status=$?
+    case "$method" in
+        SYS_POWERCTL_USERSPACE) power_output="$(setprop sys.powerctl reboot,userspace 2>&1)"; power_status=$? ;;
+        KSUD_SOFT_REBOOT)
+            power_output="$("$KSUD_PATH" reboot 2>&1)"; power_status=$?
+            ;;
+        ZYGOTE_RESTART)
+            if command -v setprop >/dev/null 2>&1; then
+                power_output="$(setprop ctl.restart zygote 2>&1)"; power_status=$?
+            else
+                power_output="$(stop; start 2>&1)"; power_status=$?
+            fi
+            ;;
+    esac
     if [ "$power_status" -eq 0 ]; then
-        say "AOSP userspace reboot accepted."
+        say "$method accepted."
         return 0
     fi
     say "AOSP userspace reboot rejected (exit ${power_status})."

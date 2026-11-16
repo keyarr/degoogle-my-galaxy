@@ -161,7 +161,11 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     it.operationMode != null && facts.operationMode != null && it.operationMode != facts.operationMode
             } == true
             val state = if (modeConflict) DeviceState.ERROR else detectedState
-            val compatibility = CompatibilityEngine.evaluate(facts, knownGoodDatabase)
+            val compatibility = CompatibilityEngine.evaluate(
+                facts,
+                knownGoodDatabase,
+                allowFallbackReboot = _ui.value.fallbackRebootOptIn,
+            )
 
             var validationSucceeded = false
             val pureValidationPending = journal?.let { it.operationMode == OperationMode.PURE &&
@@ -344,6 +348,12 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     fun dismissModeDialog() = _ui.update { it.copy(modeDialogVisible = false) }
+
+    fun allowFallbackReboot() {
+        _ui.update { it.copy(fallbackRebootOptIn = true) }
+        backend?.setFallbackRebootOptIn(true)
+        refresh()
+    }
 
     fun selectMode(mode: OperationMode) {
         val current = _ui.value

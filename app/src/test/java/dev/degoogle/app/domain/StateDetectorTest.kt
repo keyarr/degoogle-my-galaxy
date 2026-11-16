@@ -97,6 +97,16 @@ class StateDetectorTest {
     }
 
     @Test
+    fun `stock com GSF e Store ausentes continua STOCK`() {
+        val f = facts {
+            gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
+            gsfPath = null
+            storePath = null
+        }
+        assertEquals(DeviceState.STOCK, StateDetector.detect(f, profile))
+    }
+
+    @Test
     fun `reindex stock pendente continua em RESTORE_PREPARED`() {
         val f = facts {
             stockReindexPending = true
@@ -321,6 +331,7 @@ class StateDetectorTest {
             gmsPath = "${profile.gmsSystemDir}/GmsCore.apk"
             gsfPath = null
             storePath = null
+            operationMode = OperationMode.MICROG
         }
         assertEquals(DeviceState.RESTORE_PREPARED, StateDetector.detect(f, profile))
     }

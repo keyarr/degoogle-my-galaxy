@@ -144,13 +144,21 @@ object CapabilityEngine {
         } else {
             packageFound(facts.gmsPackage, facts.gmsPath, "GMS")
         }
+        val optionalGsfAbsent = facts.gsfPackage == null && facts.gsfPath.isNullOrBlank() && !facts.mountGsf &&
+            !facts.stockReindexPending && (!facts.gsfTargetPresent || facts.operationMode == null)
+        val optionalStoreAbsent = facts.storePackage == null && facts.storePath.isNullOrBlank() && !facts.mountStore &&
+            !facts.stockReindexPending && (!facts.storeTargetPresent || facts.operationMode == null)
         inferred[Capability.SYSTEM_GSF_FOUND] = if (facts.mountGsf) {
             CapabilityResult.pass("GSF masked (empty)")
+        } else if (optionalGsfAbsent) {
+            CapabilityResult.pass("GSF is absent from stock")
         } else {
             packageFound(facts.gsfPackage, facts.gsfPath, "GSF")
         }
         inferred[Capability.SYSTEM_STORE_FOUND] = if (facts.mountStore) {
             CapabilityResult.pass(facts.storePath ?: "Store masked via Companion")
+        } else if (optionalStoreAbsent) {
+            CapabilityResult.pass("Store is absent from stock")
         } else {
             packageFound(facts.storePackage, facts.storePath, "Store")
         }
@@ -161,18 +169,23 @@ object CapabilityEngine {
         }
         inferred[Capability.GSF_MASKABLE] = if (facts.mountGsf) {
             CapabilityResult.pass("GSF target already masked successfully")
+        } else if (optionalGsfAbsent) {
+            CapabilityResult.pass("GSF target is absent from stock")
         } else {
             maskable(facts.gsfPackage, facts.gsfPath, "GSF")
         }
         inferred[Capability.STORE_MASKABLE] = if (facts.mountStore) {
             CapabilityResult.pass("Store target already masked successfully")
+        } else if (optionalStoreAbsent) {
+            CapabilityResult.pass("Store target is absent from stock")
         } else {
             maskable(facts.storePackage, facts.storePath, "Store")
         }
 
         inferred[Capability.SELINUX_ENFORCING] = when (facts.selinux.trim().lowercase()) {
             "enforcing" -> CapabilityResult.pass("getenforce=Enforcing")
-            "permissive", "disabled" -> CapabilityResult.fail("SELinux is not Enforcing", facts.selinux)
+            "permissive" -> CapabilityResult.warn("SELinux is Permissive; policy was not changed", "getenforce=Permissive")
+            "disabled" -> CapabilityResult.warn("SELinux is Disabled; context checks are not applicable", "getenforce=Disabled")
             else -> CapabilityResult.unknown("SELinux state missing")
         }
         inferred[Capability.PRIV_APP_COMPATIBLE] = when {

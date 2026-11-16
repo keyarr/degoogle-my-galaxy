@@ -365,6 +365,49 @@ private fun StockContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
             )
+            val updateWarning = listOf(
+                dev.degoogle.app.domain.Capability.GMS_MASKABLE to ui.facts.gmsPackage?.hasDataUpdate,
+                dev.degoogle.app.domain.Capability.STORE_MASKABLE to ui.facts.storePackage?.hasDataUpdate,
+            ).any { (capability, update) ->
+                update == true && ui.compatibility.matrix[capability].status == dev.degoogle.app.domain.CapabilityStatus.WARN
+            }
+            val onlyUpdateWarnings = ui.compatibility.matrix.results
+                .filter { it.key in dev.degoogle.app.domain.CapabilityMatrix.CRITICAL_CAPABILITIES }
+                .all { (capability, result) ->
+                    result.status == dev.degoogle.app.domain.CapabilityStatus.PASS ||
+                        (result.status == dev.degoogle.app.domain.CapabilityStatus.WARN &&
+                            capability in setOf(
+                                dev.degoogle.app.domain.Capability.GMS_MASKABLE,
+                                dev.degoogle.app.domain.Capability.STORE_MASKABLE,
+                            ))
+                }
+            if (updateWarning && onlyUpdateWarnings) {
+                Button(
+                    onClick = { vm.removeGmsUpdate() },
+                    enabled = !ui.operationInProgress,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    shape = RoundedCornerShape(0.dp),
+                ) {
+                    Text(stringResource(R.string.home_clean_updates_reprobe))
+                }
+            }
+        }
+    }
+
+    if (!ui.fallbackRebootOptIn && ui.facts.rebootStrategy?.method in setOf("KSUD_SOFT_REBOOT", "ZYGOTE_RESTART")) {
+        InfoCard(stringResource(R.string.home_fallback_reboot_title)) {
+            Text(
+                text = stringResource(R.string.home_fallback_reboot_text),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = vm::allowFallbackReboot,
+                enabled = !ui.operationInProgress,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                shape = RoundedCornerShape(0.dp),
+            ) {
+                Text(stringResource(R.string.home_fallback_reboot_allow))
+            }
         }
     }
 
