@@ -637,6 +637,24 @@ for target in "$PROF_GMS" "$PROF_GSF" "$PROF_STORE"; do
 done
 teardown_root
 
+echo "== cenário 39b: Play Store ausente não invalida o contexto SELinux"
+setup_root
+DEGOOGLE_PROGRESS=1 PM_STORE_MISSING=1 run_script 0 "probe sem Play Store" probe > "$ROOT/no-store-probe.out" 2>&1 || true
+grep -q '^DEGOOGLE_PROGRESS=selinux_context:CONFIRMED$' "$ROOT/no-store-probe.out" && \
+    ok "progresso confirma contexto SELinux sem Play Store" || bad "contexto SELinux bloqueou sem Play Store"
+PM_STORE_MISSING=1 run_script 0 "dry-run sem Play Store" dry-run > "$ROOT/no-store-dry.out" || true
+grep -q '^DEGOOGLE_CAP_SELINUX_CONTEXT_CLONABLE_STATUS=PASS$' "$ROOT/no-store-dry.out" && \
+    ok "capability de contexto passa sem Play Store" || bad "capability de contexto falhou sem Play Store"
+grep -q 'absent from stock: STORE' "$ROOT/no-store-dry.out" && \
+    ok "evidência registra Store ausente" || bad "evidência não registra Store ausente"
+PM_GSF_MISSING=1 PM_STORE_MISSING=1 run_script 0 "dry-run sem GSF e Store" dry-run > "$ROOT/no-optional-dry.out" || true
+grep -q '^DEGOOGLE_CAP_SELINUX_CONTEXT_CLONABLE_STATUS=PASS$' "$ROOT/no-optional-dry.out" && \
+    ok "contexto passa com GMS como único target" || bad "contexto falhou com apenas GMS"
+PM_GMS_MISSING=1 PM_STORE_MISSING=1 run_script 0 "dry-run sem GMS" dry-run > "$ROOT/no-gms-dry.out" || true
+grep -q '^DEGOOGLE_CAP_SELINUX_CONTEXT_CLONABLE_STATUS=UNKNOWN$' "$ROOT/no-gms-dry.out" && \
+    ok "contexto ainda exige GMS" || bad "contexto passou sem GMS"
+teardown_root
+
 echo "== cenário 40: preflight exige armazenamento livre e persistência gravável"
 setup_root
 FAKE_DF_KB=1000 run_script 3 "preflight bloqueia espaço insuficiente" preflight >/dev/null || true
@@ -1099,6 +1117,28 @@ ls "$BACKUP_BASE"/package-registry-*/* >/dev/null 2>&1 && \
 grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && \
     ok "journal continua pendente enquanto GSF/Store não estão registrados" || \
     bad "journal saiu de REINDEX_PENDING com registros ausentes"
+teardown_root
+
+echo "== cenário 24b: reindex confirma updated system apps em /data/app"
+setup_root
+run_script 0 "prepare antes do rollback com updates" prepare "$ROOT/gms.apk" "$ROOT/companion.apk" >/dev/null || true
+PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
+PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
+FAKE_GMS_SYSTEM_CODE_PATH="$PROF_GMS/GmsCore.apk" \
+FAKE_STORE_SYSTEM_CODE_PATH="$PROF_STORE/Phonesky.apk" \
+    run_script 0 "restore-stock pre-reboot com updates" restore-stock >/dev/null || true
+grep -q '^state=REINDEX_PENDING$' "$BACKUP_BASE/transaction/journal" && \
+    ok "rollback com updates marca reindex pendente" || bad "rollback com updates não marcou REINDEX_PENDING"
+PM_GMS_PATH="/data/app/~~gms/com.google.android.gms-1/base.apk" \
+PM_STORE_PATH="/data/app/~~store/com.android.vending-1/base.apk" \
+FAKE_GMS_SYSTEM_CODE_PATH="$PROF_GMS/GmsCore.apk" \
+FAKE_STORE_SYSTEM_CODE_PATH="$PROF_STORE/Phonesky.apk" \
+FAKE_BOOT_COMPLETED=1 DEGOOGLE_TEST_SYSTEM_SERVER_PID=101 \
+    run_script 0 "reindex com updated system apps" reindex-stock > "$ROOT/updated_reindex.out" || true
+grep -q 'REINDEX_OK' "$ROOT/updated_reindex.out" && \
+    ok "reindex confirmou updated system apps" || { bad "reindex ficou pendente com updates em /data/app"; cat "$ROOT/updated_reindex.out"; }
+grep -q '^state=STOCK_CONFIRMED$' "$BACKUP_BASE/transaction/journal" && \
+    ok "journal confirmou stock com updates em /data/app" || bad "journal não saiu de REINDEX_PENDING com updates"
 teardown_root
 
 echo "== cenário 25: cooldown protege apenas a recuperação automática"

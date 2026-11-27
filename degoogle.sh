@@ -1104,7 +1104,7 @@ probe_bind_mount()
 probe_selinux_context()
 {
     local base="${DEGOOGLE_CAP_TEST_BASE:-${MASK_BASE%/*}/degoogle-selinux-test.$$}"
-    local original masked component target owner mode actual_owner actual_mode
+    local original masked component target owner mode actual_owner actual_mode validated="" absent=""
     case "$SELINUX" in Enforcing|Permissive) ;; *)
         cap_set SELINUX_CONTEXT_CLONABLE FAIL "" "SELinux is not Enforcing"
         return
@@ -1115,6 +1115,12 @@ probe_selinux_context()
             GSF) target="$TARGET_GSF" ;;
             STORE) target="$TARGET_STORE" ;;
         esac
+        # GSF and Store are optional on stock firmware. Without a target there is
+        # no metadata to clone, so they must not invalidate the whole probe.
+        if [ -z "$target" ] && [ "$component" != "GMS" ]; then
+            absent="${absent:+$absent, }$component"
+            continue
+        fi
         [ -n "$target" ] || {
             cap_set SELINUX_CONTEXT_CLONABLE UNKNOWN "" "$component target could not be resolved"
             return
@@ -1150,8 +1156,10 @@ probe_selinux_context()
             cap_set SELINUX_CONTEXT_CLONABLE FAIL "source=$owner:$mode:$original; target=$actual_owner:$actual_mode:$masked" "could not exactly reproduce metadata for $component"
             return
         }
+        validated="${validated:+$validated, }$component"
     done
-    cap_set SELINUX_CONTEXT_CLONABLE PASS "owner, mode, and SELinux context reproducible for GMS, GSF, and Store"
+    cap_set SELINUX_CONTEXT_CLONABLE PASS \
+        "owner, mode, and SELinux context reproducible for $validated${absent:+; absent from stock: $absent}"
 }
 
 probe_signature_spoofing()
@@ -1908,7 +1916,7 @@ run_safety_preflight()
         emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "temporary global bind mount failed the create, read, and remove test"; return 3
     }
     [ "$CAP_SELINUX_CONTEXT_CLONABLE_STATUS" = "PASS" ] || {
-        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "owner, mode, and SELinux context were not validated for all three targets"; return 3
+        emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "owner, mode, and SELinux context were not validated for all present targets"; return 3
     }
     [ "$CAP_SAFE_RESTORE_STATUS" = "PASS" ] || {
         emit PREFLIGHT_STATUS "FAIL"; emit PREFLIGHT_REASON "persistent transaction storage is not writable"; return 3
@@ -3304,9 +3312,16 @@ reindex_stock()
         fail 4 "could not re-enable GMS"
     }
 
-    path_under_target "$(pm_path "$GMS_PKG")" "$TARGET_GMS" || REINDEX_REGISTRATIONS_STALE=1
-    path_under_target "$(pm_path "$GSF_PKG")" "$TARGET_GSF" || REINDEX_REGISTRATIONS_STALE=1
-    path_under_target "$(pm_path "$STORE_PKG")" "$TARGET_STORE" || REINDEX_REGISTRATIONS_STALE=1
+    # Updated system apps resolve to /data/app even after restore; the locator
+    # already confirmed that condition via *_HAS_DATA_UPDATE, so accept it here
+    # too or reindex would loop forever.
+    local reg_path
+    reg_path="$(pm_path "$GMS_PKG")"
+    stock_path_valid "$reg_path" "$TARGET_GMS" "$GMS_HAS_DATA_UPDATE" || REINDEX_REGISTRATIONS_STALE=1
+    reg_path="$(pm_path "$GSF_PKG")"
+    stock_path_valid "$reg_path" "$TARGET_GSF" "$GSF_HAS_DATA_UPDATE" || REINDEX_REGISTRATIONS_STALE=1
+    reg_path="$(pm_path "$STORE_PKG")"
+    stock_path_valid "$reg_path" "$TARGET_STORE" "$STORE_HAS_DATA_UPDATE" || REINDEX_REGISTRATIONS_STALE=1
 
     if [ "$REINDEX_REGISTRATIONS_STALE" = "1" ]; then
         journal_state "REINDEX_PENDING" || fail 4 "stock registrations are still pending, but could not persist REINDEX_PENDING"

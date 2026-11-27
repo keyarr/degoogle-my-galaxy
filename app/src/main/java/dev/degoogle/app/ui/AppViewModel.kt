@@ -37,6 +37,13 @@ import dev.degoogle.app.R
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+private val CHECK_CAPABILITIES = mapOf(
+    "mount_namespace" to Capability.GLOBAL_MOUNT_NAMESPACE,
+    "bind_mount" to Capability.BIND_MOUNT,
+    "selinux_context" to Capability.SELINUX_CONTEXT_CLONABLE,
+    "signature_spoofing" to Capability.SIGNATURE_SPOOFING,
+)
+
 /**
  * ViewModel central. O estado da UI é sempre derivado do estado REAL do
  * sistema (via `probe`); nenhuma flag interna vira fonte de verdade.
@@ -364,7 +371,7 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
             }
 
             val completedChecks = _ui.value.checks.map { check ->
-                when (check.id) {
+                val resolved = when (check.id) {
                     "post_boot_validation" -> check.copy(
                         status = if (postBootValidationSucceeded == false) CheckStatus.FAILED else CheckStatus.CONFIRMED,
                     )
@@ -376,6 +383,14 @@ class AppViewModel(private val app: Application) : AndroidViewModel(app) {
                     )
                     else -> if (check.status == CheckStatus.PENDING) check.copy(status = CheckStatus.FAILED) else check
                 }
+                if (resolved.status != CheckStatus.FAILED) return@map resolved
+                val result = CHECK_CAPABILITIES[check.id]?.let { facts.capabilityResults[it] }
+                resolved.copy(
+                    detail = listOfNotNull(
+                        result?.reason?.takeIf { it.isNotBlank() },
+                        result?.evidence?.takeIf { it.isNotBlank() },
+                    ).joinToString("; "),
+                )
             }
             val resultCanBeCurrent = reconciliationSucceeded &&
                 completedChecks.none { it.status == CheckStatus.FAILED }

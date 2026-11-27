@@ -16,6 +16,7 @@ enum class CheckStatus { PENDING, CONFIRMED, FAILED }
 data class DeviceCheck(
     val id: String,
     val status: CheckStatus = CheckStatus.PENDING,
+    val detail: String = "",
 )
 
 internal val INITIAL_DEVICE_CHECKS = listOf(

@@ -286,23 +286,33 @@ private fun CheckProgressList(checks: List<DeviceCheck>) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             checks.forEach { check ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(stringResource(check.labelResource()), style = MaterialTheme.typography.bodySmall)
-                    val (statusText, color) = when (check.status) {
-                        CheckStatus.PENDING -> R.string.check_pending to MaterialTheme.colorScheme.onSurfaceVariant
-                        CheckStatus.CONFIRMED -> R.string.check_confirmed to MaterialTheme.colorScheme.primary
-                        CheckStatus.FAILED -> R.string.check_failed to MaterialTheme.colorScheme.error
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(stringResource(check.labelResource()), style = MaterialTheme.typography.bodySmall)
+                        val (statusText, color) = when (check.status) {
+                            CheckStatus.PENDING -> R.string.check_pending to MaterialTheme.colorScheme.onSurfaceVariant
+                            CheckStatus.CONFIRMED -> R.string.check_confirmed to MaterialTheme.colorScheme.primary
+                            CheckStatus.FAILED -> R.string.check_failed to MaterialTheme.colorScheme.error
+                        }
+                        Text(
+                            stringResource(statusText),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = color,
+                        )
                     }
-                    Text(
-                        stringResource(statusText),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = color,
-                    )
+                    if (check.status == CheckStatus.FAILED && check.detail.isNotBlank()) {
+                        Text(
+                            text = check.detail,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
                 }
             }
         }
